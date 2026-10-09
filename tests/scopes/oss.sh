@@ -56,4 +56,11 @@ scope_oss() {
   for f in "${ROOT}"/.github/ISSUE_TEMPLATE/*.yml "${ROOT}"/.github/dependabot.yml "${ROOT}"/.github/workflows/*.yml; do
     check "valid YAML shape (no tabs): ${f#"${ROOT}/"}" bash -c "! grep -q \$'\t' '${f}'"
   done
+
+  # S4: the release workflow and its helper.
+  check "release workflow triggers on vX.Y.Z tags" grep -q "tags: \['v\*\.\*\.\*'\]" "${ROOT}/.github/workflows/release.yml"
+  check "release workflow checks the tag, tests, and publishes SHA256SUMS" bash -c "grep -q 'release.sh check' '${ROOT}/.github/workflows/release.yml' && grep -q 'tests/run.sh' '${ROOT}/.github/workflows/release.yml' && grep -q SHA256SUMS '${ROOT}/.github/workflows/release.yml' && grep -q -- '--prerelease' '${ROOT}/.github/workflows/release.yml'"
+  out="$(cd "${ROOT}" && bash scripts/release.sh notes "$(bash scripts/release.sh version)")"
+  expect_has "release notes come from the CHANGELOG section of the current version" "${out}" "###"
+  check "release.sh check accepts the current version's annotated tag" bash -c "cd '${ROOT}' && bash scripts/release.sh check v\$(bash scripts/release.sh version)"
 }
