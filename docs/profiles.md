@@ -160,6 +160,31 @@ Herdr's agent-state hooks are installed into the CLI's own home by
 `herdr integration install <cli>`; copy them into a profile with
 `ak profiles hooks <cli> @name` so Herdr sees that profile's state too.
 
+### Herdr's state hooks in a profile
+
+`herdr integration install <cli>` installs Herdr's agent-state hooks into the
+CLI's own home only. Copy them into a profile once (after installing them in
+Herdr, and again after Herdr updates its integration):
+
+```bash
+ak profiles hooks claude @work
+```
+
+| CLI | Files copied into the profile | Registration merged |
+| --- | --- | --- |
+| claude | `hooks/herdr-agent-state.sh` | `settings.json` (`hooks`) |
+| codex | `herdr-agent-state.sh` | `hooks.json` |
+| cursor | `home/.cursor/herdr-agent-state.sh` | `home/.cursor/hooks.json` |
+| opencode | `config/opencode/plugins/herdr-agent-state.js` | — (plugins load by location) |
+| pi | `extensions/herdr-agent-state.ts` | — |
+| grok | `hooks/herdr-agent-state.sh`, `hooks/herdr.json` | — (copied, path rewritten) |
+
+Only Herdr's own entries are merged (their paths rewritten to the profile);
+the profile's other settings and hooks are kept, and a profile file that
+does not parse is refused and left untouched. The real home is read, never
+written. Rerunning is a no-op. Cline has no Herdr integration (Herdr reads
+its screen). `ak doctor` shows `herdr_hooks` per profile.
+
 ## Limits
 
 - Whether running several subscriptions of one provider at once is allowed
