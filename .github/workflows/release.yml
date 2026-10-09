@@ -1,6 +1,6 @@
 name: release
 
-# An annotated vX.Y.Z (or vX.Y.Z-pre.N) tag pushed to this repository becomes
+# An annotated vX.Y.Z (or vX.Y.Z-beta.N / -rc.N) tag pushed to this repository becomes
 # a GitHub release: the tag is checked against lib/common.py VERSION and the
 # CHANGELOG, the suite and the public-hygiene check run, and the release gets
 # the changelog section as notes, the source tarball and SHA256SUMS.
@@ -8,12 +8,13 @@ on:
   push:
     tags: ['v*.*.*']
 
-permissions:
-  contents: write
+permissions: {}
 
 jobs:
   release:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
