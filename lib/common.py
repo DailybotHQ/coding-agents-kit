@@ -117,7 +117,7 @@ def resolve_executable(cli, env=None):
     return best
 
 
-_CMD_META = set('"%&|<>^!')
+_CMD_META = set('"%&|<>^!()\r\n')
 
 
 def windows_argv(argv, env=None):

@@ -39,10 +39,16 @@ def _ensure_dir(path):
             os.umask(old)
 
 
-def _atomic_write(path, text):
+def _atomic_write(path, text, confine=None):
     # A config that is a symlink (dotfiles repo) is updated where it points,
-    # never replaced by a disconnected copy.
+    # never replaced by a disconnected copy. Inside a profile (confine), the
+    # agent that runs there could plant such a link: the real target must
+    # then stay inside the profile.
     path = os.path.realpath(path)
+    if confine is not None:
+        root = os.path.realpath(confine)
+        if path != root and not path.startswith(root + os.sep):
+            raise WriterError("refusing to write %s: it resolves outside the profile %s" % (path, confine))
     _ensure_dir(path)
     mode = None
     if os.path.exists(path):
@@ -92,7 +98,7 @@ def _toml_string(value):
     return json.dumps(value)
 
 
-def write_codex(path, provider_id, name, base_url, env_key, model):
+def write_codex(path, provider_id, name, base_url, env_key, model, confine=None):
     """A Codex profile overlay (`codex -p <name>` reads <name>.config.toml)."""
     if os.path.exists(path):
         with open(path) as handle:
@@ -117,11 +123,11 @@ def write_codex(path, provider_id, name, base_url, env_key, model):
         with open(path) as handle:
             if handle.read() == text:
                 return False
-    _atomic_write(path, text)
+    _atomic_write(path, text, confine)
     return True
 
 
-def write_opencode(path, provider_id, env_key, base_url, models):
+def write_opencode(path, provider_id, env_key, base_url, models, confine=None):
     """Merge ONE provider into opencode.json; never touches the global model."""
     data = _load_json_object(path, " (or point OPENCODE_CONFIG at another file)")
     providers = data.setdefault("provider", {})
@@ -147,11 +153,11 @@ def write_opencode(path, provider_id, env_key, base_url, models):
         return False
     providers[provider_id] = merged
     _backup_once(path)
-    _atomic_write(path, json.dumps(data, indent=2) + "\n")
+    _atomic_write(path, json.dumps(data, indent=2) + "\n", confine)
     return True
 
 
-def write_pi(path, provider_id, base_url, env_key, context_window, max_tokens, reasoning_effort, specs):
+def write_pi(path, provider_id, base_url, env_key, context_window, max_tokens, reasoning_effort, specs, confine=None):
     """Upsert ONE provider into Pi's models.json (apiKey is "$<VAR>")."""
     data = _load_json_object(path, "")
     providers = data.setdefault("providers", {})
@@ -183,7 +189,7 @@ def write_pi(path, provider_id, base_url, env_key, context_window, max_tokens, r
         return False
     providers[provider_id] = entry
     _backup_once(path)
-    _atomic_write(path, json.dumps(data, indent=2) + "\n")
+    _atomic_write(path, json.dumps(data, indent=2) + "\n", confine)
     return True
 
 
@@ -203,12 +209,12 @@ def apply(kind, ctx):
     wtype = spec["type"]
     if wtype == "codex":
         write_codex(path, spec["provider_id"], spec["name"], ctx.expand(spec["base_url"]), env_key,
-                    ctx.expand(spec["model"]))
+                    ctx.expand(spec["model"]), confine=ctx.profile_dir)
     elif wtype == "opencode":
         write_opencode(path, spec["provider_id"], env_key, ctx.expand(spec["base_url"]),
-                       [ctx.expand(m) for m in spec["models"]])
+                       [ctx.expand(m) for m in spec["models"]], confine=ctx.profile_dir)
     elif wtype == "pi":
         write_pi(path, spec["provider_id"], ctx.expand(spec["base_url"]), env_key,
                  spec["context_window"], spec["max_tokens"], spec["reasoning_effort"],
-                 [ctx.expand(m) for m in spec["models"]])
+                 [ctx.expand(m) for m in spec["models"]], confine=ctx.profile_dir)
     return path

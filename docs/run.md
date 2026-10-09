@@ -19,6 +19,13 @@ can start any agent the same way and read one result.
 - `--timeout SECONDS` kills the whole process tree when it expires (`0` =
   none). Cline also receives it as its own `-t`.
 
+**Windows:** a program that calls `ak run` must start the python core
+directly — `py -3 <install>\lib\ak.py run …` — not `ak.cmd`. A batch file
+lets `cmd.exe` re-parse its arguments, so a prompt containing `"` and `&`
+could run commands. (`ak.cmd` is for typing at a prompt.) The kit itself
+starts npm-installed CLIs as `node <script>` and refuses cmd metacharacters
+for any other batch target.
+
 ## Mapping (frozen, per CLI)
 
 | Kind | Command |
