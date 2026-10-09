@@ -44,6 +44,16 @@ box_run() {
       TMPDIR="${BOX}/tmp" ${envs[@]+"${envs[@]}"} "$@" </dev/null 2>&1 )
 }
 
+# box_pipe [VAR=value...] -- <command...> — like box_run, but stdin is the
+# caller's (to answer a [y/N] question through a pipe).
+box_pipe() {
+  local -a envs=()
+  while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
+  [[ "${1:-}" == "--" ]] && shift
+  ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
+      TMPDIR="${BOX}/tmp" ${envs[@]+"${envs[@]}"} "$@" 2>&1 )
+}
+
 # ak [VAR=value...] -- <ak args...> — runs bin/ak in the box (merged output).
 ak() {
   local -a envs=()
@@ -97,7 +107,7 @@ expect_lacks() {
 
 # file_mode <path> — octal permission bits (BSD and GNU stat).
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1"
+  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null
 }
 
 # json_get <file|-> <python expression over `d`> — prints the value.

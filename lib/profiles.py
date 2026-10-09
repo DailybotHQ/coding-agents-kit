@@ -8,8 +8,8 @@ profile lives in
 (providers.toml `isolation` + `home_env`). Kinds of the same CLI share a
 profile: `ak claude @2` and `ak claude-glm @2` see the same sessions.
 
-Ported from the private kit's lib/profiles.sh (CODING_AGENT_KIT_* became
-AGENTKIT_*); the behaviour is pinned by tests/scopes/profiles.sh.
+Ported from the private kit's lib/profiles.sh (its variables were renamed to
+the AGENTKIT_ prefix); the behaviour is pinned by tests/scopes/profiles.sh.
 No secret value is ever printed: errors name variables only.
 """
 
