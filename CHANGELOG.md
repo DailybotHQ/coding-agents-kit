@@ -1,11 +1,32 @@
 # Changelog
 
-All notable changes to coding-agents-kit. Versions follow
-[Semantic Versioning](https://semver.org); while the version is `0.x`, a
-breaking change bumps the minor version **and** the interface version
-reported by `ak doctor --json`.
+All notable changes to coding-agents-kit are documented in this file.
 
-## [0.1.1] — 2026-10-08
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+While the version is `0.x`, a breaking change bumps the minor version **and**
+the interface version reported by `ak doctor --json`.
+
+## [Unreleased]
+
+### Added
+
+- Public repository standard: `CONTRIBUTING.md`, `SECURITY.md` (policy),
+  `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue and pull request
+  templates, `CODEOWNERS`, Dependabot for GitHub Actions, `CLAUDE.md` →
+  `AGENTS.md`.
+- `scripts/check-public-hygiene.sh`: CI check that no tracked file carries
+  private context or secret-shaped strings (allowlist for visibly fake
+  fixtures in `.public-hygiene-allow`).
+- Release workflow: an annotated `vX.Y.Z` tag publishes the GitHub release
+  with the changelog section, the source tarball and `SHA256SUMS`.
+
+### Changed
+
+- README follows the ecosystem's standard section order; documentation
+  examples use `$HOME` instead of a sample user path.
+
+## [0.1.1] - 2026-10-08
 
 Security release. **Interface 1** (unchanged). Upgrade from 0.1.0.
 
@@ -31,7 +52,7 @@ Security release. **Interface 1** (unchanged). Upgrade from 0.1.0.
 Found by an independent review of the 0.1.0 release (the verification pass
 of its pre-release fixes).
 
-## [0.1.0] — 2026-10-08
+## [0.1.0] - 2026-10-08
 
 First public release. **Interface 1.**
 
@@ -82,5 +103,6 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.1.1...HEAD
 [0.1.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.0

@@ -45,13 +45,14 @@ so `AGENTKIT_HOME=~/.local` can never wipe `~/.local/bin`.
 existing `~/.zshrc` / `~/.bashrc` (and the rc of `$SHELL`; `~/.profile` when
 there is none). It is replaced in place on every run and removed by
 `--uninstall` or `ak alias rc --remove`, leaving the rest of the file as it
-was:
+was (shown with `$HOME` for your home directory; the real block holds the
+absolute path):
 
 ```sh
 # >>> agentkit >>>
 # Managed by coding-agents-kit (install.sh, ak alias). Edit outside this block.
-if [ -d '/home/me/.local/share/agentkit/bin' ]; then case ":$PATH:" in *:/home/me/.local/share/agentkit/bin:*) ;; *) PATH='/home/me/.local/share/agentkit/bin':"$PATH"; export PATH ;; esac; fi
-[ -f '/home/me/.local/share/agentkit/aliases.sh' ] && . '/home/me/.local/share/agentkit/aliases.sh'
+if [ -d '$HOME/.local/share/agentkit/bin' ]; then case ":$PATH:" in *:$HOME/.local/share/agentkit/bin:*) ;; *) PATH='$HOME/.local/share/agentkit/bin':"$PATH"; export PATH ;; esac; fi
+[ -f '$HOME/.local/share/agentkit/aliases.sh' ] && . '$HOME/.local/share/agentkit/aliases.sh'
 # <<< agentkit <<<
 ```
 

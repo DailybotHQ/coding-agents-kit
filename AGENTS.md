@@ -31,6 +31,7 @@ Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools:
 | --- | --- |
 | Full | `bash tests/run.sh` |
 | Scoped | `bash tests/run.sh <scope>` |
+| Public hygiene | `bash scripts/check-public-hygiene.sh` |
 
 The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 
@@ -41,7 +42,9 @@ The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 3. Never print, log or write the value of any `*_API_KEY` / `*_TOKEN` variable; refer to variables by name.
 4. Never spell a fetch-piped-to-shell install line in a skill file (marketplace rule E005); never inject a permission-bypass flag by default (E006); pin every cross-repo install to a tag (W012).
 5. Developing is not installing: tests run in a sandbox `HOME`; nothing is installed into the real `$HOME` while developing.
-6. Pin every external tool by version.
+6. Pin every external tool by version (GitHub Actions by commit SHA).
+7. This repository is public: no personal paths, private organisation or repository names, internal tooling names or non-public addresses, ever — `scripts/check-public-hygiene.sh` enforces it in CI. Never rewrite published history.
+8. Human contributors: [CONTRIBUTING.md](CONTRIBUTING.md). `CLAUDE.md` is a symlink to this file.
 
 ## Deep Work Plans
 
