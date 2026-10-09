@@ -62,5 +62,16 @@ scope_oss() {
   check "release workflow checks the tag, tests, and publishes SHA256SUMS" bash -c "grep -q 'release.sh check' '${ROOT}/.github/workflows/release.yml' && grep -q 'tests/run.sh' '${ROOT}/.github/workflows/release.yml' && grep -q SHA256SUMS '${ROOT}/.github/workflows/release.yml' && grep -q -- '--prerelease' '${ROOT}/.github/workflows/release.yml'"
   out="$(cd "${ROOT}" && bash scripts/release.sh notes "$(bash scripts/release.sh version)")"
   expect_has "release notes come from the CHANGELOG section of the current version" "${out}" "###"
-  check "release.sh check accepts the current version's annotated tag" bash -c "cd '${ROOT}' && bash scripts/release.sh check v\$(bash scripts/release.sh version)"
+  # release.sh check, in a throwaway repository (CI checkouts carry no tags).
+  local rel="${SANDBOX}/release-repo" version
+  version="$(cd "${ROOT}" && bash scripts/release.sh version)"
+  mkdir -p "${rel}/lib"
+  cp "${ROOT}/lib/common.py" "${rel}/lib/"; cp "${ROOT}/CHANGELOG.md" "${rel}/"
+  ( cd "${rel}" && git init -q && git add -A \
+      && git -c user.name=t -c user.email=t@example.invalid commit -qm init \
+      && git -c user.name=t -c user.email=t@example.invalid tag -a "v${version}" -m release \
+      && git tag v9.9.9 && git -c user.name=t -c user.email=t@example.invalid tag -a v9.9.8 -m wrong )
+  check "release.sh check accepts an annotated tag matching VERSION" bash -c "cd '${rel}' && bash '${ROOT}/scripts/release.sh' check v${version}"
+  check "release.sh check refuses a lightweight tag" bash -c "cd '${rel}' && ! bash '${ROOT}/scripts/release.sh' check v9.9.9"
+  check "release.sh check refuses a tag that does not match VERSION" bash -c "cd '${rel}' && ! bash '${ROOT}/scripts/release.sh' check v9.9.8"
 }
