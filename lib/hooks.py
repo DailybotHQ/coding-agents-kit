@@ -59,7 +59,7 @@ def _herdr_entries(value):
     return MARKER in json.dumps(value)
 
 
-def _merge_registration(src_path, dst_path, pairs):
+def _merge_registration(src_path, dst_path, pairs, root):
     """Merge herdr hook entries of src into dst. Returns True when written."""
     if not os.path.isfile(src_path):
         return False
@@ -69,6 +69,8 @@ def _merge_registration(src_path, dst_path, pairs):
     except ValueError as exc:
         raise AkError("cannot read Herdr's registration %s: %s" % (src_path, exc), EXIT_NOT_READY)
     dst = {}
+    if os.path.islink(dst_path):
+        raise AkError("refusing to write %s: it is a symlink inside the profile" % dst_path, EXIT_NOT_READY)
     if os.path.exists(dst_path):
         try:
             with open(dst_path) as handle:
@@ -103,11 +105,18 @@ def _merge_registration(src_path, dst_path, pairs):
             merged[key] = value
     if merged == original and os.path.exists(dst_path):
         return False
-    _write(dst_path, json.dumps(merged, indent=2) + "\n", 0o600)
+    _write(dst_path, json.dumps(merged, indent=2) + "\n", 0o600, root)
     return True
 
 
-def _write(path, text, mode):
+def _write(path, text, mode, root):
+    """Write inside `root` only. The profile is writable by the agent that
+    runs in it, so a symlink planted there must never redirect this write:
+    a symlinked destination is refused, and the real parent must be inside
+    the profile."""
+    import tempfile
+    if os.path.islink(path):
+        raise AkError("refusing to write %s: it is a symlink inside the profile" % path, EXIT_NOT_READY)
     parent = os.path.dirname(path)
     if not os.path.isdir(parent):
         old = os.umask(0o077)
@@ -115,9 +124,9 @@ def _write(path, text, mode):
             os.makedirs(parent)
         finally:
             os.umask(old)
-    import tempfile
-    path = os.path.realpath(path)  # through a symlink (dotfiles), never replacing it
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix="." + os.path.basename(path) + ".")
+    if not _inside(parent, root):
+        raise AkError("refusing to write %s: it resolves outside the profile %s" % (path, root), EXIT_NOT_READY)
+    fd, tmp = tempfile.mkstemp(dir=parent, prefix="." + os.path.basename(path) + ".")
     try:
         with os.fdopen(fd, "w") as handle:
             handle.write(text)
@@ -163,23 +172,21 @@ def cmd_hooks(model, args, env):
                       "herdr integration install %s" % (cli_name, ", ".join(missing), cli_name), EXIT_NOT_READY)
     changed = 0
     for src, dst in sources:
-        if not _inside(os.path.dirname(dst), directory) and not _inside(dst, directory):
-            raise AkError("refusing to write %s: outside the profile %s" % (dst, directory), common.EXIT_INTERNAL)
         with open(src) as handle:
             text = _rewrite(handle.read(), pairs)
         mode = os.stat(src).st_mode & 0o755
         current = None
-        if os.path.isfile(dst):
+        if os.path.isfile(dst) and not os.path.islink(dst):
             with open(dst) as handle:
                 current = handle.read()
         if current != text or (os.stat(dst).st_mode & 0o777) != mode:
-            _write(dst, text, mode)
+            _write(dst, text, mode, directory)
             print("copied %s -> %s" % (src, dst))
             changed += 1
     if spec.get("register"):
         src_reg = src_ctx.ref_path(spec["register"])
         dst_reg = dst_ctx.ref_path(spec["register"])
-        if _merge_registration(src_reg, dst_reg, pairs):
+        if _merge_registration(src_reg, dst_reg, pairs, directory):
             print("registered Herdr's hooks in %s" % dst_reg)
             changed += 1
     if not changed:

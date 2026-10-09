@@ -104,6 +104,10 @@ the CLI's transcript goes to stderr.
 | 5 | cancelled |
 | ≥ 64 | kit internal error |
 
+On Windows, a program that calls ak must run the core directly —
+`py -3 <install>\lib\ak.py run …` — never `ak.cmd`: a batch file lets
+`cmd.exe` re-parse its arguments, and a prompt is untrusted text.
+
 Rules for delegating: give a writing delegate its **own git worktree** as
 `--cwd` (never the tree you are editing); one writer per path; treat
 `result_text` as a claim — verify it with your own checks before relying on
