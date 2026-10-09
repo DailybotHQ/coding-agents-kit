@@ -12,6 +12,10 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-09
+
+Interface stays **1**. Security fixes from the v0.2.0 review: the opt-out always wins.
+
 ### Fixed
 
 - **An inherited opt-out could be lost.** A nested `ak` re-reads the env
@@ -154,7 +158,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.0
