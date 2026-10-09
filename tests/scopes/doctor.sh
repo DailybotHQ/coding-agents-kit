@@ -35,7 +35,7 @@ scope_doctor() {
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
   expect_eq "doctor --json matches docs/schema/doctor-v1.json" "${out}" "valid"
   expect_eq "doctor reports interface 1" "$(json_get "${doc}" 'd["interface"]')" 1
-  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "0.2.1"
+  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "0.2.2"
   expect_eq "doctor reports this OS" "$(json_get "${doc}" 'd["os"] in ("macos", "linux")')" true
   expect_eq "doctor lists all 19 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 19
   expect_eq "doctor sees the installed CLIs" "$(json_get "${doc}" 'all(v["installed"] for v in d["kinds"].values())')" true

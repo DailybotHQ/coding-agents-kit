@@ -12,7 +12,7 @@ body:
     attributes:
       label: ak version
       description: Output of `ak --version`.
-      placeholder: agentkit 0.2.1 (interface 1)
+      placeholder: agentkit 0.2.2 (interface 1)
     validations:
       required: true
   - type: dropdown

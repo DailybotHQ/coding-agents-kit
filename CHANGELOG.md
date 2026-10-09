@@ -12,6 +12,10 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.2.2] - 2026-10-09
+
+Interface stays **1**. Security fix to the 0.2.1 `ak env import` hardening.
+
 ### Fixed
 
 - **`ak env import` could still import shell code** (a fix to the 0.2.1
@@ -167,7 +171,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.2...HEAD
+[0.2.2]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.1
