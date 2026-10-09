@@ -70,7 +70,7 @@ rather than overwritten.
 
 `{NAME}` reads the environment (upper case); `{name}` reads a variable —
 provider and kind variables, `root.<name>`, `dir`, `id`, `prompt`, `cwd`,
-`timeout`, `kind`, `profile`. `{X:-default}` falls back when `X` is unset or
+`seconds`, `kind`, `profile`. `{X:-default}` falls back when `X` is unset or
 empty, and defaults nest. A leading `~` is the user's home. In an argv list,
 an element that is exactly `{provider}`, `{session}`, `{auto}`, `{json}` or
 `{timeout}` expands to a list. `{key}` is the profile's provider key: it is

@@ -41,6 +41,8 @@ if [[ -z "${AK_PY}" ]] || ! "${AK_PY}" -c 'import sys; sys.exit(sys.version_info
 fi
 
 REAL_HOME="${HOME}"
+REAL_PATH="${PATH}"  # used by the opt-in live scope
+export REAL_PATH
 SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/agentkit-tests.XXXXXX")"
 SANDBOX="$(cd "${SANDBOX}" && pwd -P)"
 trap 'rm -rf "${SANDBOX}"' EXIT

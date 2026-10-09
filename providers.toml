@@ -13,7 +13,7 @@
 #
 # Templates: {NAME} reads the environment (upper case), {name} reads a
 # variable (lower case: provider and kind variables, root.<name>, dir, id,
-# prompt, cwd, timeout, kind, profile), {X:-default} falls back when X is
+# prompt, cwd, seconds, kind, profile), {X:-default} falls back when X is
 # empty, and defaults nest. {key} is the profile's provider key: it is only
 # ever placed in the CLI's environment (or, for Cline, its argv) — never
 # printed, logged or written. A leading ~ is the user's home. An argv list
@@ -92,6 +92,7 @@ json = ["--json"]
 result = "codex-jsonl"
 
 [clis.codex.login]
+command = "codex login"
 files = ["home:auth.json"]
 env = ["CODEX_API_KEY", "OPENAI_API_KEY"]
 definitive = true
@@ -133,6 +134,7 @@ json = ["--output-format", "json"]
 result = "json-result"
 
 [clis.cursor.login]
+command = "agent login"
 files = ["home:auth.json"]
 env = ["CURSOR_API_KEY"]
 definitive = false
@@ -176,6 +178,7 @@ json = ["--format", "json"]
 result = "opencode-jsonl"
 
 [clis.opencode.login]
+command = "opencode auth login"
 files = ["data:auth.json"]
 env = []
 definitive = false
@@ -250,10 +253,11 @@ standalone = ["pick"]
 [clis.cline.run]
 argv = ["{prompt}", "{json}", "-c", "{cwd}", "{timeout}", "{auto}", "{provider}"]
 json = ["--json"]
-timeout = ["-t", "{timeout}"]
+timeout = ["-t", "{seconds}"]
 result = "cline-jsonl"
 
 [clis.cline.login]
+command = "cline auth"
 files = ["home:data/settings/providers.json"]
 env = []
 definitive = false
@@ -288,6 +292,7 @@ json = ["--output-format", "json"]
 result = "json-result"
 
 [clis.grok.login]
+command = "grok login"
 files = ["home:auth.json"]
 env = ["XAI_API_KEY"]
 definitive = true
