@@ -40,6 +40,9 @@ def _ensure_dir(path):
 
 
 def _atomic_write(path, text):
+    # A config that is a symlink (dotfiles repo) is updated where it points,
+    # never replaced by a disconnected copy.
+    path = os.path.realpath(path)
     _ensure_dir(path)
     mode = None
     if os.path.exists(path):
@@ -84,7 +87,9 @@ def _load_json_object(path, env_hint):
 
 
 def _toml_string(value):
-    return '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
+    # A JSON string is a valid TOML basic string and escapes every control
+    # character, so a value can never start a new TOML line.
+    return json.dumps(value)
 
 
 def write_codex(path, provider_id, name, base_url, env_key, model):

@@ -29,6 +29,7 @@ stderr:
 
 import collections
 import json
+import math
 import os
 import signal
 import subprocess
@@ -91,7 +92,7 @@ def parse(args, env):
                     opts.timeout = float(value)
                 except ValueError:
                     opts.timeout = -1
-                if opts.timeout < 0 or opts.timeout != opts.timeout:
+                if opts.timeout < 0 or not math.isfinite(opts.timeout):
                     raise AkError("--timeout takes a number of seconds (0 = none), got '%s'" % value, EXIT_USAGE)
                 if opts.timeout == 0:
                     opts.timeout = None
@@ -110,6 +111,11 @@ def parse(args, env):
         prompt = sys.stdin.read()
     if not prompt.strip():
         raise AkError("the prompt is empty. %s" % USAGE, EXIT_USAGE)
+    if prompt.lstrip().startswith("-"):
+        # Several CLIs take the prompt as a bare positional: a prompt that
+        # looks like an option would be read as one (even an autonomy flag).
+        raise AkError("a prompt cannot start with '-' (a CLI would read it as an option); "
+                      "start it with a word", EXIT_USAGE)
     opts.prompt = prompt
     if opts.profile_token is None and env.get("AGENTKIT_PROFILE"):
         token = env["AGENTKIT_PROFILE"]
@@ -255,17 +261,16 @@ def execute(prep, argv, opts, cwd):
         popen_kw["start_new_session"] = True
     sys.stdout.flush()
     sys.stderr.flush()
-    try:
-        proc = subprocess.Popen(argv, cwd=cwd, env=prep.env, stdin=subprocess.DEVNULL,
-                                stdout=subprocess.PIPE if capture else None, stderr=None, **popen_kw)
-    except OSError as exc:
-        raise AkError("%s failed to start: %s" % (argv[0], exc.strerror), EXIT_NOT_READY)
-    reason = {"value": None}
+    argv = common.windows_argv(argv, prep.env)
+    state = {"reason": None, "proc": None}
 
     def on_signal(signum, _frame):
-        reason["value"] = "cancelled"
-        _kill_tree(proc)
+        state["reason"] = "cancelled"
+        if state["proc"] is not None:
+            _kill_tree(state["proc"])
 
+    # Handlers first: a SIGTERM that lands while the child is being created
+    # must still cancel it, never leave it running unattended.
     old = {}
     for sig in (signal.SIGTERM, signal.SIGINT):
         try:
@@ -273,30 +278,45 @@ def execute(prep, argv, opts, cwd):
         except (ValueError, OSError):
             pass
     pump = None
-    if capture:
-        pump = threading.Thread(target=_pump, args=(proc.stdout, sys.stderr.buffer, keep))
-        pump.daemon = True
-        pump.start()
     try:
+        try:
+            proc = subprocess.Popen(argv, cwd=cwd, env=prep.env, stdin=subprocess.DEVNULL,
+                                    stdout=subprocess.PIPE if capture else None, stderr=None, **popen_kw)
+        except OSError as exc:
+            raise AkError("%s failed to start: %s" % (argv[0], exc.strerror), EXIT_NOT_READY)
+        state["proc"] = proc
+        if state["reason"] == "cancelled":
+            _kill_tree(proc)
+        if capture:
+            pump = threading.Thread(target=_pump, args=(proc.stdout, sys.stderr.buffer, keep))
+            pump.daemon = True
+            pump.start()
         deadline = time.time() + opts.timeout if opts.timeout else None
         while True:
             try:
                 proc.wait(timeout=0.1)
                 break
             except subprocess.TimeoutExpired:
-                if deadline is not None and time.time() >= deadline and reason["value"] is None:
-                    reason["value"] = "timeout"
+                if deadline is not None and time.time() >= deadline and state["reason"] is None:
+                    state["reason"] = "timeout"
                     _kill_tree(proc)
+        # The run is over: nothing it started may outlive it.
+        if os.name != "nt":
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except OSError:
+                pass
     finally:
         for sig, handler in old.items():
             signal.signal(sig, handler)
+    reason = state
     if pump is not None:
         pump.join(timeout=5)
     stdout_text = b"".join(keep).decode("utf-8", "replace") if keep is not None else ""
     cli_exit = proc.returncode
-    if reason["value"] == "timeout":
+    if reason["reason"] == "timeout":
         return EXIT_TIMEOUT, cli_exit, stdout_text, bool(keep is not None and keep.overflow)
-    if reason["value"] == "cancelled":
+    if reason["reason"] == "cancelled":
         return EXIT_CANCELLED, cli_exit, stdout_text, bool(keep is not None and keep.overflow)
     code = EXIT_OK if cli_exit == 0 else EXIT_AGENT_FAILED
     return code, cli_exit, stdout_text, bool(keep is not None and keep.overflow)

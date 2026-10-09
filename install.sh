@@ -42,11 +42,31 @@ fi
 # Components owned by the installer; everything else in DEST (profiles/,
 # aliases.sh) belongs to the user and survives upgrades and uninstalls.
 COMPONENTS="bin lib skills docs providers.toml LICENSE README.md CREDITS.md CHANGELOG.md"
+MARKER="${DEST}/.agentkit-install"
+
+# Components are deleted and replaced below, so DEST must be the kit's own
+# directory: one without the marker may hold only what ak itself creates
+# there before an install (profiles/, aliases.sh). AGENTKIT_HOME=~/.local
+# would otherwise wipe ~/.local/bin and ~/.local/lib.
+if [[ -d "${DEST}" && ! -e "${MARKER}" ]]; then
+  for entry in "${DEST}"/* "${DEST}"/.[!.]*; do
+    [[ -e "${entry}" ]] || continue
+    case "${entry##*/}" in
+      profiles|aliases.sh|.install.*|.no-rc) ;;
+      *) echo "install.sh: refusing to use ${DEST}: it is not a coding-agents-kit install (found ${entry##*/}). Choose an empty or dedicated directory." >&2
+         exit 1 ;;
+    esac
+  done
+fi
 
 if [[ "${MODE}" == uninstall ]]; then
   AGENTKIT_HOME="${DEST}" "${PY}" "${SRC}/lib/ak.py" alias rc --remove || true
+  if [[ ! -e "${MARKER}" ]]; then
+    echo "install.sh: no coding-agents-kit install at ${DEST}; nothing removed" >&2
+    exit 1
+  fi
   for c in ${COMPONENTS}; do rm -rf "${DEST:?}/${c}"; done
-  rm -f "${DEST}/aliases.sh"
+  rm -f "${DEST}/aliases.sh" "${MARKER}" "${DEST}/.no-rc"
   echo "removed coding-agents-kit from ${DEST}"
   echo "kept: ${ENV_FILE} and ${DEST}/profiles (delete them yourself if you want them gone)"
   exit 0
@@ -72,6 +92,10 @@ for c in ${COMPONENTS}; do
   rm -rf "${DEST:?}/${c}"
   mv "${STAGE}/${c}" "${DEST}/${c}"
 done
+
+printf 'coding-agents-kit install marker: this directory is managed by install.sh\n' > "${MARKER}"
+# --no-rc is remembered: `ak alias` then never edits a shell rc either.
+if [[ "${RC}" -eq 0 ]]; then : > "${DEST}/.no-rc"; else rm -f "${DEST}/.no-rc"; fi
 
 # The env file is created once and never overwritten.
 if [[ ! -e "${ENV_FILE}" ]]; then

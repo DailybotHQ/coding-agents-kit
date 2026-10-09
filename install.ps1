@@ -48,6 +48,16 @@ if (-not $EnvFile) {
     if ($env:AGENTKIT_ENV) { $EnvFile = $env:AGENTKIT_ENV } else { $EnvFile = Join-Path $HOME '.config\agentkit\env' }
 }
 $BinDir = Join-Path $Prefix 'bin'
+$Marker = Join-Path $Prefix '.agentkit-install'
+
+# Components are deleted and replaced below, so the prefix must be the kit's
+# own directory (a -Prefix of $HOME\.local would otherwise wipe its bin and lib).
+if ((Test-Path -LiteralPath $Prefix) -and -not (Test-Path -LiteralPath $Marker)) {
+    $foreign = @(Get-ChildItem -LiteralPath $Prefix -Force | Where-Object { $_.Name -notin @('profiles', 'aliases.sh') -and $_.Name -notlike '.install.*' })
+    if ($foreign.Count -gt 0) {
+        throw "refusing to use ${Prefix}: it is not a coding-agents-kit install (found $($foreign[0].Name)). Choose an empty or dedicated directory."
+    }
+}
 $Components = @('lib', 'skills', 'docs', 'providers.toml', 'LICENSE', 'README.md', 'CREDITS.md', 'CHANGELOG.md')
 
 function Get-UserPathEntries {
@@ -61,6 +71,7 @@ function Set-UserPathEntries([string[]]$Entries) {
 }
 
 if ($Uninstall) {
+    if (-not (Test-Path -LiteralPath $Marker)) { throw "no coding-agents-kit install at $Prefix; nothing removed" }
     if (-not $NoPath) {
         Set-UserPathEntries @(Get-UserPathEntries | Where-Object { $_ -ne $BinDir })
     }
@@ -68,6 +79,7 @@ if ($Uninstall) {
         $target = Join-Path $Prefix $c
         if (Test-Path -LiteralPath $target) { Remove-Item -LiteralPath $target -Recurse -Force }
     }
+    Remove-Item -LiteralPath $Marker -Force
     Write-Output "removed coding-agents-kit from $Prefix"
     Write-Output "kept: $EnvFile and $(Join-Path $Prefix 'profiles') (delete them yourself if you want them gone)"
     exit 0
@@ -111,6 +123,8 @@ try {
 finally {
     if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
 }
+Set-Content -LiteralPath $Marker -Value 'coding-agents-kit install marker: this directory is managed by install.ps1'
+
 
 # The env file is created once, readable by the current user only, and never overwritten.
 if (-not (Test-Path -LiteralPath $EnvFile)) {
@@ -118,6 +132,7 @@ if (-not (Test-Path -LiteralPath $EnvFile)) {
     Copy-Item -LiteralPath (Join-Path $Src 'lib\env.template') -Destination $EnvFile
     $who = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     & icacls $EnvFile /inheritance:r /grant:r "${who}:(R,W)" | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw "could not restrict $EnvFile to $who (icacls exit $LASTEXITCODE); restrict it yourself before adding keys" }
     $envNote = "created $EnvFile (readable by you only) - fill keys there, never in a chat"
 } else {
     $envNote = "kept $EnvFile"

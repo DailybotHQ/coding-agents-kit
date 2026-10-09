@@ -177,7 +177,7 @@ def finish_env(model, prep):
 def cline_latest_session(prep):
     """Newest non-subagent Cline session started in this directory."""
     try:
-        out = subprocess.run([prep.exe, "history", "--json", "--limit", "200"], env=prep.env,
+        out = subprocess.run(common.windows_argv([prep.exe, "history", "--json", "--limit", "200"], prep.env), env=prep.env,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=30).stdout
         rows = json.loads(out.decode("utf-8", "replace") or "[]")
     except (OSError, ValueError, subprocess.SubprocessError):
@@ -243,7 +243,7 @@ def run_pre(prep):
     pre = prep.kind.data.get("pre")
     if not pre:
         return
-    argv = [prep.exe] + prep.ctx.expand_list(pre)
+    argv = common.windows_argv([prep.exe] + prep.ctx.expand_list(pre), prep.env)
     try:
         # Its output goes to stderr: stdout belongs to the CLI (and to the
         # one JSON object of `ak run --output-format json`).

@@ -56,8 +56,15 @@ def _download(url, dest, env):
         return False
 
 
+def installer_env(env):
+    """The environment a vendor installer or npm sees: no key variables
+    (npm lifecycle scripts of any transitive package could read them)."""
+    return {k: v for k, v in env.items() if not common.secret_like(k)}
+
+
 def install_one(model, cli_name, env):
     """True when installed (or already present)."""
+    env = installer_env(env)
     cli = model.clis[cli_name]
     exe = common.resolve_executable(cli, env)
     if exe:

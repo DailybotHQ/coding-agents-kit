@@ -71,6 +71,12 @@ def _ask(question):
 
 def create(cli, name):
     directory = path(cli, name)
+    cdir = os.path.join(root(), cli)
+    if os.path.isdir(cdir):
+        for other in os.listdir(cdir):
+            if other != name and suffix(other) == suffix(name) and os.path.isdir(os.path.join(cdir, other)):
+                raise AkError("@%s would share provider keys (*_%s) with the existing %s profile @%s; "
+                              "choose another name" % (name, suffix(name), cli, other), EXIT_USAGE)
     old = os.umask(0o077)
     try:
         os.makedirs(directory, exist_ok=True)
@@ -357,13 +363,19 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    # Same hygiene as a launch: no per-profile key variables, no inherited autonomy.
+    strip_profile_keys(model, env)
+    env.pop("AGENTKIT_PERMISSIONS", None)
     return exec_command(command, env)
 
 
 def exec_command(argv, env):
     if os.name == "nt":  # Windows cannot replace the process: stay the parent, pass the status on
         import subprocess
-        return subprocess.call(argv, env=env)
+        try:
+            return subprocess.call(common.windows_argv(argv, env), env=env)
+        except OSError as exc:
+            raise AkError("%s failed to start: %s" % (argv[0], exc.strerror), EXIT_NOT_READY)
     exe = argv[0] if os.sep in argv[0] else common.which(argv[0], env)
     if not exe:
         raise AkError("%s: command not found" % argv[0], 127)

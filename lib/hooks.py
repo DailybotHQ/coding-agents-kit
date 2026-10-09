@@ -115,11 +115,17 @@ def _write(path, text, mode):
             os.makedirs(parent)
         finally:
             os.umask(old)
-    tmp = path + ".agentkit.tmp"
-    with open(tmp, "w") as handle:
-        handle.write(text)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    import tempfile
+    path = os.path.realpath(path)  # through a symlink (dotfiles), never replacing it
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix="." + os.path.basename(path) + ".")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def _inside(path, root):

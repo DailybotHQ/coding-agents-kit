@@ -32,7 +32,9 @@ What the installer does — and nothing more:
 It never overwrites the env file, never touches `profiles/`, never installs
 a coding-agent CLI and never uses the network. `--uninstall` keeps the env
 file and your profiles. `AGENTKIT_HOME` moves the install, `AGENTKIT_ENV`
-the env file.
+the env file. The install directory must be the kit's own: the installers
+refuse a non-empty directory without their marker (`.agentkit-install`),
+so `AGENTKIT_HOME=~/.local` can never wipe `~/.local/bin`.
 
 **Scripts, CI and containers** use `./install.sh --no-rc` and call
 `~/.local/share/agentkit/bin/ak` by path (or put that directory on PATH).
@@ -53,13 +55,21 @@ if [ -d '/home/me/.local/share/agentkit/bin' ]; then case ":$PATH:" in *:/home/m
 # <<< agentkit <<<
 ```
 
-`ak alias rc --print` shows it; `AGENTKIT_NO_RC=1` keeps `ak alias` from
-writing it (you source `aliases.sh` yourself).
+`ak alias rc --print` shows it. After `install.sh --no-rc` (remembered) or
+with `AGENTKIT_NO_RC=1`, `ak alias` never writes it — you source
+`aliases.sh` yourself, or run `ak alias rc --install` when you want it. A
+symlinked rc (dotfiles repo) is edited where it points. On macOS, a bash
+login shell reads `~/.bash_profile`, not `~/.bashrc`: source `~/.bashrc` from
+it if you use bash there.
 
 ### Windows notes
 
-The python core runs natively (`ak.cmd` → `py -3 lib\ak.py`). Two
-differences from macOS/Linux: the env file is read as plain `KEY=value`
+The python core runs natively (`ak.cmd` → `py -3 lib\ak.py`). **Programs
+and scripts that call ak on Windows must run `py -3 <install>\lib\ak.py …`
+directly**: `ak.cmd`, like every batch file, lets `cmd.exe` re-parse its
+arguments, which is fine for what you type but unsafe for text that comes
+from elsewhere (a prompt from another agent). Two other differences from
+macOS/Linux: the env file is read as plain `KEY=value`
 lines (no shell code), and `ak alias` targets POSIX shells only — use
 `ak <kind> --auto` instead of the `classic` aliases. Profiles of Cursor and
 OpenCode link your other dotfiles into the profile home with symlinks,

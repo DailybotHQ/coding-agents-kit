@@ -57,7 +57,11 @@ def load():
         return {"classic": False, "custom": []}
     if not isinstance(data, dict):
         return {"classic": False, "custom": []}
-    custom = [a for a in data.get("custom", []) if isinstance(a, dict) and a.get("name") and a.get("kind")]
+    # Re-validated on read: names become shell function names in aliases.sh.
+    custom = [a for a in data.get("custom", []) if isinstance(a, dict) and isinstance(a.get("name"), str)
+              and _NAME.match(a["name"]) and a["name"] not in RESERVED and isinstance(a.get("kind"), str)
+              and re.match(r"^[a-z]+(-[a-z]+)?$", a["kind"])
+              and (a.get("profile") is None or re.match(r"^@[a-z0-9._-]{1,32}$", str(a.get("profile"))))]
     return {"classic": data.get("classic") is True, "custom": custom}
 
 
@@ -69,11 +73,17 @@ def _write(path, text, mode=0o644):
             os.makedirs(parent)
         finally:
             os.umask(old)
-    tmp = path + ".tmp"
-    with open(tmp, "w") as handle:
-        handle.write(text)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+    import tempfile
+    path = os.path.realpath(path)  # through a symlink (dotfiles), never replacing it
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix="." + os.path.basename(path) + ".")
+    try:
+        with os.fdopen(fd, "w") as handle:
+            handle.write(text)
+        os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.unlink(tmp)
 
 
 def _sh_quote(value):
@@ -131,7 +141,7 @@ def block():
         BEGIN,
         "# Managed by coding-agents-kit (install.sh, ak alias). Edit outside this block.",
         'if [ -d %s ]; then case ":$PATH:" in *:%s:*) ;; *) PATH=%s:"$PATH"; export PATH ;; esac; fi'
-        % (_sh_quote(bindir), bindir.replace(" ", "\\ "), _sh_quote(bindir)),
+        % (_sh_quote(bindir), _sh_quote(bindir), _sh_quote(bindir)),
         "[ -f %s ] && . %s" % (_sh_quote(script), _sh_quote(script)),
         END,
     ]) + "\n"
@@ -194,7 +204,8 @@ def rc_remove(env):
 # ------------------------------------------------------------------ verbs
 
 def _ensure_rc(env, quiet=False):
-    if env.get("AGENTKIT_NO_RC") == "1":
+    # AGENTKIT_NO_RC=1, or an install made with --no-rc: never edit an rc.
+    if env.get("AGENTKIT_NO_RC") == "1" or os.path.exists(os.path.join(common.data_dir(), ".no-rc")):
         return
     for path in rc_install(env):
         if not quiet:

@@ -61,7 +61,9 @@ def which(name, env=None):
     path = (env or os.environ).get("PATH", "")
     exts = [""]
     if os.name == "nt":
-        exts = [""] + os.environ.get("PATHEXT", ".EXE;.CMD;.BAT").lower().split(";")
+        # PATHEXT only: npm writes an extensionless sh script next to each
+        # .cmd shim, and Windows cannot start it (WinError 193).
+        exts = [e for e in os.environ.get("PATHEXT", ".EXE;.CMD;.BAT").lower().split(";") if e]
     for directory in path.split(os.pathsep):
         if not directory:
             continue
@@ -115,6 +117,42 @@ def resolve_executable(cli, env=None):
     return best
 
 
+_CMD_META = set('"%&|<>^!')
+
+
+def windows_argv(argv, env=None):
+    """On Windows, a .cmd/.bat target is re-parsed by cmd.exe, so an argument
+    with a quote and & | < > can run commands (the "BatBadBut" class).
+    npm's shims are resolved to `node <script>`; any other batch target gets
+    no argument containing a cmd metacharacter."""
+    if os.name != "nt" or not argv[0].lower().endswith((".cmd", ".bat")):
+        return argv
+    script = _npm_shim_target(argv[0])
+    node = which("node", env)
+    if script and node:
+        return [node, script] + list(argv[1:])
+    if any(_CMD_META & set(a) for a in argv[1:]):
+        raise AkError("%s is a batch file and an argument contains one of %s, which cmd.exe would interpret; "
+                      "refusing to start it" % (argv[0], "".join(sorted(_CMD_META))), EXIT_USAGE)
+    return argv
+
+
+def _npm_shim_target(path):
+    """The JavaScript file an npm .cmd shim runs, or None."""
+    import re
+    try:
+        with open(path, errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return None
+    # cmd-shim writes "%dp0%\node_modules\…\cli.js" (older: "%~dp0\…").
+    match = re.search(r'"%(?:dp0%|~dp0)\\([^"%]+\.(?:js|cjs|mjs))"', text)
+    if not match:
+        return None
+    target = os.path.join(os.path.dirname(path), *match.group(1).split("\\"))
+    return target if os.path.isfile(target) else None
+
+
 def secret_like(name):
     return name.endswith("_API_KEY") or "_API_KEY_" in name or name.endswith("_TOKEN") or "_TOKEN_" in name
 
@@ -144,8 +182,8 @@ def load_env_file(env):
         if not sep or not name.replace("_", "").isalnum() or name[0].isdigit():
             continue
         value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
-            value = value[1:-1]
+        if value[:1] in ("'", '"') and value[0] in value[1:]:
+            value = value[1:value.index(value[0], 1)]   # quoted: up to the closing quote
         elif " #" in value:
-            value = value.split(" #", 1)[0].rstrip()
+            value = value.split(" #", 1)[0].rstrip()    # unquoted: drop a trailing comment
         env[name] = value

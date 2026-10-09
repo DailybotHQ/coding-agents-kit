@@ -23,6 +23,7 @@ EOF
   cat > "${BOX}/bin/npm" <<'EOF'
 #!/bin/sh
 echo "NPM $*" >> "${FAKE_NET_LOG}"
+env | grep -E '_API_KEY|_TOKEN' | sed 's/=.*//; s/^/NPM-ENV /' >> "${FAKE_NET_LOG}"
 exit "${FAKE_NPM_EXIT:-0}"
 EOF
   chmod +x "${BOX}/bin/curl" "${BOX}/bin/npm"
@@ -114,9 +115,10 @@ scope_install() {
   expect_has "ak install lists what is missing and how" "${out}" "npm install -g @openai/codex@0.158.0"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"
   expect_has "an installed CLI is skipped" "${out}" "claude: already installed — skip"
-  out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install codex-azure pi)"; status=$?
+  out="$(ak FAKE_NET_LOG="${BOX}/net.log" XAI_API_KEY=planted-npm-0x1 GH_TOKEN=planted-npm-0x2 -- install codex-azure pi)"; status=$?
   expect_eq "ak install runs the npm channels" "${status}" 0
   check "codex is installed pinned (npm @openai/codex@0.158.0)" grep -qx 'NPM install -g @openai/codex@0.158.0' "${BOX}/net.log"
+  check "npm never sees a key variable (lifecycle scripts could read it)" bash -c "! grep -q '^NPM-ENV' '${BOX}/net.log'"
   check "pi is installed pinned with --ignore-scripts" grep -qx 'NPM install -g --ignore-scripts @earendil-works/pi-coding-agent@0.85.1' "${BOX}/net.log"
   : > "${BOX}/net.log"
   rm -f "${BOX}/bin/claude"

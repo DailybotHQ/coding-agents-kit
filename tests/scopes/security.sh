@@ -129,4 +129,50 @@ for c in kinds.load().clis.values():
     assert i["channel"] == "npm" or i["url"].startswith("https://"), i
     assert i.get("version") or i.get("unpinned"), i' "${ROOT}"
   check "docs/SECURITY.md exists and covers the threat model" grep -q '^## Threat model' "${ROOT}/docs/SECURITY.md"
+
+  # --- regressions for the pre-release review ----------------------------------
+  mkdir -p "${SANDBOX}/review"
+  py_checks review_checks.py "${ROOT}" "${SANDBOX}/review"
+  box_new security-review
+  sec_env_file
+  ak -- profiles add claude @work >/dev/null
+  out="$(ak FAKE_ENV_NAMES=1 AGENTKIT_PERMISSIONS=auto -- profiles run claude @work -- claude)"
+  expect_lacks "profiles run strips per-profile keys" "${out}" "ENVNAME=ZAI_CODING_API_KEY_WORK"
+  expect_lacks "profiles run drops AGENTKIT_PERMISSIONS" "${out}" "ENVNAME=AGENTKIT_PERMISSIONS"
+  ak -- profiles add claude @a-b >/dev/null
+  ak_split -- profiles add claude @a_b; status=$?
+  expect_eq "a profile whose key suffix collides is refused" "${status}:$(test -e "${root}/claude/a_b" && echo made || echo none)" "2:none"
+  mkdir -p "${BOX}/dotfiles"; printf '# dot\n' > "${BOX}/dotfiles/zshrc"; ln -s "${BOX}/dotfiles/zshrc" "${BOX}/home/.zshrc"
+  ak -- alias add w claude >/dev/null
+  if [[ -L "${BOX}/home/.zshrc" ]] && grep -q '>>> agentkit' "${BOX}/dotfiles/zshrc"; then pass "a symlinked rc stays a symlink; the block lands in its target"; else fail "the rc symlink was replaced"; fi
+  mkdir -p "${BOX}/home/.config"; printf '{}\n' > "${BOX}/dotfiles/opencode.json"; mkdir -p "${BOX}/home/.config/opencode"
+  ln -s "${BOX}/dotfiles/opencode.json" "${BOX}/home/.config/opencode/opencode.json"
+  ak -- opencode-xai >/dev/null
+  if [[ -L "${BOX}/home/.config/opencode/opencode.json" ]] && grep -q '"xai"' "${BOX}/dotfiles/opencode.json"; then pass "a symlinked provider config is updated through the link"; else fail "the opencode.json symlink was replaced"; fi
+  printf '{"classic": false, "custom": [{"name": "x; touch pwned #", "kind": "claude"}, {"name": "ok_one", "kind": "claude; id"}]}\n' > "${BOX}/home/.config/agentkit/aliases.json"
+  ak -- alias add good claude >/dev/null
+  if grep -q 'pwned\|; id' "${BOX}/home/.local/share/agentkit/aliases.sh"; then fail "a tampered aliases.json reached aliases.sh"; else pass "aliases.json is re-validated before rendering shell functions"; fi
+  ak_split -- run claude -- --dangerously-skip-permissions; status=$?
+  expect_eq "ak run refuses a prompt that starts with - (it could be read as a flag)" "${status}" 2
+  ak_split -- run claude --timeout inf -- hello; status=$?
+  expect_eq "ak run --timeout inf is a usage error, not a crash" "${status}" 2
+  printf '{"oauthAccount":{}}\n' > "${BOX}/home/.claude.json"
+  ak_split FAKE_CHILD_PID="${BOX}/left.pid" -- run claude -- hello
+  sleep 0.3
+  local left
+  left="$(cat "${BOX}/left.pid" 2>/dev/null)"
+  if [[ -n "${left}" ]] && ! kill -0 "${left}" 2>/dev/null; then pass "nothing a finished run started outlives it"; else fail "a grandchild outlived a finished run (pid ${left})"; fi
+  box_new security-prefix
+  mkdir -p "${BOX}/home/.local/bin" "${BOX}/home/.local/lib/python3/site-packages"
+  touch "${BOX}/home/.local/bin/mytool"
+  out="$(box_run AGENTKIT_HOME="${BOX}/home/.local" -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
+  if [[ "${status}" -ne 0 && -e "${BOX}/home/.local/bin/mytool" && -d "${BOX}/home/.local/lib/python3/site-packages" ]]; then
+    pass "install.sh refuses a non-kit AGENTKIT_HOME and deletes nothing"
+  else fail "install.sh used a foreign directory (exit ${status})"; fi
+  out="$(box_run AGENTKIT_HOME="${BOX}/home/.local" -- bash "${ROOT}/install.sh" --uninstall)"; status=$?
+  if [[ "${status}" -ne 0 && -e "${BOX}/home/.local/bin/mytool" ]]; then pass "--uninstall refuses a directory without the install marker"; else fail "--uninstall removed from a foreign directory"; fi
+  box_new security-norc
+  box_run -- bash "${ROOT}/install.sh" --no-rc >/dev/null
+  box_run -- "${BOX}/home/.local/share/agentkit/bin/ak" alias preset classic --on >/dev/null
+  if [[ -e "${BOX}/home/.zshrc" || -e "${BOX}/home/.bashrc" || -e "${BOX}/home/.profile" ]]; then fail "--no-rc was forgotten by ak alias"; else pass "an install made with --no-rc keeps ak alias away from rc files"; fi
 }
