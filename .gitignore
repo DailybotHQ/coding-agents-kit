@@ -1,4 +1,5 @@
-.dwp/
+.dwp/*
+!.dwp/config.json
 tmp/
 node_modules/
 .env
