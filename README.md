@@ -2,7 +2,7 @@
 
 Install and launch every terminal coding agent with one command surface: `ak <kind> [@profile]`. Canonical kinds (claude, codex, cursor, opencode, pi, cline, grok) plus provider variants (glm, azure, xai), multiple accounts per CLI through profiles, the same session flags everywhere, headless runs (`ak run`) and a doctor. Pass-through by default; autonomy is an explicit opt-in. API keys never land in config files.
 
-> **v0.1.0 — interface 1.** Part of the [DeepWorkPlan](https://deepworkplan.com) ecosystem, and fully usable without it.
+> **v0.1.1 — interface 1.** Part of the [DeepWorkPlan](https://deepworkplan.com) ecosystem, and fully usable without it.
 
 ## Why
 
@@ -15,7 +15,7 @@ on behind your back.
 ## Install
 
 ```bash
-git clone --branch v0.1.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.1.1 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ak doctor            # what is installed and configured
 ak install codex     # a missing CLI, from its vendor, pinned
 ```
@@ -87,7 +87,7 @@ Full threat model: [SECURITY](docs/SECURITY.md).
 ## For agents
 
 `ak --skill` prints the bundled skill; install it into an agent with
-`npx --yes skills add DailybotHQ/coding-agents-kit@v0.1.0 --skill agentkit`.
+`npx --yes skills add DailybotHQ/coding-agents-kit@v0.1.1 --skill agentkit`.
 
 ## License
 

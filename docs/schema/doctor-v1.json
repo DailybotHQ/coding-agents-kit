@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.1.0/docs/schema/doctor-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.1.1/docs/schema/doctor-v1.json",
   "title": "ak doctor --json (interface 1)",
   "description": "What coding-agents-kit reports about a machine. Never contains a secret value: keys are variable names only. Consumers check `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",

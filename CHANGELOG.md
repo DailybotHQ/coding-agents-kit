@@ -5,6 +5,32 @@ All notable changes to coding-agents-kit. Versions follow
 breaking change bumps the minor version **and** the interface version
 reported by `ak doctor --json`.
 
+## [0.1.1] — 2026-10-08
+
+Security release. **Interface 1** (unchanged). Upgrade from 0.1.0.
+
+### Security
+
+- **Profile writes could follow a symlink planted inside a profile**
+  (medium; affects `0.1.0`). `ak profiles hooks`, and provider config
+  writers when launching a profile, wrote through symlinks: a process able to
+  write inside a profile directory (for example an agent running in it) could
+  plant `<profile>/settings.json -> ~/.claude/settings.json` or a hook file
+  pointing at a shell rc, and the next `ak profiles hooks` (or provider launch
+  of that profile) wrote outside the profile. Hooks now refuse symlinked
+  destinations and confine every write to the profile; provider writers
+  confine writes to the profile when one is used (symlinks in the CLI's own
+  home, e.g. a dotfiles-managed config, are still followed). Regression
+  checks in the `security` test scope.
+- Windows: programs that call ak must start the python core directly
+  (`py -3 <install>\lib\ak.py …`), not `ak.cmd`, whose arguments `cmd.exe`
+  re-parses; now stated in the skill and `docs/run.md`. The set of
+  characters refused for batch-file targets now also covers `(`, `)` and
+  line breaks.
+
+Found by an independent review of the 0.1.0 release (the verification pass
+of its pre-release fixes).
+
 ## [0.1.0] — 2026-10-08
 
 First public release. **Interface 1.**
@@ -56,4 +82,5 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
+[0.1.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.0
