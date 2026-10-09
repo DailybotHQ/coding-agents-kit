@@ -15,7 +15,8 @@ agentkit_load_env() {
   local env_file perms flags
   env_file="$(agentkit_env_file)"
   [[ -f "${env_file}" ]] || return 0
-  perms="$(stat -f '%Lp' "${env_file}" 2>/dev/null || stat -c '%a' "${env_file}" 2>/dev/null || echo 600)"
+  # GNU stat first: on Linux `stat -f` is filesystem status and "succeeds".
+  perms="$(stat -c '%a' "${env_file}" 2>/dev/null || stat -f '%Lp' "${env_file}" 2>/dev/null || echo 600)"
   case "${perms}" in
     600|400|700|500) ;;
     *) printf 'ak: warning: %s is mode %s; it holds keys, run: chmod 600 %s\n' "${env_file}" "${perms}" "${env_file}" >&2 ;;

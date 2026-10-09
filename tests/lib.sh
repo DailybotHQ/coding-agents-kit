@@ -107,7 +107,8 @@ expect_lacks() {
 
 # file_mode <path> — octal permission bits (BSD and GNU stat).
 file_mode() {
-  stat -f '%Lp' "$1" 2>/dev/null || stat -c '%a' "$1" 2>/dev/null
+  # GNU first: on Linux `stat -f` is filesystem status and "succeeds".
+  stat -c '%a' "$1" 2>/dev/null || stat -f '%Lp' "$1" 2>/dev/null
 }
 
 # json_get <file|-> <python expression over `d`> — prints the value.

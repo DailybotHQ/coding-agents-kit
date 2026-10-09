@@ -47,7 +47,8 @@ scope_install() {
   expect_eq "the install root is mode 700" "$(file_mode "${dest}")" 700
   out="$(box_run -- "${dest}/bin/ak" --version)"
   expect_eq "the installed ak runs" "${out}" "agentkit 0.1.0 (interface 1)"
-  box_run -- "${dest}/bin/ak" doctor --json > "${BOX}/doctor.json"
+  ( cd "${BOX}/work" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" "${dest}/bin/ak" doctor --json \
+      </dev/null >"${BOX}/doctor.json" 2>/dev/null )
   expect_eq "the installed ak doctor --json reports interface 1 (smoke)" "$(json_get "${BOX}/doctor.json" 'd["interface"]')" 1
   expect_eq "the env file is created mode 600" "$(file_mode "${BOX}/home/.config/agentkit/env")" 600
   expect_eq "the env file's directory is mode 700" "$(file_mode "${BOX}/home/.config/agentkit")" 700
