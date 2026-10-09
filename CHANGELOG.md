@@ -12,6 +12,10 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-09
+
+Interface stays **1**. Autonomy by default (breaking behaviour), verified CLI installs, `ak env import`.
+
 ### Changed — breaking behaviour (interface stays 1)
 
 - **Autonomy is the default.** Every launch (interactive, `ak run`, profiles,
@@ -132,6 +136,7 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.1.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.0
 [0.1.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.1
 [0.1.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.1.0

@@ -106,7 +106,7 @@ scope_dispatch() {
 
   # The verbs around launching.
   out="$(ak -- --version)"
-  expect_eq "ak --version" "${out}" "agentkit 0.1.1 (interface 1)"
+  expect_eq "ak --version" "${out}" "agentkit 0.2.0 (interface 1)"
   out="$(ak)"; status=$?
   expect_eq "ak with no arguments lists the kinds" "${status}:$(grep -c '^claude-glm ' <<<"${out}")" "0:1"
   expect_has "ak with no arguments shows what is installed" "${out}" "${BOX}/bin/claude"
