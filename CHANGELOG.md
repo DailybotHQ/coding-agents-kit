@@ -23,6 +23,16 @@ permission posture changes.
   outside a container. The `classic` preset becomes plain name shortcuts for
   `ak <kind>`; custom aliases accept `--ask` or `--auto`. The doctor JSON
   shape is unchanged: `permissions` now reports `auto` when unset.
+- **`ak install` verifies every CLI before anything runs.** Channels are
+  `binary`, `tarball` and `npm`; every CLI is pinned to an exact version with
+  a per-platform sha256 (claude from the vendor manifest; cursor and grok
+  recorded on first use) or the npm registry `integrity`. A mismatch or an
+  unpinned platform refuses the install and leaves nothing behind; archives
+  are unpacked only when every entry stays inside its directory. Vendor
+  install scripts are no longer run (the `script` channel and the
+  `unpinned` key are retired). Cursor is pinned to `2026.10.01-e373342` and
+  Grok to `1.0.50`, both previously unpinned. `scripts/update-pins.sh`
+  re-derives every digest from its source.
 
 ### Added
 

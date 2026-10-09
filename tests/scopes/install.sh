@@ -2,7 +2,8 @@
 # install.sh (sandbox HOME, idempotent, upgrade, uninstall), `ak install`
 # channels through fake curl/npm (no network), and the Windows layer's files.
 
-# A fake curl that "downloads" an installer recording its own arguments.
+# A fake curl that serves tampered bytes for every URL (so no real pin can
+# match) and records what was requested; a fake npm that records its argv.
 fake_curl() {
   cat > "${BOX}/bin/curl" <<'EOF'
 #!/bin/sh
@@ -13,18 +14,13 @@ while [ $# -gt 0 ]; do
 done
 echo "CURL ${url}" >> "${FAKE_NET_LOG}"
 [ -n "${FAKE_CURL_FAIL:-}" ] && exit 22
-cat > "${out}" <<SCRIPT
-#!/bin/sh
-echo "INSTALLER ${url} args: \$*" >> "${FAKE_NET_LOG}"
-mkdir -p "\${HOME}/.local/bin"
-SCRIPT
+printf 'tampered bytes for %s\n' "${url}" > "${out}"
 exit 0
 EOF
   cat > "${BOX}/bin/npm" <<'EOF'
 #!/bin/sh
 echo "NPM $*" >> "${FAKE_NET_LOG}"
-env | grep -E '_API_KEY|_TOKEN' | sed 's/=.*//; s/^/NPM-ENV /' >> "${FAKE_NET_LOG}"
-exit "${FAKE_NPM_EXIT:-0}"
+exit 0
 EOF
   chmod +x "${BOX}/bin/curl" "${BOX}/bin/npm"
 }
@@ -106,41 +102,47 @@ scope_install() {
   box_run AGENTKIT_HOME="${BOX}/elsewhere" -- bash "${ROOT}/install.sh" --no-rc >/dev/null
   check "AGENTKIT_HOME moves the install" test -x "${BOX}/elsewhere/bin/ak"
 
-  # --- ak install: vendor channels, pinned, no network (fake curl/npm) -------------------
+  # --- ak install: pinned and verified, no network ----------------------------------------
+  # The verification paths (good digest, mismatch, missing platform, archive
+  # traversal, npm integrity, --allow-unverified, key stripping) run against
+  # fixture artifacts in tests/py/install_checks.py; here the real pins meet
+  # tampered bytes end to end.
+  mkdir -p "${SANDBOX}/install-checks"
+  py_checks install_checks.py "${ROOT}" "${SANDBOX}/install-checks"
   box_new install-clis claude
   fake_curl
   : > "${BOX}/net.log"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install)"; status=$?
   expect_eq "ak install without names only reports" "${status}:$(wc -c < "${BOX}/net.log" | tr -d ' ')" "0:0"
-  expect_has "ak install lists what is missing and how" "${out}" "npm install -g @openai/codex@0.158.0"
+  expect_has "ak install says each npm CLI is verified against its integrity" "${out}" "verify @openai/codex@0.158.0 against its pinned integrity"
+  expect_has "ak install says each artifact is verified by sha256" "${out}" "verify sha256"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"
   expect_has "an installed CLI is skipped" "${out}" "claude: already installed — skip"
-  out="$(ak FAKE_NET_LOG="${BOX}/net.log" XAI_API_KEY=planted-npm-0x1 GH_TOKEN=planted-npm-0x2 -- install codex-azure pi)"; status=$?
-  expect_eq "ak install runs the npm channels" "${status}" 0
-  check "codex is installed pinned (npm @openai/codex@0.158.0)" grep -qx 'NPM install -g @openai/codex@0.158.0' "${BOX}/net.log"
-  check "npm never sees a key variable (lifecycle scripts could read it)" bash -c "! grep -q '^NPM-ENV' '${BOX}/net.log'"
-  check "pi is installed pinned with --ignore-scripts" grep -qx 'NPM install -g --ignore-scripts @earendil-works/pi-coding-agent@0.85.1' "${BOX}/net.log"
-  : > "${BOX}/net.log"
   rm -f "${BOX}/bin/claude"
-  out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"; status=$?
-  expect_eq "ak install claude succeeds" "${status}" 0
-  check "the vendor script is downloaded over https" grep -qx 'CURL https://claude.ai/install.sh' "${BOX}/net.log"
-  check "the downloaded script runs with the pinned version" grep -qx 'INSTALLER https://claude.ai/install.sh args: 2.1.295' "${BOX}/net.log"
   : > "${BOX}/net.log"
-  out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install grok)"
-  check "an unpinnable vendor script runs without a version" grep -qx 'INSTALLER https://x.ai/cli/install.sh args: ' "${BOX}/net.log"
-  expect_has "the plan says why it is unpinned" "$(ak FAKE_NET_LOG="${BOX}/net.log" -- install)" "unpinned"
+  out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"; status=$?
+  expect_eq "a tampered claude artifact is exit 1" "${status}" 1
+  expect_has "the tampered artifact is a checksum mismatch" "${out}" "checksum mismatch"
+  check "the pinned version's artifact was requested over https" grep -q '^CURL https://downloads.claude.ai/claude-code-releases/2.1.295/' "${BOX}/net.log"
+  check "nothing was installed" test ! -e "${BOX}/home/.local/bin/claude"
+  : > "${BOX}/net.log"
+  out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install codex)"; status=$?
+  expect_eq "a tampered npm tarball is exit 1" "${status}" 1
+  check "the registry tarball of the pinned version was requested" grep -qx 'CURL https://registry.npmjs.org/@openai/codex/-/codex-0.158.0.tgz' "${BOX}/net.log"
+  check "npm never ran for a tarball that failed its integrity" bash -c "! grep -q '^NPM' '${BOX}/net.log'"
+  : > "${BOX}/net.log"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" FAKE_CURL_FAIL=1 -- install cursor codex)"; status=$?
   expect_eq "a failed download is exit 1" "${status}" 1
-  expect_has "one failure does not stop the others" "$(cat "${BOX}/net.log")" "NPM install -g @openai/codex"
-  out="$(ak FAKE_NET_LOG="${BOX}/net.log" FAKE_NPM_EXIT=1 -- install cline)"; status=$?
-  expect_has "a failed npm install is reported" "${status}:${out}" "1:"
+  expect_has "one failure does not stop the others" "$(cat "${BOX}/net.log")" "CURL https://registry.npmjs.org/@openai/codex"
   rm -f "${BOX}/bin/npm"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install opencode)"; status=$?
   expect_has "without npm, ak install says to install Node" "${status}:${out}" "1:"
   expect_has "the Node hint is named" "${out}" "install Node first"
   out="$(ak -- install nope)"; status=$?
   expect_eq "ak install of an unknown CLI is a usage error" "${status}" 2
+  out="$(ak -- install --bogus)"; status=$?
+  expect_eq "ak install with an unknown flag is a usage error" "${status}" 2
+  check "no vendor install script is ever run (no script channel)" bash -c "! grep -q 'channel = \"script\"' '${ROOT}/providers.toml'"
   if grep -rnE '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/lib" "${ROOT}/install.sh" "${ROOT}/install.ps1" >/dev/null; then
     fail "a fetch-piped-to-shell line exists in the kit"
   else pass "no fetch-piped-to-shell line anywhere in the installers"; fi

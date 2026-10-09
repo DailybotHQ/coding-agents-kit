@@ -85,24 +85,38 @@ ak install codex pi        # install those two if missing
 ak install --all           # every missing CLI
 ```
 
-Each CLI comes from its vendor's official channel, pinned where the vendor
-allows it. Installed CLIs are skipped (never upgraded, moved or removed);
-one failure never stops the others (exit 1 at the end).
+Every CLI is pinned to an exact version and **verified before anything
+runs or is installed**. Installed CLIs are skipped (never upgraded, moved or
+removed); one failure never stops the others (exit 1 at the end).
 
-| CLI | Channel | Pin |
-| --- | --- | --- |
-| claude | the vendor script `https://claude.ai/install.sh`, run with the version | `2.1.295` |
-| codex | `npm install -g @openai/codex@…` | `0.158.0` |
-| cursor | the vendor script `https://cursor.com/install` | none: the vendor offers no version selection |
-| opencode | `npm install -g opencode-ai@…` | `1.18.31` |
-| pi | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@…` | `0.85.1` |
-| cline | `npm install -g cline@…` | `3.0.70` |
-| grok | the vendor script `https://x.ai/cli/install.sh` | none: the vendor offers no version selection |
+| CLI | Channel | Pin | Digest source |
+| --- | --- | --- | --- |
+| claude | native binary → `~/.local/bin/claude` | `2.1.295` | sha256 per platform, from the vendor's release manifest |
+| codex | npm tarball → `npm install -g <file>` | `0.158.0` | the registry's `integrity` (sha512) |
+| cursor | package tarball → `~/.local/share/cursor-agent/versions/<v>`, linked as `cursor-agent` and `agent` | `2026.10.01-e373342` | sha256 per platform, recorded when the pin was taken (the vendor publishes none) |
+| opencode | npm tarball | `1.18.31` | registry `integrity` |
+| pi | npm tarball, `--ignore-scripts` | `0.85.1` | registry `integrity` |
+| cline | npm tarball | `3.0.70` | registry `integrity` |
+| grok | native binary → `~/.local/bin/grok` | `1.0.50` | sha256 per platform, recorded when the pin was taken (the vendor publishes none) |
 
-A vendor script is downloaded over HTTPS (`curl --proto =https --tlsv1.2`,
-or python's `urllib` without curl) into a private temporary file and then
-run with bash — never piped from the network into a shell. After install,
-each CLI's own updater takes over; the pins are what a fresh machine gets.
+Downloads go over HTTPS only (`curl --proto =https --tlsv1.2`, or python's
+`urllib` without curl) into a private temporary directory. A digest that
+does not match refuses the install and leaves nothing behind; a platform
+with no pinned digest (Windows, for the native binaries) is refused with
+the vendor's docs link; archives are unpacked only after every entry is
+checked to stay inside its directory. Vendor install scripts are never run.
+For npm, the verified tarball is what npm installs; its dependencies are
+resolved by npm from the registry, each checked against the registry's own
+integrity. After install, each CLI's own updater may take over; the pins are
+what a fresh machine gets.
+
+A CLI that cannot be pinned is stated in the data as
+`unverified = "<reason>"` and installs only with
+`ak install --allow-unverified <cli>`. No shipped CLI needs it.
+
+Maintainers move a pin with `bash scripts/update-pins.sh`: it re-derives
+every digest from its source and reports any difference.
+
 npm channels need Node (`ak install` names how to get it when npm is
 missing).
 

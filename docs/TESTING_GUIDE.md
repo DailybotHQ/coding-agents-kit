@@ -33,7 +33,7 @@ when nothing failed.
 | permission posture (`--ask`, `--auto`, `AGENTKIT_PERMISSIONS`, `box_posture`) | `permissions` |
 | `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
 | `ak run` (`lib/run.py`) | `run` |
-| `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`) | `install` |
+| `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
 | `ak profiles hooks` (`lib/hooks.py`) | `hooks` |
