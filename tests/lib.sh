@@ -111,3 +111,22 @@ v = eval(expr, {"d": d})
 print(json.dumps(v) if not isinstance(v, str) else v)
 PY
 }
+
+# py_checks <tests/py/script.py> [args...] — runs a python check script
+# (with the interpreter under test) and folds its `ok …` / `FAIL …` lines
+# into the counters. A crash is a failure, with its last line.
+py_checks() {
+  local script="$1" out line status
+  shift
+  out="$(cd "${SANDBOX}" && env -i HOME="${HOME}" PATH="${BASE_PATH}" "${AK_PY}" "${ROOT}/tests/py/${script}" "$@" 2>&1)"
+  status=$?
+  while IFS= read -r line; do
+    case "${line}" in
+      "ok "*) pass "${line#ok }" ;;
+      "FAIL "*) fail "${line#FAIL }" ;;
+    esac
+  done <<<"${out}"
+  if [[ "${status}" -ne 0 ]]; then
+    fail "${script} crashed (exit ${status}): $(printf '%s\n' "${out}" | tail -1)"
+  fi
+}

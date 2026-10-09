@@ -33,9 +33,10 @@ scope_lint() {
 
   if compgen -G "${ROOT}/lib/*.py" >/dev/null; then
     check "python3 compiles lib/*.py" "${AK_PY}" -c '
-import sys, py_compile
+import sys
 for f in sys.argv[1:]:
-    py_compile.compile(f, cfile="/dev/null", doraise=True)' "${ROOT}"/lib/*.py
+    with open(f) as h:
+        compile(h.read(), f, "exec")' "${ROOT}"/lib/*.py "${ROOT}"/tests/py/*.py
     # The kit promises python3 >= 3.9: compile with a 3.9 when one exists,
     # so 3.10+ syntax (match, X | Y unions) cannot slip in.
     py39=""
@@ -46,9 +47,10 @@ for f in sys.argv[1:]:
     done
     if [[ -n "${py39}" ]]; then
       check "python 3.9 compiles lib/*.py" "${py39}" -c '
-import sys, py_compile
+import sys
 for f in sys.argv[1:]:
-    py_compile.compile(f, cfile="/dev/null", doraise=True)' "${ROOT}"/lib/*.py
+    with open(f) as h:
+        compile(h.read(), f, "exec")' "${ROOT}"/lib/*.py "${ROOT}"/tests/py/*.py
     else
       skip "python 3.9 compile (no python3.9 on this machine; CI covers it)"
     fi
