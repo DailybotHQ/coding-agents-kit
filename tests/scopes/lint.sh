@@ -4,7 +4,7 @@
 lint_shell_files() {
   local f
   for f in "${ROOT}"/bin/* "${ROOT}"/lib/*.sh "${ROOT}/install.sh" "${ROOT}/tests/run.sh" \
-      "${ROOT}/tests/lib.sh" "${ROOT}"/tests/scopes/*.sh "${ROOT}"/win/*.sh; do
+      "${ROOT}/tests/lib.sh" "${ROOT}"/tests/scopes/*.sh "${ROOT}"/win/*.sh "${ROOT}"/scripts/*.sh; do
     [[ -f "${f}" ]] && printf '%s\n' "${f}"
   done
   return 0
@@ -70,10 +70,9 @@ for f in sys.argv[1:]:
       ${products[@]+"${products[@]}"} "${ROOT}/tests" 2>/dev/null || true)"
   if [[ -z "${hits}" ]]; then pass "no secret-looking strings in the kit"; else fail "secret-looking strings in: ${hits}"; fi
 
-  # A public kit: no private org, private repository or personal path.
-  hits="$(grep -rIlE "${AGENTKIT_PRIVATE_MARKERS:-DailyBot-Inc|coding-agent-host-kit|dailybot-core|/Users/[a-z]|/home/[a-z]+/projects}" \
-      --exclude=lint.sh ${products[@]+"${products[@]}"} "${ROOT}/tests" 2>/dev/null || true)"
-  if [[ -z "${hits}" ]]; then pass "no private or personal references in the kit"; else fail "private references in: ${hits}"; fi
+  # A public kit: no private context or secret-shaped string in any tracked
+  # file — one source of truth, the public-hygiene check (also its own CI job).
+  check "public-hygiene check passes (scripts/check-public-hygiene.sh)" bash "${ROOT}/scripts/check-public-hygiene.sh"
 
   # One version everywhere it is stated.
   local version

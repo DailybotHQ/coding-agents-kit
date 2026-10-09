@@ -58,13 +58,15 @@ lines — no `export`, no quoting, never a secret value. Exit 0 with no output
 means "the CLI's own home" (`@default` of a canonical kind). A missing
 profile exits 3; `AGENTKIT_PROFILE` is honoured when no `@profile` is given.
 
+`ak env` prints absolute paths; below, `$HOME` stands for your home directory.
+
 ```console
 $ ak env claude @work
-CLAUDE_CONFIG_DIR=/home/me/.local/share/agentkit/profiles/claude/work
+CLAUDE_CONFIG_DIR=$HOME/.local/share/agentkit/profiles/claude/work
 $ ak env cursor @2
 AGENT_CLI_CREDENTIAL_STORE=file
-CURSOR_CONFIG_DIR=/home/me/.local/share/agentkit/profiles/cursor/2/home/.cursor
-HOME=/home/me/.local/share/agentkit/profiles/cursor/2/home
+CURSOR_CONFIG_DIR=$HOME/.local/share/agentkit/profiles/cursor/2/home/.cursor
+HOME=$HOME/.local/share/agentkit/profiles/cursor/2/home
 ```
 
 Its purpose is letting another launcher start the raw CLI in a profile —
