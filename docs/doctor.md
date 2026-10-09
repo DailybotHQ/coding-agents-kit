@@ -42,7 +42,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 | `profiles` | named profiles per CLI (`@default` is implicit) |
 | `keys` | names of provider key variables that are set (base and per profile) — never values |
 | `permissions` | the effective posture: `auto` (the default: every launch adds the CLI's autonomy flag) or `ask` (the opt-out, `AGENTKIT_PERMISSIONS=ask`); an invalid `AGENTKIT_PERMISSIONS` reports `ask` plus a problem (launches refuse) |
-| `aliases` | the `classic` preset on/off and custom alias names |
+| `aliases` | the `classic` and `providers` presets on/off (`providers` since 0.3.0) and custom alias names |
 | `herdr_hooks` | per Herdr-integrated CLI, per profile: whether Herdr's state hook files are present in that home |
 | `env_file`, `problems` | where the env file is, its mode, and anything to fix |
 

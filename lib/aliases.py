@@ -3,7 +3,7 @@
     ak alias [list]
     ak alias add <name> <kind> [@profile] [--ask | --auto]
     ak alias rm <name>
-    ak alias preset classic [--on | --off]
+    ak alias preset classic|providers [--on | --off]
     ak alias rc [--install | --remove | --print]
 
 Definitions live in ~/.config/agentkit/aliases.json; `ak alias` renders
@@ -16,6 +16,10 @@ sources that file through one guarded block:
     # <<< agentkit <<<
 
 The block is replaced in place (never duplicated) and removed cleanly.
+The `providers` preset defines one function per provider kind, named after
+the kind (`claude-glm`, `codex-azure`, …): plain shortcuts for
+`ak <kind>`. The names carry a dash, which bash and zsh accept and POSIX sh
+does not, so they are defined only when bash or zsh reads the file.
 The `classic` preset recreates the predecessor kit's wrapper names as plain
 shortcuts for `ak <kind>` (autonomy follows the user's posture: the default,
 or --ask / AGENTKIT_PERMISSIONS=ask); it ships off. POSIX shells only (bash, zsh, sh).
@@ -49,21 +53,32 @@ def script_file():
 
 
 def load():
-    """{"classic": bool, "custom": [{"name", "kind", "profile", "auto"}]}; a
-    missing or unreadable file is the default state."""
+    """{"classic": bool, "providers": bool, "custom": [{"name", "kind",
+    "profile", "auto", "ask"}]}; a missing or unreadable file is the default
+    state."""
     try:
         with open(config_file()) as handle:
             data = json.load(handle)
     except (OSError, ValueError):
-        return {"classic": False, "custom": []}
+        return {"classic": False, "providers": False, "custom": []}
     if not isinstance(data, dict):
-        return {"classic": False, "custom": []}
+        return {"classic": False, "providers": False, "custom": []}
     # Re-validated on read: names become shell function names in aliases.sh.
     custom = [a for a in data.get("custom", []) if isinstance(a, dict) and isinstance(a.get("name"), str)
               and _NAME.match(a["name"]) and a["name"] not in RESERVED and isinstance(a.get("kind"), str)
               and re.match(r"^[a-z]+(-[a-z]+)?$", a["kind"])
               and (a.get("profile") is None or re.match(r"^@[a-z0-9._-]{1,32}$", str(a.get("profile"))))]
-    return {"classic": data.get("classic") is True, "custom": custom}
+    return {"classic": data.get("classic") is True, "providers": data.get("providers") is True, "custom": custom}
+
+
+_KIND = re.compile(r"^[a-z]+-[a-z]+$")
+
+
+def provider_kinds():
+    """Every provider kind in providers.toml (`<cli>-<provider>`)."""
+    import kinds
+    return [k for k in kinds.load().kind_names() if _KIND.match(k)]
+
 
 
 def _write(path, text, mode=0o644):
@@ -101,6 +116,14 @@ def render(state):
         for name, kind in CLASSIC:
             names.add(name)
             lines.append("%s() { %s %s \"$@\"; }" % (name, _sh_quote(ak), kind))
+    if state.get("providers"):
+        lines.append("# providers preset (ak alias preset providers --off to remove); bash and zsh only:")
+        lines.append("# the names carry a dash, so they are defined through eval, which POSIX sh never reaches.")
+        lines.append('if [ -n "${BASH_VERSION:-}${ZSH_VERSION:-}" ]; then')
+        for kind in provider_kinds():
+            body = "%s() { %s %s \"$@\"; }" % (kind, _sh_quote(ak), kind)
+            lines.append("  eval %s" % _sh_quote(body))
+        lines.append("fi")
     for alias in state["custom"]:
         if alias["name"] in names:
             continue
@@ -221,6 +244,8 @@ def _posture(alias):
 
 def cmd_list(state):
     print("classic preset: %s" % ("on" if state["classic"] else "off (ak alias preset classic --on)"))
+    print("providers preset: %s" % ("on (bash and zsh)" if state.get("providers")
+                                    else "off (ak alias preset providers --on)"))
     if state["classic"]:
         for name, kind in CLASSIC:
             print("  %-12s ak %s" % (name, kind))
@@ -286,8 +311,12 @@ def cmd_rm(state, args, env):
 
 
 def cmd_preset(state, args, env):
-    if not args or args[0] != "classic" or len(args) > 2 or (len(args) == 2 and args[1] not in ("--on", "--off")):
-        raise AkError("usage: ak alias preset classic [--on | --off]", EXIT_USAGE)
+    usage = "usage: ak alias preset classic|providers [--on | --off]"
+    if not args or args[0] not in ("classic", "providers") or len(args) > 2 or \
+            (len(args) == 2 and args[1] not in ("--on", "--off")):
+        raise AkError(usage, EXIT_USAGE)
+    if args[0] == "providers":
+        return _preset_providers(state, args, env)
     if len(args) == 1:
         print("classic preset: %s" % ("on" if state["classic"] else "off"))
         return 0
@@ -304,6 +333,23 @@ def cmd_preset(state, args, env):
               % " ".join(n for n, _ in CLASSIC))
     else:
         print("classic preset off (open a new shell, or: unset -f %s)" % " ".join(n for n, _ in CLASSIC))
+    return 0
+
+
+def _preset_providers(state, args, env):
+    names = provider_kinds()
+    if len(args) == 1:
+        print("providers preset: %s" % ("on" if state.get("providers") else "off"))
+        return 0
+    on = args[1] == "--on"
+    state["providers"] = on
+    save(state)
+    if on:
+        _ensure_rc(env)
+        print("providers preset on (bash and zsh): %s (each is ak <kind>; autonomy follows your posture)"
+              % " ".join(names))
+    else:
+        print("providers preset off (open a new shell, or: unset -f %s)" % " ".join(names))
     return 0
 
 

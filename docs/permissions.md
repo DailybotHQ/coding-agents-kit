@@ -60,7 +60,9 @@ the default.
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,
 `opencodex`, `pix`, `clinex` and `grokx` as plain shortcuts for
 `ak <kind>`, for people migrating from the old wrappers. They follow your
-posture: the default, or the opt-out. It ships **off**. Custom aliases may
+posture: the default, or the opt-out. It ships **off**. The `providers`
+preset (`ak alias preset providers --on`) does the same for the provider
+kinds, under their own names (`codex-glm`, `claude-glm`, …). Custom aliases may
 carry `--ask` or `--auto` (`ak alias add careful claude --ask`). See
 [install](install.md).
 
