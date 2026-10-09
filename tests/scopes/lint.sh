@@ -59,6 +59,8 @@ for f in sys.argv[1:]:
   if command -v shellcheck >/dev/null 2>&1; then
     check "shellcheck -S warning (bin lib install tests)" shellcheck -S warning -x "${shells[@]}"
     check "shellcheck -s sh tests/fakes" shellcheck -S warning -s sh "${FAKES}"/*
+    check "the release gate's exact form: shellcheck -S warning bin/* lib/*.sh install.sh tests/run.sh" \
+      bash -c "cd '${ROOT}' && shellcheck -S warning bin/* lib/*.sh install.sh tests/run.sh"
   else
     skip "shellcheck (not installed: brew install shellcheck / apt-get install shellcheck)"
   fi
@@ -72,6 +74,24 @@ for f in sys.argv[1:]:
   hits="$(grep -rIlE "${AGENTKIT_PRIVATE_MARKERS:-DailyBot-Inc|coding-agent-host-kit|dailybot-core|/Users/[a-z]|/home/[a-z]+/projects}" \
       --exclude=lint.sh ${products[@]+"${products[@]}"} "${ROOT}/tests" 2>/dev/null || true)"
   if [[ -z "${hits}" ]]; then pass "no private or personal references in the kit"; else fail "private references in: ${hits}"; fi
+
+  # One version everywhere it is stated.
+  local version
+  version="$("${AK_PY}" -c 'import sys; sys.path.insert(0, sys.argv[1] + "/lib"); import common; print(common.VERSION)' "${ROOT}")"
+  check "the skill's version equals the kit's (${version})" grep -q "^version: \"${version}\"$" "${ROOT}/skills/agentkit/SKILL.md"
+  check "the README installs tag v${version}" grep -q -- "--branch v${version} " "${ROOT}/README.md"
+  check "the doctor schema pins tag v${version}" grep -q "/blob/v${version}/" "${ROOT}/docs/schema/doctor-v1.json"
+  if [[ -f "${ROOT}/CHANGELOG.md" ]]; then
+    check "CHANGELOG.md has a ${version} section" grep -q "^## \[${version}\]" "${ROOT}/CHANGELOG.md"
+  fi
+
+  # Every relative link in the README and docs/ resolves.
+  hits="$(cd "${ROOT}" && for f in README.md docs/*.md; do
+      grep -oE '\]\([^)#]+' "${f}" | sed 's/^](//' | grep -vE '^(https?:|mailto:)' | while read -r link; do
+        [[ -e "$(dirname "${f}")/${link}" ]] || printf '%s -> %s; ' "${f}" "${link}"
+      done
+    done)"
+  if [[ -z "${hits}" ]]; then pass "every relative link in README.md and docs/ resolves"; else fail "broken links: ${hits}"; fi
 
   # bin/ holds only executables the installer puts on PATH.
   hits=""

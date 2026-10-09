@@ -27,17 +27,18 @@ when nothing failed.
 | Surface you touched | Scope(s) to run |
 | --- | --- |
 | `tests/` (runner, fakes, helpers) | `harness`, `lint` |
-| `providers.toml`, `lib/kinds.py`, `lib/writers.py`, `lib/tomlmini.py` | `kinds` (+ `dispatch`) |
-| `bin/ak`, `bin/agentkit`, `lib/ak.py`, `lib/launch.py` | `dispatch`, `permissions` |
-| `lib/profiles.py` | `profiles` |
+| `providers.toml`, `lib/kinds.py`, `lib/writers.py`, `lib/tomlmini.py` | `kinds`, `dispatch`, `permissions` |
+| `bin/ak`, `bin/agentkit`, `lib/common.sh`, `lib/ak.py`, `lib/launch.py`, `lib/common.py` | `dispatch`, `permissions`, `profiles` |
+| `lib/profiles.py` | `profiles` (+ `doctor`, `run`) |
 | permission posture (`--auto`, `AGENTKIT_PERMISSIONS`) | `permissions` |
-| `ak env`, `ak doctor`, `docs/schema/doctor-v1.json` | `doctor` |
-| `ak run`, `lib/run.py` | `run` |
-| `install.sh`, `install.ps1`, `win/`, `ak install` | `install` |
-| `ak alias`, the `classic` preset | `aliases` |
+| `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
+| `ak run` (`lib/run.py`) | `run` |
+| `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`) | `install` |
+| `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
-| `ak profiles hooks`, `lib/hooks.py` | `hooks` |
+| `ak profiles hooks` (`lib/hooks.py`) | `hooks` |
 | anything that prints, logs or writes | `security` |
+| the frozen interface (grammar, env prefix, outputs) | `contract` |
 | a shared module or several surfaces | the full suite |
 
 `live` runs a real CLI and is never part of the default run: it reports

@@ -15,9 +15,10 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TESTS="${ROOT}/tests"
 FAKES="${TESTS}/fakes"
+export FAKES  # read by the scopes in tests/scopes/
 
 # Order matters only for readability of the report.
-ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor run install aliases skill hooks security"
+ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor run install aliases skill hooks security contract"
 KNOWN_SCOPES="${ALL_SCOPES} live harness-selftest"
 
 PASSES=0
@@ -54,6 +55,7 @@ SYSBIN="${SANDBOX}/sysbin"
 mkdir -p "${SYSBIN}"
 ln -s "${AK_PY}" "${SYSBIN}/python3"
 BASE_PATH="${SYSBIN}:/usr/bin:/bin:/usr/sbin:/sbin"
+export BASE_PATH  # read by tests/lib.sh and the scopes
 
 # Proof that the real HOME is never touched: the kit's own paths must not
 # appear during the run (checked again at the end).
