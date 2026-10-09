@@ -7,7 +7,6 @@
     },
     "ai-diff-reviewer": {
       "enabled": true,
-      "note": "Final Review baseline; local install deferred (recorded finding)",
       "version": "v3.3.0"
     }
   }

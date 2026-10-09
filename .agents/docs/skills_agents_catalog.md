@@ -8,6 +8,7 @@ Everything under `.agents/` in this repository. Commands are listed in
 | Skill | Path | Purpose |
 | --- | --- | --- |
 | `deepworkplan` | `.agents/skills/deepworkplan/` | DeepWorkPlan: create, execute, refine, resume, status, verify and upgrade plans (vendored, pinned in `skills-lock.json`) |
+| `ai-diff-reviewer` | `.agents/skills/ai-diff-reviewer/` | the local diff review run in every plan's Final Review (vendored, pinned in `skills-lock.json`; configured by `.review/extension.md`) |
 
 The product's own skill, `skills/agentkit/SKILL.md`, ships with the kit
 (`ak --skill`); it is product code, not part of this agent kit.
