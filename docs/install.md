@@ -5,14 +5,14 @@
 macOS, Linux, WSL (and Git Bash):
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit
 ./coding-agents-kit/install.sh
 ```
 
 Windows (PowerShell 5.1 or 7):
 
 ```powershell
-git clone --branch v0.2.2 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit
 .\coding-agents-kit\install.ps1
 ```
 
