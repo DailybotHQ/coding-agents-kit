@@ -120,6 +120,23 @@ every digest from its source and reports any difference.
 npm channels need Node (`ak install` names how to get it when npm is
 missing).
 
+## Keys from another env file: `ak env import`
+
+```bash
+ak env import ~/path/to/old.env   # copy KEY=value lines into ~/.config/agentkit/env
+```
+
+For a move from another tool's env file. It copies `KEY=value` (and
+`export KEY=value`) lines into the kit's env file (`AGENTKIT_ENV` when
+set), appended under a dated comment. It never overwrites a key the file
+already sets, skips empty values and any line that is not an assignment
+(shell code is not imported), keeps profile-suffixed keys
+(`<KEY>_<SUFFIX>`) as they are, and keeps the destination mode 600. It
+refuses a source that other users can write. It prints only variable
+**names**: what it imported and what it skipped, with the reason. Check the
+imported names against the kinds you use (`ak doctor` lists the key
+variables it sees) before deleting the old file.
+
 ## Aliases: `ak alias`
 
 ```bash

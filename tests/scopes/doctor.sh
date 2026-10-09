@@ -150,4 +150,34 @@ scope_doctor() {
   out="$(ak -- doctor)"
   if no_planted "${out}"; then pass "text doctor prints no key value"; else fail "text doctor printed a key value"; fi
   expect_has "text doctor lists key names" "${out}" "ZAI_CODING_API_KEY_2"
+
+  # --- ak env import: keys from another env file, safely -------------------------------
+  box_new env-import
+  box_env_file XAI_API_KEY=planted-kept-1
+  printf '%s\n' '# legacy file' 'export ZAI_CODING_API_KEY="planted-import-2"' 'XAI_API_KEY=planted-other-3' \
+    'EMPTY=' 'if true; then :; fi' 'OPENAI_API_KEY_WORK=planted-import-4' > "${BOX}/legacy"
+  chmod 600 "${BOX}/legacy"
+  out="$(ak -- env import "${BOX}/legacy")"; status=$?
+  expect_eq "ak env import succeeds" "${status}" 0
+  expect_has "it names the keys it imported" "${out}" "ZAI_CODING_API_KEY, OPENAI_API_KEY_WORK"
+  expect_has "an existing key is skipped, not overwritten" "${out}" "skipped XAI_API_KEY: already set"
+  expect_has "shell code is not imported" "${out}" "not a KEY=value line"
+  expect_has "an empty value is skipped" "${out}" "skipped EMPTY: empty"
+  check "the existing value is untouched" grep -qx 'XAI_API_KEY=planted-kept-1' "${BOX}/home/.config/agentkit/env"
+  check "the other file's value for an existing key is not copied" bash -c "! grep -q planted-other-3 '${BOX}/home/.config/agentkit/env'"
+  check "profile-suffixed keys are kept as they are" grep -qx 'OPENAI_API_KEY_WORK=planted-import-4' "${BOX}/home/.config/agentkit/env"
+  expect_eq "the env file stays mode 600" "$(file_mode "${BOX}/home/.config/agentkit/env")" 600
+  expect_lacks "no planted value is printed" "${out}" "planted-"
+  out="$(ak -- env import "${BOX}/legacy")"
+  expect_has "a second import adds nothing" "${out}" "imported into ${BOX}/home/.config/agentkit/env: nothing"
+  chmod 666 "${BOX}/legacy"
+  out="$(ak -- env import "${BOX}/legacy")"; status=$?
+  expect_eq "a group- or world-writable source is refused" "${status}" 2
+  expect_lacks "a refusal prints no value either" "${out}" "planted-"
+  rm -f "${BOX}/home/.config/agentkit/env"
+  chmod 600 "${BOX}/legacy"
+  out="$(ak -- env import "${BOX}/legacy")"
+  expect_eq "a missing env file is created mode 600" "$(file_mode "${BOX}/home/.config/agentkit/env")" 600
+  out="$(ak -- env import)"; status=$?
+  expect_eq "ak env import without a file is a usage error" "${status}" 2
 }

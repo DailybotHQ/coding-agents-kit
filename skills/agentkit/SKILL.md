@@ -124,6 +124,10 @@ For Herdr: pass each line as `herdr pane split --env KEY=VALUE`, then
 more than an environment (`ak env` says so on stderr): run
 `ak <kind> @profile` in the pane instead.
 
+To bring keys over from another env file, the user runs
+`ak env import <file>`: it copies `KEY=value` lines, never overwrites a key
+and prints names only. Never read or display the source file's values.
+
 ## Installing CLIs: `ak install`
 
 ```bash

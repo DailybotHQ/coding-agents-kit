@@ -36,6 +36,10 @@ permission posture changes.
 
 ### Added
 
+- `ak env import <file>`: copies `KEY=value` lines from another env file
+  into the kit's env file. It never overwrites a key and never prints a
+  value, refuses a source others can write, skips shell code and empty
+  values, keeps profile-suffixed keys, and keeps the destination mode 600.
 - Public repository standard: `CONTRIBUTING.md`, `SECURITY.md` (policy),
   `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue and pull request
   templates, `CODEOWNERS`, Dependabot for GitHub Actions, `CLAUDE.md` →
