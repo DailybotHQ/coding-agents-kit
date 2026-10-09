@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# ak / agentkit — one command surface for every terminal coding agent.
+# This launcher (bin/ak and bin/agentkit are the same file) loads the env file
+# in a shell, then hands over to the python core, which exec's the CLI.
+set -euo pipefail
+
+src="${BASH_SOURCE[0]}"
+while [[ -L "${src}" ]]; do
+  dir="$(cd -P "$(dirname "${src}")" && pwd)"
+  src="$(readlink "${src}")"
+  [[ "${src}" == /* ]] || src="${dir}/${src}"
+done
+AGENTKIT_ROOT="$(cd -P "$(dirname "${src}")/.." && pwd)"
+export AGENTKIT_ROOT
+
+# shellcheck source=lib/common.sh
+. "${AGENTKIT_ROOT}/lib/common.sh"
+agentkit_load_env || exit 70
+export AGENTKIT_ENV_LOADED=1
+
+if ! py="$(agentkit_python)"; then
+  printf 'ak: python3 >= 3.9 is required (set AGENTKIT_PYTHON to choose one)\n' >&2
+  exit 70
+fi
+exec "${py}" "${AGENTKIT_ROOT}/lib/ak.py" "$@"

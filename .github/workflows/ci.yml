@@ -1,0 +1,66 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  suite:
+    name: suite (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Full suite (sandbox HOME, fakes only, no network)
+        run: bash tests/run.sh
+
+  python39:
+    name: suite on python 3.9 (oldest supported)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.9"
+      - name: Full suite under python 3.9
+        run: AK_TEST_PYTHON="$(command -v python)" bash tests/run.sh
+
+  windows:
+    name: windows layer
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: PowerShell parses install.ps1 and win/
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $files = @(Get-ChildItem -Path . -Include *.ps1,*.psm1 -Recurse -File | Where-Object { $_.FullName -notmatch '\\\.(git|agents|dwp)\\' })
+          foreach ($f in $files) {
+            $errs = $null
+            [void][System.Management.Automation.Language.Parser]::ParseFile($f.FullName, [ref]$null, [ref]$errs)
+            if ($errs) { throw "parse errors in $($f.FullName): $errs" }
+            Write-Output "parsed $($f.FullName)"
+          }
+      - name: install.ps1 installs, and ak.cmd runs the python core natively
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $prefix = Join-Path $env:RUNNER_TEMP 'agentkit'
+          $envFile = Join-Path $env:RUNNER_TEMP 'agentkit-env'
+          ./install.ps1 -NoPath -Prefix $prefix -EnvFile $envFile
+          ./install.ps1 -NoPath -Prefix $prefix -EnvFile $envFile   # idempotent
+          $env:AGENTKIT_ENV = $envFile
+          & "$prefix\bin\ak.cmd" --version
+          $doc = & "$prefix\bin\ak.cmd" doctor --json | ConvertFrom-Json
+          if ($doc.interface -ne 1) { throw "doctor interface is $($doc.interface)" }
+          if ($doc.os -ne 'windows') { throw "doctor os is $($doc.os)" }
+          & "$prefix\bin\ak.cmd" env claude
+          ./install.ps1 -NoPath -Uninstall -Prefix $prefix -EnvFile $envFile
+          if (Test-Path "$prefix\lib") { throw 'uninstall left lib behind' }

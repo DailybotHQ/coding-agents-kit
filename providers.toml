@@ -1,0 +1,470 @@
+# providers.toml — the kinds model of coding-agents-kit (schema 1).
+#
+# Kinds are data, not code: adding a kind is an entry here plus a test.
+# Read by lib/kinds.py (tomllib on python >= 3.11, lib/tomlmini.py before).
+# The full reference is docs/kinds.md; the short version:
+#
+#   [clis.<cli>]       one per canonical CLI: executable, profile isolation,
+#                      roots, session-flag mapping, autonomy flag, headless
+#                      mapping, login probe, install channel, Herdr hooks
+#   [providers.<id>]   an API provider: key variable, companions, variables
+#   [kinds.<kind>]     what `ak <kind>` launches: a CLI, optionally with a
+#                      provider and its env / arguments / config writer
+#
+# Templates: {NAME} reads the environment (upper case), {name} reads a
+# variable (lower case: provider and kind variables, root.<name>, dir, id,
+# prompt, cwd, seconds, kind, profile), {X:-default} falls back when X is
+# empty, and defaults nest. {key} is the profile's provider key: it is only
+# ever placed in the CLI's environment (or, for Cline, its argv) — never
+# printed, logged or written. A leading ~ is the user's home. An argv list
+# element that is exactly {provider}, {session}, {auto}, {json} or {timeout}
+# expands to a list (possibly empty).
+
+schema = 1
+
+# ---------------------------------------------------------------- CLIs
+
+[clis.claude]
+name = "Claude Code"
+executable = "claude"
+herdr_kind = "claude"
+isolation = "env"
+home_env = "CLAUDE_CONFIG_DIR"
+auto = ["--dangerously-skip-permissions"]
+interactive = ["{provider}", "{session}", "{auto}"]
+docs = "https://docs.claude.com/en/docs/claude-code"
+
+[clis.claude.roots]
+home = { default = "{CLAUDE_CONFIG_DIR:-~/.claude}", profile = "{dir}" }
+account = { default = "{CLAUDE_CONFIG_DIR:-~}", profile = "{dir}" }
+
+[clis.claude.session]
+continue = ["--continue"]
+resume = ["--resume", "{id}"]
+pick = ["--resume"]
+
+[clis.claude.run]
+argv = ["{provider}", "-p", "{prompt}", "{json}", "{auto}"]
+json = ["--output-format", "json"]
+result = "json-result"
+
+[clis.claude.login]
+files = ["account:.claude.json"]
+marker = "oauthAccount"
+env = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"]
+definitive = true
+note = "on macOS the token itself lives in the Keychain, one entry per profile directory"
+
+[clis.claude.install]
+channel = "script"
+url = "https://claude.ai/install.sh"
+shell = "bash"
+args = ["{version}"]
+version = "2.1.295"
+
+[clis.claude.hooks]
+files = ["home:hooks/herdr-agent-state.sh"]
+register = "home:settings.json"
+
+
+[clis.codex]
+name = "Codex"
+executable = "codex"
+herdr_kind = "codex"
+isolation = "env"
+home_env = "CODEX_HOME"
+auto = ["--dangerously-bypass-approvals-and-sandbox"]
+interactive = ["{provider}", "{session}", "{auto}"]
+docs = "https://developers.openai.com/codex/cli"
+
+[clis.codex.roots]
+home = { default = "{CODEX_HOME:-~/.codex}", profile = "{dir}" }
+
+[clis.codex.session]
+continue = ["resume", "--last"]
+resume = ["resume", "{id}"]
+pick = ["resume", "--all"]
+last = "continue"
+
+[clis.codex.run]
+argv = ["exec", "{provider}", "{json}", "-C", "{cwd}", "{auto}", "{prompt}"]
+json = ["--json"]
+result = "codex-jsonl"
+
+[clis.codex.login]
+command = "codex login"
+files = ["home:auth.json"]
+env = ["CODEX_API_KEY", "OPENAI_API_KEY"]
+definitive = true
+
+[clis.codex.install]
+channel = "npm"
+package = "@openai/codex"
+version = "0.158.0"
+
+[clis.codex.hooks]
+files = ["home:herdr-agent-state.sh"]
+register = "home:hooks.json"
+
+
+[clis.cursor]
+name = "Cursor Agent"
+executable = "agent"
+resolver = "cursor"
+herdr_kind = "cursor"
+isolation = "cursor-home"
+auto = ["--force"]
+interactive = ["{session}", "{auto}"]
+docs = "https://cursor.com/docs/cli"
+
+[clis.cursor.roots]
+home = { default = "~/.cursor", profile = "{dir}/home/.cursor" }
+
+[clis.cursor.session]
+continue = ["--continue"]
+resume = ["--resume={id}"]
+pick = ["--resume"]
+list = ["ls"]
+last = "list"
+standalone = ["list"]
+
+[clis.cursor.run]
+argv = ["-p", "{prompt}", "{json}", "--trust", "{auto}"]
+json = ["--output-format", "json"]
+result = "json-result"
+
+[clis.cursor.login]
+command = "agent login"
+files = ["home:auth.json"]
+env = ["CURSOR_API_KEY"]
+definitive = false
+note = "the default home on macOS keeps the login in the Keychain; profiles use the file store"
+
+[clis.cursor.install]
+channel = "script"
+url = "https://cursor.com/install"
+shell = "bash"
+args = []
+version = ""
+unpinned = "the vendor installer offers no version selection"
+
+[clis.cursor.hooks]
+files = ["home:herdr-agent-state.sh"]
+register = "home:hooks.json"
+
+
+[clis.opencode]
+name = "OpenCode"
+executable = "opencode"
+herdr_kind = "opencode"
+isolation = "xdg"
+auto = ["--auto"]
+interactive = ["{auto}", "{provider}", "{session}"]
+docs = "https://opencode.ai/docs"
+
+[clis.opencode.roots]
+config = { default = "{XDG_CONFIG_HOME:-~/.config}/opencode", profile = "{dir}/config/opencode" }
+data = { default = "{XDG_DATA_HOME:-~/.local/share}/opencode", profile = "{dir}/data/opencode" }
+home = { default = "{XDG_DATA_HOME:-~/.local/share}/opencode", profile = "{dir}" }
+
+[clis.opencode.session]
+continue = ["--continue"]
+resume = ["--session", "{id}"]
+pick_error = "opencode has no session picker: run 'opencode session list', then: ak {kind} {profile} -r <id>"
+
+[clis.opencode.run]
+argv = ["run", "{provider}", "{json}", "{auto}", "{prompt}"]
+json = ["--format", "json"]
+result = "opencode-jsonl"
+
+[clis.opencode.login]
+command = "opencode auth login"
+files = ["data:auth.json"]
+env = []
+definitive = false
+
+[clis.opencode.install]
+channel = "npm"
+package = "opencode-ai"
+version = "1.18.31"
+
+[clis.opencode.hooks]
+files = ["config:plugins/herdr-agent-state.js"]
+
+
+[clis.pi]
+name = "Pi"
+executable = "pi"
+herdr_kind = "pi"
+isolation = "env"
+home_env = "PI_CODING_AGENT_DIR"
+auto = ["--approve"]
+interactive = ["{auto}", "{provider}", "{session}"]
+docs = "https://github.com/earendil-works/pi"
+
+[clis.pi.roots]
+home = { default = "{PI_CODING_AGENT_DIR:-~/.pi/agent}", profile = "{dir}" }
+
+[clis.pi.session]
+continue = ["--continue"]
+resume = ["--session", "{id}"]
+pick = ["--resume"]
+
+[clis.pi.run]
+argv = ["{provider}", "-p", "{prompt}", "{json}", "{auto}"]
+json = ["--mode", "json"]
+result = "pi-jsonl"
+
+[clis.pi.login]
+files = ["home:auth.json"]
+env = []
+definitive = false
+
+[clis.pi.install]
+channel = "npm"
+package = "@earendil-works/pi-coding-agent"
+version = "0.85.1"
+npm_args = ["--ignore-scripts"]
+
+[clis.pi.hooks]
+files = ["home:extensions/herdr-agent-state.ts"]
+
+
+[clis.cline]
+name = "Cline"
+executable = "cline"
+herdr_kind = "cline"
+isolation = "env"
+home_env = "CLINE_DIR"
+auto = ["--yolo"]
+interactive = ["{auto}", "{provider}", "{session}"]
+secret_argv = true
+docs = "https://docs.cline.bot"
+
+[clis.cline.roots]
+home = { default = "{CLINE_DIR:-~/.cline}", profile = "{dir}" }
+
+[clis.cline.session]
+continue_strategy = "cline-history"
+resume = ["--id", "{id}"]
+pick = ["history"]
+standalone = ["pick"]
+
+[clis.cline.run]
+argv = ["{prompt}", "{json}", "-c", "{cwd}", "{timeout}", "{auto}", "{provider}"]
+json = ["--json"]
+timeout = ["-t", "{seconds}"]
+result = "cline-jsonl"
+
+[clis.cline.login]
+command = "cline auth"
+files = ["home:data/settings/providers.json"]
+env = []
+definitive = false
+
+[clis.cline.install]
+channel = "npm"
+package = "cline"
+version = "3.0.70"
+
+
+[clis.grok]
+name = "Grok"
+executable = "grok"
+herdr_kind = "grok"
+isolation = "env"
+home_env = "GROK_HOME"
+auto = ["--always-approve"]
+interactive = ["{session}", "{auto}"]
+docs = "https://x.ai/cli"
+
+[clis.grok.roots]
+home = { default = "{GROK_HOME:-~/.grok}", profile = "{dir}" }
+
+[clis.grok.session]
+continue = ["--continue"]
+resume = ["--resume", "{id}"]
+pick = ["--resume"]
+
+[clis.grok.run]
+argv = ["-p", "{prompt}", "{json}", "--cwd", "{cwd}", "{auto}"]
+json = ["--output-format", "json"]
+result = "json-result"
+
+[clis.grok.login]
+command = "grok login"
+files = ["home:auth.json"]
+env = ["XAI_API_KEY"]
+definitive = true
+
+[clis.grok.install]
+channel = "script"
+url = "https://x.ai/cli/install.sh"
+shell = "bash"
+args = []
+version = ""
+unpinned = "the vendor installer offers no version selection"
+
+[clis.grok.hooks]
+files = ["home:hooks/herdr-agent-state.sh", "home:hooks/herdr.json"]
+
+# ----------------------------------------------------------- providers
+# key: the secret variable; a named profile reads <key>_<SUFFIX> instead.
+# companions: non-secret variables that follow the same suffix rule when set
+# (unset ones keep the default profile's value). require: variables that
+# must be set ("A|B" = one of them). vars: values the kinds' templates use.
+
+[providers.zai]
+name = "Z.AI GLM Coding Plan"
+key = "ZAI_CODING_API_KEY"
+companions = ["ZAI_CODING_BASE_URL", "ZAI_CODEX_BASE_URL", "ZAI_ANTHROPIC_BASE_URL"]
+require = []
+
+[providers.zai.vars]
+anthropic_base = "{ZAI_ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}"
+openai_base = "{ZAI_CODING_BASE_URL:-https://api.z.ai/api/coding/paas/v4}"
+codex_base = "{ZAI_CODEX_BASE_URL:-https://api.z.ai/api/v1}"
+opus = "{ZAI_DEFAULT_OPUS_MODEL:-glm-5.3}"
+sonnet = "{ZAI_DEFAULT_SONNET_MODEL:-glm-5.3}"
+haiku = "{ZAI_DEFAULT_HAIKU_MODEL:-glm-5.3-flash}"
+
+[providers.azure]
+name = "Azure OpenAI / Microsoft Foundry"
+key = "AZURE_OPENAI_API_KEY"
+companions = ["AZURE_OPENAI_RESOURCE", "AZURE_OPENAI_BASE_URL"]
+# Deployment names are yours, so there is no default model to guess.
+require = ["AZURE_OPENAI_RESOURCE|AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_MODEL_DAILY"]
+
+[providers.azure.vars]
+base = "{AZURE_OPENAI_BASE_URL:-https://{AZURE_OPENAI_RESOURCE}.services.ai.azure.com/openai/v1}"
+daily = "{AZURE_OPENAI_MODEL_DAILY}"
+reasoning = "{AZURE_OPENAI_MODEL_REASONING:-{AZURE_OPENAI_MODEL_DAILY}}"
+default = "{AZURE_OPENAI_DEFAULT_MODEL:-{AZURE_OPENAI_MODEL_DAILY}}"
+
+[providers.xai]
+name = "xAI Grok"
+key = "XAI_API_KEY"
+companions = ["XAI_BASE_URL"]
+require = []
+
+[providers.xai.vars]
+base = "{XAI_BASE_URL:-https://api.x.ai/v1}"
+daily = "{XAI_MODEL_DAILY:-grok-4.3}"
+reasoning = "{XAI_MODEL_REASONING:-grok-4.6}"
+default = "{XAI_DEFAULT_MODEL:-{XAI_MODEL_DAILY:-grok-4.3}}"
+
+# --------------------------------------------------------------- kinds
+# cli: the canonical CLI. provider: a [providers] id. key_optional: a
+# missing key is not an error (the CLI's own login is used instead).
+# env: exported into the CLI's environment (an empty value is not set).
+# args: the {provider} segment of the argv. writer: a merge-safe config
+# writer run before launch. pre: a command run before the CLI (Cline auth).
+
+[kinds.claude]
+cli = "claude"
+
+[kinds.claude-glm]
+cli = "claude"
+provider = "zai"
+
+[kinds.claude-glm.env]
+ANTHROPIC_AUTH_TOKEN = "{key}"
+ANTHROPIC_BASE_URL = "{anthropic_base}"
+API_TIMEOUT_MS = "{ZAI_CODING_API_TIMEOUT_MS:-3000000}"
+ANTHROPIC_DEFAULT_OPUS_MODEL = "{opus}"
+ANTHROPIC_DEFAULT_SONNET_MODEL = "{sonnet}"
+ANTHROPIC_DEFAULT_HAIKU_MODEL = "{haiku}"
+CLAUDE_CODE_AUTO_COMPACT_WINDOW = "{ZAI_CODING_AUTO_COMPACT_WINDOW}"
+
+[kinds.codex]
+cli = "codex"
+
+[kinds.codex-glm]
+cli = "codex"
+provider = "zai"
+args = ["-p", "glm"]
+writer = { type = "codex", file = "home:glm.config.toml", provider_id = "ZAI", name = "Z.AI GLM Coding Plan", base_url = "{codex_base}", model = "{ZAI_CODEX_DEFAULT_MODEL:-{sonnet}}" }
+
+[kinds.codex-azure]
+cli = "codex"
+provider = "azure"
+args = ["-p", "azure"]
+writer = { type = "codex", file = "home:azure.config.toml", provider_id = "azure", name = "Azure OpenAI / Microsoft Foundry", base_url = "{base}", model = "{default}" }
+
+[kinds.codex-xai]
+cli = "codex"
+provider = "xai"
+args = ["-p", "xai"]
+writer = { type = "codex", file = "home:xai.config.toml", provider_id = "xai", name = "xAI Grok", base_url = "{base}", model = "{default}" }
+
+[kinds.cursor]
+cli = "cursor"
+
+[kinds.opencode]
+cli = "opencode"
+
+[kinds.opencode-glm]
+cli = "opencode"
+provider = "zai"
+args = ["-m", "zai-coding-plan/{ZAI_OPENCODE_DEFAULT_MODEL:-{sonnet}}"]
+writer = { type = "opencode", file = "{OPENCODE_CONFIG:-{root.config}/opencode.json}", provider_id = "zai-coding-plan", base_url = "{openai_base}", models = ["{sonnet}", "{opus}", "{haiku}"] }
+
+[kinds.opencode-glm.env]
+ZHIPU_API_KEY = "{key}"
+ZAI_API_KEY = "{key}"
+
+[kinds.opencode-azure]
+cli = "opencode"
+provider = "azure"
+args = ["-m", "azure/{default}"]
+writer = { type = "opencode", file = "{OPENCODE_CONFIG:-{root.config}/opencode.json}", provider_id = "azure", base_url = "{base}", models = ["{daily}", "{reasoning}"] }
+
+[kinds.opencode-xai]
+cli = "opencode"
+provider = "xai"
+args = ["-m", "xai/{default}"]
+writer = { type = "opencode", file = "{OPENCODE_CONFIG:-{root.config}/opencode.json}", provider_id = "xai", base_url = "{base}", models = ["{daily}", "{reasoning}"] }
+
+[kinds.pi]
+cli = "pi"
+
+[kinds.pi-glm]
+cli = "pi"
+provider = "zai"
+args = ["--provider", "zai-glm", "--model", "{ZAI_PI_DEFAULT_MODEL:-{sonnet}}", "--models", "{models}"]
+writer = { type = "pi", file = "home:models.json", provider_id = "zai-glm", base_url = "{openai_base}", context_window = 1000000, max_tokens = 131072, reasoning_effort = false, models = ["{sonnet}:sonnet", "{opus}:opus", "{haiku}:haiku"] }
+
+[kinds.pi-glm.env]
+ZAI_API_KEY = "{key}"
+
+[kinds.pi-azure]
+cli = "pi"
+provider = "azure"
+args = ["--provider", "azure-foundry", "--model", "{default}", "--models", "{models}"]
+writer = { type = "pi", file = "home:models.json", provider_id = "azure-foundry", base_url = "{base}", context_window = 200000, max_tokens = 32768, reasoning_effort = true, models = ["{daily}:daily", "{reasoning}:reasoning"] }
+
+[kinds.pi-xai]
+cli = "pi"
+provider = "xai"
+args = ["--provider", "xai-grok", "--model", "{default}", "--models", "{models}"]
+writer = { type = "pi", file = "home:models.json", provider_id = "xai-grok", base_url = "{base}", context_window = 200000, max_tokens = 32768, reasoning_effort = true, models = ["{daily}:daily", "{reasoning}:reasoning"] }
+
+[kinds.cline]
+cli = "cline"
+
+[kinds.cline-azure]
+cli = "cline"
+provider = "azure"
+args = ["-P", "openai", "-m", "{default}", "-k", "{key}"]
+pre = ["auth", "-p", "openai", "-b", "{base}", "-k", "{key}", "-m", "{default}"]
+
+[kinds.cline-xai]
+cli = "cline"
+provider = "xai"
+args = ["-P", "openai", "-m", "{default}", "-k", "{key}"]
+pre = ["auth", "-p", "openai", "-b", "{base}", "-k", "{key}", "-m", "{default}"]
+
+[kinds.grok]
+cli = "grok"
+provider = "xai"
+key_optional = true

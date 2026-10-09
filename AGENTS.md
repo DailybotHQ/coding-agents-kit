@@ -10,9 +10,20 @@ Install and launch every terminal coding agent with one command surface: `ak <ki
 
 agentkit (alias ak); skill agentkit
 
-## Layout (target; built by the first plan)
+## Layout
 
-bin/ (ak, agentkit), lib/ (bash + python3 stdlib), providers.toml, skills/agentkit/, install.sh, install.ps1, win/, tests/ (run.sh), docs/
+| Path | What |
+| --- | --- |
+| `bin/ak`, `bin/agentkit` | one byte-identical bash launcher: sources the env file, exec's the python core |
+| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `aliases`, `installer`, `hooks`, `common` |
+| `lib/common.sh`, `lib/env.template` | the launcher's shell half; the env file template |
+| `providers.toml` | the kinds model as data (CLIs, providers, kinds) — see `docs/kinds.md` |
+| `skills/agentkit/SKILL.md` | the bundled skill (`ak --skill`) |
+| `install.sh`, `install.ps1`, `win/*.cmd` | installers (POSIX, Windows) and Windows shims |
+| `tests/run.sh`, `tests/scopes/`, `tests/fakes/`, `tests/py/` | the suite: sandbox HOME, fake CLIs, one scope per surface |
+| `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json` |
+
+Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`).
 
 ## Validation
 

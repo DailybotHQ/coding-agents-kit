@@ -1,0 +1,4 @@
+#!/bin/sh
+# Fake `pi` for the test suite: records argv and environment (see _fake.sh).
+# shellcheck source=tests/fakes/_fake.sh
+. "$(dirname "$0")/_fake.sh"
