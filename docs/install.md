@@ -133,7 +133,8 @@ literals. It imports plain data only: it never overwrites a key the file
 already sets, and skips empty values, lines that are not assignments and
 values a shell would interpret (`$(…)`, backquotes, `$`, `;`, `&`, `|`,
 unquoted spaces) — the env file is sourced, so copy those by hand only if
-you trust them. It keeps profile-suffixed keys
+you trust them. Values are copied literally: `~` and `$HOME` are not
+expanded (write the full path by hand if a value needs one). It keeps profile-suffixed keys
 (`<KEY>_<SUFFIX>`) as they are, and keeps the destination mode 600. It
 refuses a source that other users can write. It prints only variable
 **names**: what it imported and what it skipped, with the reason. Check the
