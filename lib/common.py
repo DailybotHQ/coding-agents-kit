@@ -117,3 +117,35 @@ def resolve_executable(cli, env=None):
 
 def secret_like(name):
     return name.endswith("_API_KEY") or "_API_KEY_" in name or name.endswith("_TOKEN") or "_TOKEN_" in name
+
+
+def load_env_file(env):
+    """Read the env file into `env` when no shell did (Windows, or the core
+    started directly). The shell launcher sources the file instead, which
+    also allows shell code in it; here only the KEY=VALUE subset is read:
+    `KEY=value`, `export KEY=value`, values in '...' or "...", # comments.
+    Nothing is expanded or executed."""
+    if env.get("AGENTKIT_ENV_LOADED") == "1":
+        return
+    path = env.get("AGENTKIT_ENV") or os.path.join(env.get("HOME") or home(), ".config", "agentkit", "env")
+    try:
+        with open(path) as handle:
+            lines = handle.read().splitlines()
+    except OSError:
+        return
+    for raw in lines:
+        line = raw.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[7:].lstrip()
+        name, sep, value = line.partition("=")
+        name = name.strip()
+        if not sep or not name.replace("_", "").isalnum() or name[0].isdigit():
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        elif " #" in value:
+            value = value.split(" #", 1)[0].rstrip()
+        env[name] = value

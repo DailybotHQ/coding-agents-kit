@@ -91,7 +91,7 @@ def collect(model, env):
             herdr[cli]["@" + name] = hooks.presence(model, cli, name, env)
     alias_state = aliases.load()
     envfile = _env_file_state()
-    if envfile["exists"] and envfile["mode"] not in ("600", "400"):
+    if envfile["exists"] and envfile["mode"] not in ("600", "400") and common.os_name() != "windows":
         problems.append("%s is mode %s; it holds keys: chmod 600 it" % (envfile["path"], envfile["mode"]))
     return {
         "interface": common.INTERFACE,
@@ -172,7 +172,6 @@ def main(model, args, env):
         else:
             raise AkError("usage: ak doctor [--json]", EXIT_USAGE)
     env = dict(env)
-    env.pop("AGENTKIT_ENV_FILE_VARS", None)
     report = collect(model, env)
     if as_json:
         sys.stdout.write(json.dumps(report, indent=2, sort_keys=True) + "\n")

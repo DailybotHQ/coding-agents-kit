@@ -7,8 +7,14 @@ Install and launch every terminal coding agent with one command surface: `ak <ki
 ## Install
 
 ```bash
-git clone --branch v0.1.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh   # available from v0.1.0
+git clone --branch v0.1.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+ak doctor            # what is installed and configured
+ak install codex     # a missing CLI, from its vendor, pinned
 ```
+
+Windows: `.\coding-agents-kit\install.ps1`. Needs bash (macOS/Linux) and
+python3 ≥ 3.9; nothing else. `--no-rc` for scripts and containers. Details:
+[install](docs/install.md).
 
 ## Usage
 
@@ -40,7 +46,7 @@ Only the head of the arguments belongs to `ak`: the first token it does not
 recognise, and everything after it, reaches the CLI unchanged. `ak` replaces
 itself with the CLI (`exec`), so Herdr and your terminal see the agent itself.
 
-More: [kinds and providers](docs/kinds.md) · [testing](docs/TESTING_GUIDE.md).
+More: [kinds and providers](docs/kinds.md) · [profiles](docs/profiles.md) · [permissions](docs/permissions.md) · [`ak run`](docs/run.md) · [`ak doctor` / `ak env`](docs/doctor.md) · [install and aliases](docs/install.md) · [testing](docs/TESTING_GUIDE.md).
 
 ## License
 

@@ -16,6 +16,7 @@ export AGENTKIT_ROOT
 # shellcheck source=lib/common.sh
 . "${AGENTKIT_ROOT}/lib/common.sh"
 agentkit_load_env
+export AGENTKIT_ENV_LOADED=1
 
 if ! py="$(agentkit_python)"; then
   printf 'ak: python3 >= 3.9 is required (set AGENTKIT_PYTHON to choose one)\n' >&2

@@ -149,7 +149,7 @@ scope_dispatch() {
   expect_eq "the env file is loaded (claude-glm finds its key)" "${status}" 0
   expect_lacks "an unset variable in the env file does not abort" "${out}" "unbound variable"
   expect_lacks "per-profile keys (<KEY>_<SUFFIX>) never reach the CLI" "${out}" "ENVNAME=ZAI_CODING_API_KEY_2"
-  expect_lacks "the kit's bookkeeping variable never reaches the CLI" "${out}" "ENVNAME=AGENTKIT_ENV_FILE_VARS"
+  expect_lacks "the kit's bookkeeping variable never reaches the CLI" "${out}" "ENVNAME=AGENTKIT_ENV_LOADED"
   chmod 644 "${BOX}/home/.config/agentkit/env"
   out="$(ak -- claude)"
   expect_has "a readable env file triggers a chmod 600 warning" "${out}" "chmod 600"

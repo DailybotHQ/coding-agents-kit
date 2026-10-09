@@ -48,16 +48,19 @@ jobs:
             if ($errs) { throw "parse errors in $($f.FullName): $errs" }
             Write-Output "parsed $($f.FullName)"
           }
-      - name: The python core runs natively
+      - name: install.ps1 installs, and ak.cmd runs the python core natively
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          if (Test-Path lib/ak.py) {
-            $env:HOME = Join-Path $env:RUNNER_TEMP 'akhome'
-            New-Item -ItemType Directory -Force -Path $env:HOME | Out-Null
-            python lib/ak.py --version
-            $doc = python lib/ak.py doctor --json | ConvertFrom-Json
-            if ($doc.interface -ne 1) { throw "doctor interface is $($doc.interface)" }
-          } else {
-            Write-Output 'lib/ak.py not present yet'
-          }
+          $prefix = Join-Path $env:RUNNER_TEMP 'agentkit'
+          $envFile = Join-Path $env:RUNNER_TEMP 'agentkit-env'
+          ./install.ps1 -NoPath -Prefix $prefix -EnvFile $envFile
+          ./install.ps1 -NoPath -Prefix $prefix -EnvFile $envFile   # idempotent
+          $env:AGENTKIT_ENV = $envFile
+          & "$prefix\bin\ak.cmd" --version
+          $doc = & "$prefix\bin\ak.cmd" doctor --json | ConvertFrom-Json
+          if ($doc.interface -ne 1) { throw "doctor interface is $($doc.interface)" }
+          if ($doc.os -ne 'windows') { throw "doctor os is $($doc.os)" }
+          & "$prefix\bin\ak.cmd" env claude
+          ./install.ps1 -NoPath -Uninstall -Prefix $prefix -EnvFile $envFile
+          if (Test-Path "$prefix\lib") { throw 'uninstall left lib behind' }

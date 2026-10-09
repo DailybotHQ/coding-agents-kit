@@ -112,14 +112,20 @@ file_mode() {
 
 # json_get <file|-> <python expression over `d`> — prints the value.
 json_get() {
-  local src="$1" expr="$2"
-  "${AK_PY}" - "${src}" "${expr}" <<'PY'
+  local src="$1" expr="$2" tmp=""
+  if [[ "${src}" == "-" ]]; then
+    tmp="$(mktemp "${SANDBOX}/json.XXXXXX")"
+    cat > "${tmp}"
+    src="${tmp}"
+  fi
+  "${AK_PY}" -c '
 import json, sys
-src, expr = sys.argv[1], sys.argv[2]
-d = json.load(sys.stdin if src == "-" else open(src))
-v = eval(expr, {"d": d})
-print(json.dumps(v) if not isinstance(v, str) else v)
-PY
+d = json.load(open(sys.argv[1]))
+v = eval(sys.argv[2], {"d": d})
+print(json.dumps(v) if not isinstance(v, str) else v)' "${src}" "${expr}"
+  local status=$?
+  [[ -n "${tmp}" ]] && rm -f "${tmp}"
+  return "${status}"
 }
 
 # py_checks <tests/py/script.py> [args...] — runs a python check script

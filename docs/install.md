@@ -1,0 +1,116 @@
+# Install
+
+## The kit
+
+macOS, Linux, WSL (and Git Bash):
+
+```bash
+git clone --branch v0.1.0 https://github.com/DailybotHQ/coding-agents-kit
+./coding-agents-kit/install.sh
+```
+
+Windows (PowerShell 5.1 or 7):
+
+```powershell
+git clone --branch v0.1.0 https://github.com/DailybotHQ/coding-agents-kit
+.\coding-agents-kit\install.ps1
+```
+
+Requirements: bash and **python3 ≥ 3.9** (standard library only). Nothing
+else; no package is downloaded.
+
+What the installer does — and nothing more:
+
+| | macOS / Linux (`install.sh`) | Windows (`install.ps1`) |
+| --- | --- | --- |
+| Program | `~/.local/share/agentkit/{bin,lib,skills,docs,providers.toml}` (dir mode 700) | `$HOME\.local\share\agentkit\…` with `bin\ak.cmd`, `bin\agentkit.cmd` |
+| Env file | `~/.config/agentkit/env` from a template, mode 600, **only if missing** | `$HOME\.config\agentkit\env`, readable by you only, only if missing |
+| PATH | one guarded block in your shell rc (see below); `--no-rc` skips it | your **user** Path; `-NoPath` skips it |
+| Upgrade | rerun it: components are replaced, stale files removed | rerun it |
+| Uninstall | `./install.sh --uninstall` | `.\install.ps1 -Uninstall` |
+
+It never overwrites the env file, never touches `profiles/`, never installs
+a coding-agent CLI and never uses the network. `--uninstall` keeps the env
+file and your profiles. `AGENTKIT_HOME` moves the install, `AGENTKIT_ENV`
+the env file.
+
+**Scripts, CI and containers** use `./install.sh --no-rc` and call
+`~/.local/share/agentkit/bin/ak` by path (or put that directory on PATH).
+
+### The shell rc block
+
+`install.sh` (and `ak alias`) add exactly one guarded block to each
+existing `~/.zshrc` / `~/.bashrc` (and the rc of `$SHELL`; `~/.profile` when
+there is none). It is replaced in place on every run and removed by
+`--uninstall` or `ak alias rc --remove`, leaving the rest of the file as it
+was:
+
+```sh
+# >>> agentkit >>>
+# Managed by coding-agents-kit (install.sh, ak alias). Edit outside this block.
+if [ -d '/home/me/.local/share/agentkit/bin' ]; then case ":$PATH:" in *:/home/me/.local/share/agentkit/bin:*) ;; *) PATH='/home/me/.local/share/agentkit/bin':"$PATH"; export PATH ;; esac; fi
+[ -f '/home/me/.local/share/agentkit/aliases.sh' ] && . '/home/me/.local/share/agentkit/aliases.sh'
+# <<< agentkit <<<
+```
+
+`ak alias rc --print` shows it; `AGENTKIT_NO_RC=1` keeps `ak alias` from
+writing it (you source `aliases.sh` yourself).
+
+### Windows notes
+
+The python core runs natively (`ak.cmd` → `py -3 lib\ak.py`). Two
+differences from macOS/Linux: the env file is read as plain `KEY=value`
+lines (no shell code), and `ak alias` targets POSIX shells only — use
+`ak <kind> --auto` instead of the `classic` aliases. Profiles of Cursor and
+OpenCode link your other dotfiles into the profile home with symlinks,
+which Windows allows only with Developer Mode or elevated rights; without
+them those links are skipped.
+
+## The coding-agent CLIs: `ak install`
+
+```bash
+ak install                 # what is installed, what is missing, and how each would be installed
+ak install codex pi        # install those two if missing
+ak install --all           # every missing CLI
+```
+
+Each CLI comes from its vendor's official channel, pinned where the vendor
+allows it. Installed CLIs are skipped (never upgraded, moved or removed);
+one failure never stops the others (exit 1 at the end).
+
+| CLI | Channel | Pin |
+| --- | --- | --- |
+| claude | the vendor script `https://claude.ai/install.sh`, run with the version | `2.1.295` |
+| codex | `npm install -g @openai/codex@…` | `0.158.0` |
+| cursor | the vendor script `https://cursor.com/install` | none: the vendor offers no version selection |
+| opencode | `npm install -g opencode-ai@…` | `1.18.31` |
+| pi | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@…` | `0.85.1` |
+| cline | `npm install -g cline@…` | `3.0.70` |
+| grok | the vendor script `https://x.ai/cli/install.sh` | none: the vendor offers no version selection |
+
+A vendor script is downloaded over HTTPS (`curl --proto =https --tlsv1.2`,
+or python's `urllib` without curl) into a private temporary file and then
+run with bash — never piped from the network into a shell. After install,
+each CLI's own updater takes over; the pins are what a fresh machine gets.
+npm channels need Node (`ak install` names how to get it when npm is
+missing).
+
+## Aliases: `ak alias`
+
+```bash
+ak alias add w claude @work          # w  -> ak claude @work
+ak alias add yolo codex --auto       # yolo -> ak codex --auto
+ak alias rm w
+ak alias                             # list
+ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx
+```
+
+Aliases are shell functions in `~/.local/share/agentkit/aliases.sh`
+(definitions in `~/.config/agentkit/aliases.json`), calling this kit's `ak`
+by absolute path. Names are 1–32 letters, digits or `_` (portable to every
+POSIX shell) and may not shadow `ak`, `agentkit` or a CLI ak launches.
+
+The **`classic` preset** recreates the predecessor kit's wrapper names as
+`ak <kind> --auto` — autonomy on — for muscle memory and existing docs. It
+ships **off**; turning it on is your explicit choice (see
+[permissions](permissions.md)).

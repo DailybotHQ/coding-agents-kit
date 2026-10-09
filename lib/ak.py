@@ -57,6 +57,12 @@ def print_skill():
 
 def main(argv):
     env = dict(os.environ)
+    common.load_env_file(env)
+    # The launcher's marker is bookkeeping: no child (CLI, nested ak,
+    # `ak profiles run`) ever sees it, so a nested ak loads the file again.
+    env.pop("AGENTKIT_ENV_LOADED", None)
+    os.environ.clear()
+    os.environ.update(env)
     if not argv:
         return list_kinds(kinds.load())
     first, rest = argv[0], argv[1:]

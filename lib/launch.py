@@ -127,7 +127,6 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
     print (`ak env`: never needs or reads the key)."""
     kind = model.kind(kind_name)
     env = dict(base_env)
-    env.pop("AGENTKIT_ENV_FILE_VARS", None)
     exe = common.resolve_executable(kind.cli, env)
     if purpose != "print" and not exe:
         raise AkError("%s (%s) is not installed. Install it with: ak install %s"
