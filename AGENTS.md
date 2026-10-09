@@ -22,6 +22,8 @@ agentkit (alias ak); skill agentkit
 | `install.sh`, `install.ps1`, `win/*.cmd` | installers (POSIX, Windows) and Windows shims |
 | `tests/run.sh`, `tests/scopes/`, `tests/fakes/`, `tests/py/` | the suite: sandbox HOME, fake CLIs, one scope per surface |
 | `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json` |
+| `scripts/` | maintainer tooling: `check-public-hygiene.sh`, `release.sh` |
+| `.agents/` (+ `.claude`, `.cursor` symlinks) | the agent kit for working on this repo: personas, `dwp-*` delegators, vendored skills, catalog in `.agents/docs/` |
 
 Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`).
 
