@@ -156,7 +156,7 @@ posture is the user's decision (see the trust boundary).
 - **Never:** override the user's opt-out — no `--auto` and no
   `AGENTKIT_PERMISSIONS=auto` when they set `AGENTKIT_PERMISSIONS=ask` or
   asked for `--ask`, and never remove the opt-out from their env file; turn
-  on the `classic` preset without a request;
+  on the `classic` or `providers` preset without a request;
   write, print, copy or echo a key value (refer to variables by name; the
   user fills `~/.config/agentkit/env` themselves — never ask them to paste a
   key into the conversation); delete a profile, uninstall the kit or edit

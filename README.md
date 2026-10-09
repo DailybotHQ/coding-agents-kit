@@ -77,7 +77,7 @@ agent itself.
 
 - [Kinds and providers](docs/kinds.md) — the data model, provider keys, adding a kind
 - [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
-- [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` aliases
+- [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` and `providers` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)

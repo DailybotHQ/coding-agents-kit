@@ -45,7 +45,7 @@ scope_doctor() {
     "$(json_get "${doc}" 'd["keys"]')" '["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_KEY_2", "XAI_API_KEY", "XAI_API_KEY_2", "ZAI_CODING_API_KEY", "ZAI_CODING_API_KEY_2"]'
   expect_eq "provider kinds are logged in when their key is set" "$(json_get "${doc}" 'd["kinds"]["claude-glm"]["logged_in"]')" true
   expect_eq "permissions default to auto" "$(json_get "${doc}" 'd["permissions"]')" auto
-  expect_eq "the classic preset is off by default" "$(json_get "${doc}" 'd["aliases"]')" '{"classic": false, "custom": []}'
+  expect_eq "both presets are off by default" "$(json_get "${doc}" 'd["aliases"]')" '{"classic": false, "custom": [], "providers": false}'
   expect_eq "herdr hooks are reported per profile" "$(json_get "${doc}" 'd["herdr_hooks"]["claude"]')" '{"@default": "absent", "@work": "absent"}'
   expect_eq "cline (no Herdr integration) has no hook entry" "$(json_get "${doc}" '"cline" in d["herdr_hooks"]')" false
   expect_eq "the env file mode is reported" "$(json_get "${doc}" 'd["env_file"]["mode"]')" 600

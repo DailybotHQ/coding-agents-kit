@@ -41,6 +41,7 @@
       "required": ["classic", "custom"],
       "properties": {
         "classic": { "type": "boolean" },
+        "providers": { "type": "boolean", "description": "Added in 0.3.0: the providers preset (absent before)." },
         "custom": { "type": "array", "items": { "type": "string" } }
       }
     },

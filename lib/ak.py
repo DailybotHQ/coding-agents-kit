@@ -5,7 +5,7 @@
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
-    ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic [--on|--off]]
+    ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
     ak --skill | --version | --help
 """
@@ -25,7 +25,7 @@ USAGE = """usage:
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
-  ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic [--on|--off]]
+  ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
   ak --skill | --version | --help
 

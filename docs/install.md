@@ -149,6 +149,7 @@ ak alias add careful codex --ask     # careful -> ak codex --ask (always asks)
 ak alias rm w
 ak alias                             # list
 ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx
+ak alias preset providers --on       # claude-glm codex-glm codex-azure … (bash and zsh)
 ```
 
 Aliases are shell functions in `~/.local/share/agentkit/aliases.sh`
@@ -161,3 +162,11 @@ plain shortcuts for `ak <kind>`, for muscle memory and existing docs. They
 follow your posture: autonomy by default, or the opt-out
 (`AGENTKIT_PERMISSIONS=ask`). It ships **off** (see
 [permissions](permissions.md)).
+
+The **`providers` preset** defines one shortcut per provider kind, named
+after the kind: `claude-glm`, `codex-glm`, `codex-azure`, `codex-xai`,
+`opencode-glm|azure|xai`, `pi-glm|azure|xai`, `cline-azure|xai`. Each is
+`ak <kind>`, so it follows your posture. The names carry a dash, which bash
+and zsh accept and POSIX sh does not, so they are defined only when bash or
+zsh reads `aliases.sh` (a `/bin/sh` that is dash sees nothing). It ships
+**off**.

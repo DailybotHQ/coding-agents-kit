@@ -12,6 +12,15 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`providers` alias preset** (`ak alias preset providers --on`): one
+  shortcut per provider kind under the kind's own name (`claude-glm`,
+  `codex-glm`, `codex-azure`, `codex-xai`, `opencode-*`, `pi-*`,
+  `cline-*`), each a plain `ak <kind>` that follows the permission posture.
+  The names carry a dash, so they are defined only for bash and zsh.
+  `ak doctor --json` gains `aliases.providers` (additive; interface 1).
+
 ## [0.2.2] - 2026-10-09
 
 Interface stays **1**. Security fix to the 0.2.1 `ak env import` hardening.

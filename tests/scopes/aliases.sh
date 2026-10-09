@@ -98,4 +98,33 @@ scope_aliases() {
   box_new aliases-profile
   ak -- alias add w claude >/dev/null
   check "with no rc file at all, the block goes to ~/.profile" grep -q '^# >>> agentkit >>>$' "${BOX}/home/.profile"
+
+  # --- the providers preset: dash-named shortcuts, bash and zsh only -------------------
+  box_new aliases-providers
+  script="${BOX}/home/.local/share/agentkit/aliases.sh"
+  out="$(ak -- alias preset providers --on)"
+  expect_has "the providers preset turns on" "${out}" "providers preset on (bash and zsh): claude-glm"
+  check "aliases.sh stays valid sh with the providers preset" sh -n "${script}"
+  for k in claude-glm codex-glm codex-azure codex-xai opencode-glm opencode-azure opencode-xai pi-glm pi-azure pi-xai cline-azure cline-xai; do
+    check "bash defines ${k}" bash -c ". '${script}'; [ \"\$(type -t ${k})\" = function ]"
+  done
+  if command -v zsh >/dev/null 2>&1; then
+    check "zsh defines codex-glm" zsh -c ". '${script}'; whence -w codex-glm | grep -q function"
+  fi
+  if command -v dash >/dev/null 2>&1; then
+    check "dash (POSIX sh) sources the file without defining a dash name" \
+      env -i PATH="${BASE_PATH}" dash -c ". '${script}'; ! command -v codex-glm >/dev/null 2>&1"
+  else
+    skip "dash (POSIX sh) sources the file without defining a dash name (no dash on this machine)"
+  fi
+  out="$(box_run ZAI_CODING_API_KEY=fake-zai -- bash -c ". '${script}'; codex-glm -c")"
+  expect_eq "codex-glm runs ak codex-glm (default autonomy)" "$(argv_of "${out}")" "-p|glm|resume|--last|--dangerously-bypass-approvals-and-sandbox"
+  out="$(box_run ZAI_CODING_API_KEY=fake-zai AGENTKIT_PERMISSIONS=ask -- bash -c ". '${script}'; codex-glm -c")"
+  expect_eq "codex-glm honours the opt-out" "$(argv_of "${out}")" "-p|glm|resume|--last"
+  ak_split -- doctor --json
+  expect_eq "doctor reports the providers preset" "$(json_get "${BOX}/out" 'd["aliases"]["providers"]')" "true"
+  out="$(ak -- alias preset providers --off)"
+  check "turning the providers preset off removes the definitions" bash -c "! grep -q 'codex-glm' '${script}'"
+  out="$(ak -- alias preset nope --on)"; status=$?
+  expect_eq "an unknown preset is a usage error" "${status}" 2
 }
