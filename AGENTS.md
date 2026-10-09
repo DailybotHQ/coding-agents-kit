@@ -25,7 +25,7 @@ agentkit (alias ak); skill agentkit
 
 Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`).
 
-## Validation
+## Quick commands
 
 | Scope | Command |
 | --- | --- |

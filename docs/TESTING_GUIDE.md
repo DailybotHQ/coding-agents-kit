@@ -47,6 +47,64 @@ when nothing failed.
 `unavailable` unless `AGENTKIT_TEST_LIVE=1` is set, because a real CLI reads
 your real login and writes sessions into your real HOME.
 
+`harness-selftest` is internal: the `harness` scope runs it to prove the
+runner reports failures correctly; never run it on its own.
+
+## Scoped runs, consumers and fallback
+
+Every command runs from the repository root with bash and python3 >= 3.9;
+no other tool version changes flag behaviour.
+
+- **Scoped invocation.** Name one or more scopes; there is no per-file or
+  name filter, the scope *is* the unit. Examples from this repository:
+  - `bash tests/run.sh oss` → ends `passed: 73  failed: 0  skipped: 0`
+    (under a second).
+  - `bash tests/run.sh dispatch profiles` → `passed: 226  failed: 0
+    skipped: 0`.
+  - `bash tests/run.sh run` → `passed: 67 …` (about 15 s; the slowest
+    scope, it exercises timeouts).
+  An unknown scope exits 2 with the list of valid scopes. Every run ends
+  with the `guard` check, so a correct run always shows
+  `ok   the real HOME gained no agentkit path or rc block`.
+- **Lint.** `bash tests/run.sh lint` covers both languages. shellcheck can
+  be scoped to files (`shellcheck -S warning lib/common.sh`); python
+  checking is a project-wide compile of `lib/*.py`, so there is no
+  scoped form for it. There is no formatter or type-checker.
+- **Source-to-test mapping.** The scope map above is the rule: find the
+  changed path in the left column and run its scopes.
+- **Dependent consumers.** There is no affected-tests tool. `lib/common.py`,
+  `lib/common.sh`, `lib/ak.py` and `bin/ak` are imported or run by every
+  command, so a change there widens to the full suite. Any other
+  `lib/*.py` module: `grep -n "import <module>\|from <module>" lib/*.py`
+  lists its consumers; add their scopes.
+- **Blind spots.** Kinds are data: a `providers.toml` change alters the
+  argv of every launch even though no python changed, so it always runs
+  `kinds`, `dispatch` and `permissions`. Templates in `lib/env.template`
+  and the bundled skill are read at run time. The fakes in `tests/fakes/`
+  emulate the vendor CLIs and can drift from the real CLIs; only the opt-in
+  `live` scope sees a real CLI.
+- **Escalation.** The full suite is mandatory for a change to the interface 1
+  outputs (`ak doctor --json`, `ak env`, `ak run`), `docs/schema/`, the
+  launcher (`bin/`, `lib/common.*`), `tests/run.sh` or `tests/lib.sh`, the
+  CI workflows, and any release (`VERSION`).
+- **Fallback.** When a scope cannot be derived with confidence, run
+  `bash tests/run.sh`; it takes a few minutes (about four on a laptop,
+  one to two in CI).
+
+## Testing posture
+
+- **Layers.** One layer, in `tests/scopes/<scope>.sh`. Each check drives
+  the real launcher end to end inside a sandbox HOME, with fake CLIs at the
+  vendor boundary. `tests/py/` holds helper checks that a scope calls. There
+  is no separate unit tree, and the guide does not propose one.
+- **Seams.** The tested seams are interface 1 (the JSON schema and exit
+  codes), the argv each CLI receives, the environment each profile gets,
+  and the files the installer and the hooks write. A change to a seam adds
+  or updates a check in that seam's scope.
+- **Fixtures.** Fixtures are deterministic: fakes record their input, and
+  planted key values are visibly fake. Assertions name the observable
+  behaviour (argv, file mode, an output line), never internal calls.
+
 ## Interpreters and tools
 
 - `AK_TEST_PYTHON=/path/to/python3` runs the suite under another interpreter.
