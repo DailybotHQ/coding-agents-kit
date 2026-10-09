@@ -4,6 +4,7 @@
 
 run_box() {
   box_new "$1"
+  box_posture ask  # argv grammar; the permission checks below set their posture
   printf '{"oauthAccount":{"emailAddress":"x"}}\n' > "${BOX}/home/.claude.json"
   mkdir -p "${BOX}/home/.codex" "${BOX}/home/.grok" "${BOX}/proj"
   printf '{}\n' > "${BOX}/home/.codex/auth.json"
@@ -79,13 +80,24 @@ scope_run() {
   rm -f "${BOX}/log"
   printf 'from stdin\nsecond line' > "${BOX}/prompt.txt"
   ( cd "${BOX}/work" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" TMPDIR="${BOX}/tmp" FAKE_LOG="${BOX}/log" \
-      bash "${ROOT}/bin/ak" run pi -- - <"${BOX}/prompt.txt" >/dev/null 2>&1 )
+      bash "${ROOT}/bin/ak" run pi --ask -- - <"${BOX}/prompt.txt" >/dev/null 2>&1 )
   expect_eq "-- - reads the prompt from stdin" "$(logged_argv)" "-p|from stdin"
 
   # --- permissions in headless runs -----------------------------------------------
   rm -f "${BOX}/log"
+  box_posture ""
   ak_split FAKE_LOG="${BOX}/log" -- run codex --cwd "${p}" -- "x"
-  expect_eq "ak run adds no autonomy flag by default" "$(logged_argv)" "exec|-C|${p}|x"
+  expect_eq "ak run adds the autonomy flag by default" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run codex --ask --cwd "${p}" -- "x"
+  expect_eq "ak run --ask adds no autonomy flag" "$(logged_argv)" "exec|-C|${p}|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=ask -- run codex --cwd "${p}" -- "x"
+  expect_eq "ak run under AGENTKIT_PERMISSIONS=ask adds no autonomy flag" "$(logged_argv)" "exec|-C|${p}|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run codex --ask --auto --cwd "${p}" -- "x"; status=$?
+  expect_eq "ak run --ask --auto is a usage error" "${status}" 2
+  box_posture ask
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex --auto --cwd "${p}" -- "x"
   expect_eq "ak run --auto adds the flag for this run" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"

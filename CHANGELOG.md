@@ -4,13 +4,42 @@ All notable changes to coding-agents-kit are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-While the version is `0.x`, a breaking change bumps the minor version **and**
-the interface version reported by `ak doctor --json`.
+While the version is `0.x`, a breaking change bumps the minor version. The
+interface version reported by `ak doctor --json` tracks the machine contract
+only (the doctor JSON shape, `ak env`, the `ak run` grammar and envelope): it
+changes when that contract breaks, not when behaviour such as the default
+permission posture changes.
 
 ## [Unreleased]
 
+### Changed — breaking behaviour (interface stays 1)
+
+- **Autonomy is the default.** Every launch (interactive, `ak run`, profiles,
+  the `classic` preset and custom aliases) adds the CLI's own autonomy flag
+  from `providers.toml`. Opt out with `--ask` on a launch or
+  `AGENTKIT_PERMISSIONS=ask`; the opt-out always wins and is passed on to
+  nested launches. `--ask` with `--auto` is a usage error. Autonomy is meant
+  for disposable or sandboxed environments; `ak doctor` warns when it is on
+  outside a container. The `classic` preset becomes plain name shortcuts for
+  `ak <kind>`; custom aliases accept `--ask` or `--auto`. The doctor JSON
+  shape is unchanged: `permissions` now reports `auto` when unset.
+- **`ak install` verifies every CLI before anything runs.** Channels are
+  `binary`, `tarball` and `npm`; every CLI is pinned to an exact version with
+  a per-platform sha256 (claude from the vendor manifest; cursor and grok
+  recorded on first use) or the npm registry `integrity`. A mismatch or an
+  unpinned platform refuses the install and leaves nothing behind; archives
+  are unpacked only when every entry stays inside its directory. Vendor
+  install scripts are no longer run (the `script` channel and the
+  `unpinned` key are retired). Cursor is pinned to `2026.10.01-e373342` and
+  Grok to `1.0.50`, both previously unpinned. `scripts/update-pins.sh`
+  re-derives every digest from its source.
+
 ### Added
 
+- `ak env import <file>`: copies `KEY=value` lines from another env file
+  into the kit's env file. It never overwrites a key and never prints a
+  value, refuses a source others can write, skips shell code and empty
+  values, keeps profile-suffixed keys, and keeps the destination mode 600.
 - Public repository standard: `CONTRIBUTING.md`, `SECURITY.md` (policy),
   `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1), issue and pull request
   templates, `CODEOWNERS`, Dependabot for GitHub Actions, `CLAUDE.md` →

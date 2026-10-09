@@ -72,7 +72,7 @@ arguments, which is fine for what you type but unsafe for text that comes
 from elsewhere (a prompt from another agent). Two other differences from
 macOS/Linux: the env file is read as plain `KEY=value`
 lines (no shell code), and `ak alias` targets POSIX shells only — use
-`ak <kind> --auto` instead of the `classic` aliases. Profiles of Cursor and
+`ak <kind>` instead of the `classic` aliases. Profiles of Cursor and
 OpenCode link your other dotfiles into the profile home with symlinks,
 which Windows allows only with Developer Mode or elevated rights; without
 them those links are skipped.
@@ -85,32 +85,63 @@ ak install codex pi        # install those two if missing
 ak install --all           # every missing CLI
 ```
 
-Each CLI comes from its vendor's official channel, pinned where the vendor
-allows it. Installed CLIs are skipped (never upgraded, moved or removed);
-one failure never stops the others (exit 1 at the end).
+Every CLI is pinned to an exact version and **verified before anything
+runs or is installed**. Installed CLIs are skipped (never upgraded, moved or
+removed); one failure never stops the others (exit 1 at the end).
 
-| CLI | Channel | Pin |
-| --- | --- | --- |
-| claude | the vendor script `https://claude.ai/install.sh`, run with the version | `2.1.295` |
-| codex | `npm install -g @openai/codex@…` | `0.158.0` |
-| cursor | the vendor script `https://cursor.com/install` | none: the vendor offers no version selection |
-| opencode | `npm install -g opencode-ai@…` | `1.18.31` |
-| pi | `npm install -g --ignore-scripts @earendil-works/pi-coding-agent@…` | `0.85.1` |
-| cline | `npm install -g cline@…` | `3.0.70` |
-| grok | the vendor script `https://x.ai/cli/install.sh` | none: the vendor offers no version selection |
+| CLI | Channel | Pin | Digest source |
+| --- | --- | --- | --- |
+| claude | native binary → `~/.local/bin/claude` | `2.1.295` | sha256 per platform, from the vendor's release manifest |
+| codex | npm tarball → `npm install -g <file>` | `0.158.0` | the registry's `integrity` (sha512) |
+| cursor | package tarball → `~/.local/share/cursor-agent/versions/<v>`, linked as `cursor-agent` and `agent` | `2026.10.01-e373342` | sha256 per platform, recorded when the pin was taken (the vendor publishes none) |
+| opencode | npm tarball | `1.18.31` | registry `integrity` |
+| pi | npm tarball, `--ignore-scripts` | `0.85.1` | registry `integrity` |
+| cline | npm tarball | `3.0.70` | registry `integrity` |
+| grok | native binary → `~/.local/bin/grok` | `1.0.50` | sha256 per platform, recorded when the pin was taken (the vendor publishes none) |
 
-A vendor script is downloaded over HTTPS (`curl --proto =https --tlsv1.2`,
-or python's `urllib` without curl) into a private temporary file and then
-run with bash — never piped from the network into a shell. After install,
-each CLI's own updater takes over; the pins are what a fresh machine gets.
+Downloads go over HTTPS only (`curl --proto =https --tlsv1.2`, or python's
+`urllib` without curl) into a private temporary directory. A digest that
+does not match refuses the install and leaves nothing behind; a platform
+with no pinned digest (Windows, for the native binaries) is refused with
+the vendor's docs link; archives are unpacked only after every entry is
+checked to stay inside its directory. Vendor install scripts are never run.
+For npm, the verified tarball is what npm installs; its dependencies are
+resolved by npm from the registry, each checked against the registry's own
+integrity. After install, each CLI's own updater may take over; the pins are
+what a fresh machine gets.
+
+A CLI that cannot be pinned is stated in the data as
+`unverified = "<reason>"` and installs only with
+`ak install --allow-unverified <cli>`. No shipped CLI needs it.
+
+Maintainers move a pin with `bash scripts/update-pins.sh`: it re-derives
+every digest from its source and reports any difference.
+
 npm channels need Node (`ak install` names how to get it when npm is
 missing).
+
+## Keys from another env file: `ak env import`
+
+```bash
+ak env import ~/path/to/old.env   # copy KEY=value lines into ~/.config/agentkit/env
+```
+
+For a move from another tool's env file. It copies `KEY=value` (and
+`export KEY=value`) lines into the kit's env file (`AGENTKIT_ENV` when
+set), appended under a dated comment. It never overwrites a key the file
+already sets, skips empty values and any line that is not an assignment
+(shell code is not imported), keeps profile-suffixed keys
+(`<KEY>_<SUFFIX>`) as they are, and keeps the destination mode 600. It
+refuses a source that other users can write. It prints only variable
+**names**: what it imported and what it skipped, with the reason. Check the
+imported names against the kinds you use (`ak doctor` lists the key
+variables it sees) before deleting the old file.
 
 ## Aliases: `ak alias`
 
 ```bash
 ak alias add w claude @work          # w  -> ak claude @work
-ak alias add yolo codex --auto       # yolo -> ak codex --auto
+ak alias add careful codex --ask     # careful -> ak codex --ask (always asks)
 ak alias rm w
 ak alias                             # list
 ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx
@@ -122,6 +153,7 @@ by absolute path. Names are 1–32 letters, digits or `_` (portable to every
 POSIX shell) and may not shadow `ak`, `agentkit` or a CLI ak launches.
 
 The **`classic` preset** recreates the predecessor kit's wrapper names as
-`ak <kind> --auto` — autonomy on — for muscle memory and existing docs. It
-ships **off**; turning it on is your explicit choice (see
+plain shortcuts for `ak <kind>`, for muscle memory and existing docs. They
+follow your posture: autonomy by default, or the opt-out
+(`AGENTKIT_PERMISSIONS=ask`). It ships **off** (see
 [permissions](permissions.md)).

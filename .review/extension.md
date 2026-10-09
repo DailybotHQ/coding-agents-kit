@@ -21,10 +21,12 @@ files and that interface. Style matters much less.
   it. `lib/writers.py` `_atomic_write(..., confine=)` must keep the real
   path inside the profile, and `lib/hooks.py` must refuse symlinked
   destinations. Flag any new write path that skips them.
-- **Always `critical`:** applying a permission-bypass flag (the `auto`
-  fields in `providers.toml`, such as `--dangerously-skip-permissions`)
-  without `--auto` or `AGENTKIT_PERMISSIONS=auto` (`lib/launch.py`).
-  Pass-through is the default.
+- **Always `critical`:** a launch path where the opt-out (`--ask` or
+  `AGENTKIT_PERMISSIONS=ask`) does not suppress the autonomy flag, or an
+  autonomy flag (the `auto` fields in `providers.toml`, such as
+  `--dangerously-skip-permissions`) spelled anywhere outside `providers.toml`
+  (`lib/launch.py`, `lib/run.py`, `lib/aliases.py`). Autonomy is the default;
+  the opt-out must always win.
 - **Always `critical`:** `subprocess` with `shell=True`, or string-built
   shell commands, fed by user, profile or env-file input. There are none
   today; keep it that way.

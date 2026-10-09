@@ -26,7 +26,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
   },
   "profiles": { "claude": ["work"], "codex": [], "…": [] },
   "keys": ["XAI_API_KEY", "ZAI_CODING_API_KEY_WORK"],
-  "permissions": "ask",
+  "permissions": "auto",
   "aliases": { "classic": false, "custom": [] },
   "herdr_hooks": { "claude": { "@default": "present", "@work": "absent" }, "…": {} },
   "env_file": { "path": "/…/.config/agentkit/env", "exists": true, "mode": "600" },
@@ -36,12 +36,12 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 
 | Key | Meaning |
 | --- | --- |
-| `interface` | always `1` in v0.x; a breaking change bumps it (and the major version) |
+| `interface` | the machine contract: this JSON shape, `ak env` and the `ak run` grammar and envelope. It is `1`, and changes only when that contract breaks (a key removed or retyped, a grammar change); a change of behaviour, such as the default permission posture, is carried by the minor version |
 | `kinds.<kind>.installed` / `path` / `version` | the CLI on `PATH` (Cursor: the real Cursor binary, never Grok's `agent`); version from `<cli> --version` (5 s timeout) |
 | `kinds.<kind>.logged_in` | `@default` only. Canonical kinds: `true`/`false` from credential **file presence** (and credential variable names), `null` when files cannot tell (Cursor's default Keychain login, OpenCode/Pi/Cline env-based providers). Provider kinds: whether their key variable is set |
 | `profiles` | named profiles per CLI (`@default` is implicit) |
 | `keys` | names of provider key variables that are set (base and per profile) — never values |
-| `permissions` | `ask` (pass-through) or `auto`; an invalid `AGENTKIT_PERMISSIONS` reports `ask` plus a problem (launches refuse) |
+| `permissions` | the effective posture: `auto` (the default: every launch adds the CLI's autonomy flag) or `ask` (the opt-out, `AGENTKIT_PERMISSIONS=ask`); an invalid `AGENTKIT_PERMISSIONS` reports `ask` plus a problem (launches refuse) |
 | `aliases` | the `classic` preset on/off and custom alias names |
 | `herdr_hooks` | per Herdr-integrated CLI, per profile: whether Herdr's state hook files are present in that home |
 | `env_file`, `problems` | where the env file is, its mode, and anything to fix |

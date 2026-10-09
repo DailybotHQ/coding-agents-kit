@@ -27,7 +27,8 @@ SEGMENTS = ("provider", "session", "auto", "json", "timeout")
 ISOLATIONS = ("env", "cursor-home", "xdg")
 WRITER_TYPES = ("codex", "opencode", "pi")
 RESULT_EXTRACTORS = ("json-result", "codex-jsonl", "opencode-jsonl", "pi-jsonl", "cline-jsonl")
-INSTALL_CHANNELS = ("script", "npm")
+INSTALL_CHANNELS = ("binary", "tarball", "npm")
+PLATFORMS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64", "windows-x64", "windows-arm64")
 SESSION_KEYS = ("continue", "resume", "pick", "list", "last", "standalone",
                 "pick_error", "continue_strategy")
 CONTINUE_STRATEGIES = ("cline-history",)
@@ -200,12 +201,8 @@ class Model(object):
             install = cli.get("install", {})
             if install.get("channel") not in INSTALL_CHANNELS:
                 bad("%s.install.channel must be one of %s" % (where, ", ".join(INSTALL_CHANNELS)))
-            if install.get("channel") == "script" and not str(install.get("url", "")).startswith("https://"):
-                bad("%s.install.url must be https" % where)
-            if install.get("channel") == "npm" and not install.get("package"):
-                bad("%s.install: npm needs package" % where)
-            if not install.get("version") and not install.get("unpinned"):
-                bad("%s.install: pin a version or state why it cannot be pinned (unpinned)" % where)
+            for problem in install_problems(install):
+                bad("%s.install: %s" % (where, problem))
             for ref in cli.get("login", {}).get("files", []) + cli.get("hooks", {}).get("files", []):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
@@ -446,6 +443,59 @@ def main(argv):
     sys.stderr.write("usage: kinds.py list | show <kind> | check [file]\n")
     return 2
 
+
+def _is_hex64(value):
+    return isinstance(value, str) and len(value) == 64 and all(c in "0123456789abcdef" for c in value)
+
+
+def install_problems(install):
+    """What is wrong with one [clis.<cli>.install] table (empty when valid):
+    an exact version, https URLs and, per channel, a digest for every
+    platform it names — or an explicit `unverified` reason."""
+    out = []
+    channel = install.get("channel")
+    unverified = install.get("unverified")
+    if "unpinned" in install:
+        out.append("`unpinned` is retired: pin a version and its digests, or state `unverified = \"<reason>\"`")
+    if not install.get("version"):
+        out.append("pin an exact version")
+    if channel in ("binary", "tarball"):
+        url = str(install.get("url", ""))
+        if not url.startswith("https://") or "{platform}" not in url:
+            out.append("url must be https and contain {platform}")
+        plats = install.get("platforms", {})
+        if not isinstance(plats, dict) or not plats:
+            out.append("platforms must map at least one platform to its URL token")
+            plats = {}
+        for plat in plats:
+            if plat not in PLATFORMS:
+                out.append("unknown platform '%s' (one of %s)" % (plat, ", ".join(PLATFORMS)))
+        sums = install.get("sha256", {})
+        if not isinstance(sums, dict):
+            out.append("sha256 must map platforms to digests")
+            sums = {}
+        if set(sums) - set(plats):
+            out.append("sha256 names platforms that platforms does not")
+        missing = [p for p in plats if not _is_hex64(sums.get(p))]
+        if missing and not unverified:
+            out.append("no 64-hex sha256 for %s (pin it, or state unverified)" % ", ".join(sorted(missing)))
+        if channel == "tarball":
+            if not str(install.get("into", "")).startswith("~/"):
+                out.append("tarball needs `into` under ~/")
+            links = install.get("links")
+            if not links or not isinstance(links, dict):
+                out.append("tarball needs `links` (name -> path inside `into`)")
+            else:
+                for name, rel in links.items():
+                    if "/" in name or rel.startswith("/") or ".." in rel.split("/"):
+                        out.append("links must be plain names to paths inside `into` (%s)" % name)
+    elif channel == "npm":
+        if not install.get("package"):
+            out.append("npm needs package")
+        integrity = str(install.get("integrity", ""))
+        if not integrity.startswith("sha512-") and not unverified:
+            out.append("npm needs integrity = \"sha512-…\" (the registry's dist.integrity), or state unverified")
+    return out
 
 if __name__ == "__main__":
     sys.exit(main(sys.argv[1:]))

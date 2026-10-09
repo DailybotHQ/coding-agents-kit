@@ -363,9 +363,11 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
-    # Same hygiene as a launch: no per-profile key variables, no inherited autonomy.
+    # Same hygiene as a launch: no per-profile key variables; the opt-out is
+    # inherited, autonomy is not exported.
     strip_profile_keys(model, env)
-    env.pop("AGENTKIT_PERMISSIONS", None)
+    if (env.get("AGENTKIT_PERMISSIONS") or "").strip().lower() != "ask":
+        env.pop("AGENTKIT_PERMISSIONS", None)
     return exec_command(command, env)
 
 

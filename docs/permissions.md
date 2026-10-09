@@ -1,20 +1,24 @@
 # Permissions posture
 
-**Pass-through by default.** `ak <kind>` adds no permission-bypass flag: the
-CLI asks before it edits files or runs commands exactly as it does when you
-type its own name. Autonomy is an explicit opt-in, per launch or per
-environment.
+**Autonomy by default.** `ak <kind>` adds the CLI's own autonomy flag, so the
+agent edits files and runs commands without asking. Autonomy is meant for
+disposable or sandboxed environments (containers, virtual machines,
+throwaway worktrees). On a host you care about, opt out: the opt-out always
+wins.
 
 | How | Scope |
 | --- | --- |
-| `ak <kind> --auto …` | this launch (or this `ak run`) only |
-| `AGENTKIT_PERMISSIONS=auto` in the environment or in `~/.config/agentkit/env` | every launch that sees it |
-| `AGENTKIT_PERMISSIONS=ask` (or unset) | the default: nothing added |
+| nothing (the default) | every launch adds the CLI's autonomy flag |
+| `ak <kind> --ask …` | this launch (or this `ak run`) asks: no flag added |
+| `AGENTKIT_PERMISSIONS=ask` in the environment or in `~/.config/agentkit/env` | every launch that sees it asks, nested launches included |
+| `ak <kind> --auto …` / `AGENTKIT_PERMISSIONS=auto` | explicit autonomy (the default made explicit) |
 
-Any other value of `AGENTKIT_PERMISSIONS` is a usage error (exit 2) and
-launches nothing — a typo never turns autonomy on.
+Resolution order: an explicit `--ask` or `--auto` on the command, then
+`AGENTKIT_PERMISSIONS`, then the default. `--ask` with `--auto` is a usage
+error (exit 2). Any other value of `AGENTKIT_PERMISSIONS` is a usage error
+and launches nothing.
 
-## What `--auto` adds — the CLI's own flag, nothing else
+## What the default adds — the CLI's own flag, nothing else
 
 | Kind | Flag added | What the CLI documents |
 | --- | --- | --- |
@@ -27,36 +31,40 @@ launches nothing — a typo never turns autonomy on.
 | `grok` | `--always-approve` | approve every tool call |
 
 The flags live only in `providers.toml` (`auto = […]`); no code path spells
-one, and the `permissions` test scope proves for all 19 kinds that a default
-launch carries none of them and an opted-in launch carries exactly its own.
-Listing modes (`ak cursor -l`, `ak cline -r`) never carry one.
+one. For all 19 kinds, the `permissions` test scope proves that a default
+launch carries exactly its own flag and that `--ask` or
+`AGENTKIT_PERMISSIONS=ask` removes it. Listing modes (`ak cursor -l`,
+`ak cline -r`) never carry one.
 
-`--auto` may sit anywhere before the first CLI argument
-(`ak claude --auto @work -c` and `ak claude @work -c --auto` are the same);
-after `--` or after a CLI argument it belongs to the CLI.
+`--ask` and `--auto` may sit anywhere before the first CLI argument
+(`ak claude --ask @work -c` and `ak claude @work -c --ask` are the same);
+after `--` or after a CLI argument they belong to the CLI.
 
-## Autonomy is not inherited
+## The opt-out is inherited, autonomy is not exported
 
-`ak` removes `AGENTKIT_PERMISSIONS` from the environment of the CLI it
-starts. An agent that launches another agent (`ak run codex …` from inside a
-Claude session) gets the default posture again unless it passes `--auto`
-itself or the user's own env file says `AGENTKIT_PERMISSIONS=auto`. A
-one-off `AGENTKIT_PERMISSIONS=auto ak claude` therefore never makes the
-sub-agents of that session autonomous behind your back.
+When a launch asks, `ak` passes `AGENTKIT_PERMISSIONS=ask` to the CLI it
+starts, so an agent that launches another agent (`ak run codex …` from inside
+a Claude session) asks too. When a launch is autonomous, `ak` removes
+`AGENTKIT_PERMISSIONS` from the CLI's environment, and nested launches follow
+the default.
 
 ## The `classic` aliases
 
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,
-`opencodex`, `pix`, `clinex` and `grokx` as `ak <kind> --auto` for people
-migrating from the old wrappers. It ships **off**. See [install](install.md).
+`opencodex`, `pix`, `clinex` and `grokx` as plain shortcuts for
+`ak <kind>`, for people migrating from the old wrappers. They follow your
+posture: the default, or the opt-out. It ships **off**. Custom aliases may
+carry `--ask` or `--auto` (`ak alias add careful claude --ask`). See
+[install](install.md).
 
-## The sanctioned opt-in: a container as the sandbox
+## Hosts and containers
 
-The one place autonomy is a reasonable default is a disposable container
-whose only writable world is the repository: the container is the sandbox.
-Set `AGENTKIT_PERMISSIONS=auto` in that container's env file (or its image),
-never on your host. Note that Codex's own sandbox (bubblewrap) cannot create
-user namespaces inside most containers, which is why Codex needs
-`--dangerously-bypass-approvals-and-sandbox` there at all.
+A disposable container whose only writable world is the repository is the
+setting autonomy is designed for: the container is the sandbox. Codex's own
+sandbox (bubblewrap) cannot create user namespaces inside most containers,
+which is why Codex needs `--dangerously-bypass-approvals-and-sandbox` there
+at all. On a host, set `AGENTKIT_PERMISSIONS=ask` in `~/.config/agentkit/env`
+unless you accept that agents act without asking.
 
-`ak doctor` reports the effective posture (`permissions: ask|auto`).
+`ak doctor` reports the effective posture (`permissions: auto|ask`) and warns
+when autonomy is on outside a container.

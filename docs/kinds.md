@@ -59,10 +59,12 @@ rather than overwritten.
 1. Add `[kinds.<cli>-<provider>]` (and, for a new API, `[providers.<id>]`)
    to `providers.toml`. A new CLI needs a `[clis.<cli>]` block: executable,
    isolation, roots, session mapping, autonomy flag, headless mapping, login
-   probe, install channel and, when Herdr integrates it, hook files.
+   probe, install channel (`binary`, `tarball` or `npm`, with an exact
+   version and its digests: per-platform `sha256`, or the npm `integrity`)
+   and, when Herdr integrates it, hook files.
 2. Run `python3 lib/kinds.py check` — validation names every rule a broken
    entry violates (unknown CLI or provider, `{key}` outside a kind's env /
-   Cline argv, an unpinned installer without a reason, …).
+   Cline argv, an install without a version or a digest, …).
 3. Add the kind to the contract table in `tests/py/kinds_checks.py` and run
    `bash tests/run.sh kinds dispatch`.
 

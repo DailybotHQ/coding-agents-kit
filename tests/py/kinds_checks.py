@@ -121,14 +121,32 @@ cases = {
                                              '[kinds.codex-glm]\ncli = "codex"\nprovider = "nope"'),
     "a key on argv for a non-cline CLI": base_text.replace('args = ["-p", "glm"]', 'args = ["-p", "glm", "{key}"]'),
     "a key in a writer": base_text.replace('base_url = "{codex_base}"', 'base_url = "{key}"'),
-    "an unpinned install without a reason": base_text.replace('version = "0.158.0"', 'version = ""'),
+    "an install without a version": base_text.replace('version = "0.158.0"', 'version = ""'),
+    "the retired unpinned key": base_text.replace('version = "0.158.0"', 'version = "0.158.0"\nunpinned = "x"'),
+    "an npm install without integrity": base_text.replace('integrity = "sha512-GBhc', 'integrity_x = "sha512-GBhc'),
+    "a short sha256": base_text.replace('linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358"',
+                                        'linux-x64 = "4503bfe1"'),
+    "a platform without a digest": base_text.replace('linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358", ', ''),
+    "an unknown platform": base_text.replace('linux-x64 = "linux-x64", linux-arm64', 'beos-x64 = "linux-x64", linux-arm64'),
+    "a url without {platform}": base_text.replace('/{platform}/claude', '/linux-x64/claude'),
+    "the retired script channel": base_text.replace('channel = "binary"\nversion = "2.1.295"', 'channel = "script"\nversion = "2.1.295"'),
     "a wrong schema": base_text.replace("schema = 1", "schema = 2"),
     "a key in the autonomy flag": base_text.replace('auto = ["--approve"]', 'auto = ["--approve", "{key}"]'),
-    "an http installer": base_text.replace("https://claude.ai/install.sh", "http://claude.ai/install.sh"),
+    "an http artifact": base_text.replace("https://downloads.claude.ai/", "http://downloads.claude.ai/"),
 }
 for label, text in cases.items():
+    if text == base_text:
+        check("the %s case changes the data" % label, False, "replacement did not apply")
+        continue
     err = raises(lambda: kinds.load(variant("bad", text)), kinds.KindsError)
     check("validation refuses %s" % label, err is not None, "accepted")
+model_now = kinds.load()
+for cli_name in model_now.cli_names():
+    inst = model_now.clis[cli_name]["install"]
+    check("%s is pinned and verified (%s, no unverified exception)" % (cli_name, inst["channel"]),
+          not kinds.install_problems(inst) and not inst.get("unverified")
+          and (inst["channel"] == "npm" or {"linux-x64", "linux-arm64", "macos-x64", "macos-arm64"} <= set(inst["sha256"])),
+          str(kinds.install_problems(inst)))
 added = base_text + '\n[kinds.claude-xai]\ncli = "claude"\nprovider = "xai"\n[kinds.claude-xai.env]\nANTHROPIC_AUTH_TOKEN = "{key}"\nANTHROPIC_BASE_URL = "{base}"\n'
 try:
     m2 = kinds.load(variant("added", added))

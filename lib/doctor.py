@@ -53,7 +53,7 @@ def _provider_key_names(model, env):
 
 def collect(model, env):
     problems = []
-    raw_perm = (env.get("AGENTKIT_PERMISSIONS") or "ask").strip().lower()
+    raw_perm = (env.get("AGENTKIT_PERMISSIONS") or "auto").strip().lower()
     if raw_perm not in ("ask", "auto"):
         problems.append("AGENTKIT_PERMISSIONS must be 'ask' or 'auto'; launches refuse to start until it is fixed")
         raw_perm = "ask"
@@ -114,8 +114,10 @@ def render_text(model, report):
     w("agentkit %s (interface %d) on %s — %s" % (report["version"], report["interface"], report["os"], common.KIT_ROOT))
     ef = report["env_file"]
     w("env file: %s (%s)" % (ef["path"], ("mode " + ef["mode"]) if ef["exists"] else "missing — ./install.sh creates it"))
-    w("permissions: %s%s" % (report["permissions"], "  (pass-through: no autonomy flag is added)"
-                             if report["permissions"] == "ask" else "  (every launch adds the CLI's autonomy flag)"))
+    w("permissions: %s%s" % (report["permissions"], "  (opt-out: no autonomy flag is added)"
+                             if report["permissions"] == "ask" else
+                             "  (default: every launch adds the CLI's autonomy flag; opt out with --ask"
+                             " or AGENTKIT_PERMISSIONS=ask)"))
     w("")
     w("## CLIs")
     for cli in model.cli_names():
@@ -178,6 +180,9 @@ def main(model, args, env):
     else:
         if _in_container(env):
             common.warn("inside a container — this reports the container's CLIs and config, not the host's")
+        elif report["permissions"] == "auto":
+            common.warn("autonomy is on and this is not a container — agents run commands without asking; "
+                        "autonomy is meant for disposable or sandboxed environments (opt out: AGENTKIT_PERMISSIONS=ask)")
         sys.stdout.write(render_text(model, report))
     return 0
 

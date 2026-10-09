@@ -56,11 +56,13 @@ definitive = true
 note = "on macOS the token itself lives in the Keychain, one entry per profile directory"
 
 [clis.claude.install]
-channel = "script"
-url = "https://claude.ai/install.sh"
-shell = "bash"
-args = ["{version}"]
+# Native binary. sha256: the vendor's release manifest
+# (downloads.claude.ai/claude-code-releases/2.1.295/manifest.json).
+channel = "binary"
 version = "2.1.295"
+url = "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
+platforms = { linux-x64 = "linux-x64", linux-arm64 = "linux-arm64", macos-x64 = "darwin-x64", macos-arm64 = "darwin-arm64" }
+sha256 = { linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358", linux-arm64 = "cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b", macos-x64 = "a6066492288585a1ef5e482cb28ad22714ab12cd48e367c0cee988b00cff724c", macos-arm64 = "0116ee2e0a513900b633d9951367f18747686478e2b462805b8c31609f047f70" }
 
 [clis.claude.hooks]
 files = ["home:hooks/herdr-agent-state.sh"]
@@ -98,9 +100,11 @@ env = ["CODEX_API_KEY", "OPENAI_API_KEY"]
 definitive = true
 
 [clis.codex.install]
+# integrity: the npm registry's dist.integrity for this version.
 channel = "npm"
 package = "@openai/codex"
 version = "0.158.0"
+integrity = "sha512-GBhcKpQmVLsCtEP5mUf6WFye6QQgTKotwsXrYPM0GFmEsoOSahik6hkf2FHabX9kZBl0Y0/PQowLu7uYMKT8dg=="
 
 [clis.codex.hooks]
 files = ["home:herdr-agent-state.sh"]
@@ -141,12 +145,17 @@ definitive = false
 note = "the default home on macOS keeps the login in the Keychain; profiles use the file store"
 
 [clis.cursor.install]
-channel = "script"
-url = "https://cursor.com/install"
-shell = "bash"
-args = []
-version = ""
-unpinned = "the vendor installer offers no version selection"
+# The versioned package the vendor's installer downloads. The vendor
+# publishes no checksum: the sha256 values were recorded when this pin was
+# taken (trust on first use; the linux values match an independent pin).
+channel = "tarball"
+version = "2026.10.01-e373342"
+url = "https://downloads.cursor.com/lab/{version}/{platform}/agent-cli-package.tar.gz"
+platforms = { linux-x64 = "linux/x64", linux-arm64 = "linux/arm64", macos-x64 = "darwin/x64", macos-arm64 = "darwin/arm64" }
+sha256 = { linux-x64 = "a79726c6e644520e993970be4c45775a6889802b67abe461a677a53219ae28e8", linux-arm64 = "785c5f6bf2a60eb1121e27ed8c14f5ee07ed1b5b6692324f2d9a997238245eb5", macos-x64 = "a80db6e15626e0aa7af60fab3a95c98a243e2c1513c0c9485344a553d7b7b00e", macos-arm64 = "629e51de43a0b7fb3b86f5ebc7e579f7df7df941b39f29e82945cde750145afc" }
+strip = 1
+into = "~/.local/share/cursor-agent/versions/{version}"
+links = { cursor-agent = "cursor-agent", agent = "cursor-agent" }
 
 [clis.cursor.hooks]
 files = ["home:herdr-agent-state.sh"]
@@ -187,6 +196,7 @@ definitive = false
 channel = "npm"
 package = "opencode-ai"
 version = "1.18.31"
+integrity = "sha512-J95feefeWwtIaw3irx76WjzWcgQXxmuHmDVphvs5ep9X30fBJ6T6bFhw50i9Kx50MG/xPn5w2pafXIfNtdry9w=="
 
 [clis.opencode.hooks]
 files = ["config:plugins/herdr-agent-state.js"]
@@ -224,6 +234,7 @@ definitive = false
 channel = "npm"
 package = "@earendil-works/pi-coding-agent"
 version = "0.85.1"
+integrity = "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ=="
 npm_args = ["--ignore-scripts"]
 
 [clis.pi.hooks]
@@ -266,6 +277,7 @@ definitive = false
 channel = "npm"
 package = "cline"
 version = "3.0.70"
+integrity = "sha512-ekeGJ7YdVKL9p//KF0F5nxFXMvgSuhwPxvCUkS+SaBDJJoOUt+HMeJS+J+hkF3ezPekbSvpK1wCPGraZbAEO8A=="
 
 
 [clis.grok]
@@ -298,12 +310,14 @@ env = ["XAI_API_KEY"]
 definitive = true
 
 [clis.grok.install]
-channel = "script"
-url = "https://x.ai/cli/install.sh"
-shell = "bash"
-args = []
-version = ""
-unpinned = "the vendor installer offers no version selection"
+# The versioned binary the vendor's installer downloads. The vendor
+# publishes no checksum: the sha256 values were recorded when this pin was
+# taken (trust on first use; the linux values match an independent pin).
+channel = "binary"
+version = "1.0.50"
+url = "https://x.ai/cli/grok-{version}-{platform}"
+platforms = { linux-x64 = "linux-x86_64", linux-arm64 = "linux-aarch64", macos-x64 = "macos-x86_64", macos-arm64 = "macos-aarch64" }
+sha256 = { linux-x64 = "c80de0155706ff2d995623887b102f2d0abd2c62b2643dea3a0cebaf7dd724d5", linux-arm64 = "947eea63e52393e00778d651d22e0dad22d30e9ee5b2af7944efc3fd4438ecc0", macos-x64 = "5ff2b912da2d85cdc627595d819423751bab67fcb65870f90a0783cccba5c62a", macos-arm64 = "af41b1d65d4116ff649a689ad9d070d4c2abe255737d46ba0b3e8161345696e6" }
 
 [clis.grok.hooks]
 files = ["home:hooks/herdr-agent-state.sh", "home:hooks/herdr.json"]

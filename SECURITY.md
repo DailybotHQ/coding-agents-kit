@@ -36,7 +36,9 @@ fixed issues, and credit reporters who want to be credited.
 
 ## Scope and threat model
 
-What the kit protects (provider keys, your files, accounts, shell rc files)
-and how, including the documented exceptions, is described in
-[docs/SECURITY.md](docs/SECURITY.md). Vulnerabilities in the coding-agent
+Autonomy is the default: every launch adds the CLI's own autonomy flag, and
+autonomy is meant for disposable or sandboxed environments; on a host, opt
+out with `--ask` or `AGENTKIT_PERMISSIONS=ask`. What the kit protects
+(provider keys, your files, accounts, shell rc files) and how, including the
+documented exceptions, is described in [docs/SECURITY.md](docs/SECURITY.md). Vulnerabilities in the coding-agent
 CLIs themselves belong to their vendors.

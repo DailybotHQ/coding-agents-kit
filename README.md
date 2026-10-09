@@ -20,8 +20,9 @@ grammar over all of them:
   own login, sessions and provider keys.
 - **The same session flags everywhere** — `-c`, `-r [id]`, `-l`, mapped to
   each CLI's own form.
-- **Pass-through by default** — no permission-bypass flag unless you opt in
-  with `--auto`.
+- **Autonomy by default** — every launch adds the CLI's own autonomy flag;
+  opt out with `--ask` or `AGENTKIT_PERMISSIONS=ask`. Autonomy is meant for
+  disposable or sandboxed environments: on a host, opt out.
 - **Interface 1 for other tools** — `ak run` (headless, one JSON result),
   `ak env` (a profile's environment), `ak doctor --json`.
 - **Keys stay in one file** — provider keys never land in a config file.
@@ -45,11 +46,11 @@ Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 ak doctor                  # what is installed and configured
 ak install codex           # a missing CLI, from its vendor, pinned
 ak                         # list the kinds and which CLIs are installed
-ak claude                  # Claude Code, exactly as `claude` (no flags added)
+ak claude                  # Claude Code with its autonomy flag (the default)
 ak codex -c                # continue the newest Codex session (codex resume --last)
 ak claude @work -c         # a second Claude account, continue its newest session
 ak claude-glm              # Claude Code routed to Z.AI GLM (key from ~/.config/agentkit/env)
-ak claude --auto           # opt in to the CLI's own autonomy flag for this launch
+ak claude --ask            # opt out for this launch: the CLI asks before acting
 ak claude -- @src/app.ts   # `--` sends everything after it to the CLI untouched
 ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the failing test"
 ```
@@ -57,7 +58,7 @@ ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the fail
 The grammar is the same for every kind:
 
 ```
-ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
 ```
 
 | Flag | claude | codex | cursor | opencode | pi | cline | grok |
@@ -76,7 +77,7 @@ agent itself.
 
 - [Kinds and providers](docs/kinds.md) — the data model, provider keys, adding a kind
 - [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
-- [Permissions](docs/permissions.md) — pass-through, `--auto`, the `classic` aliases
+- [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)
@@ -86,7 +87,8 @@ agent itself.
 
 ## Security
 
-Pass-through by default, keys only in `~/.config/agentkit/env` (mode 600),
+Autonomy by default with an always-effective opt-out (`--ask`,
+`AGENTKIT_PERMISSIONS=ask`), keys only in `~/.config/agentkit/env` (mode 600),
 no network except `ak install` fetching a pinned vendor installer you asked
 for. Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
 the threat model is [docs/SECURITY.md](docs/SECURITY.md).

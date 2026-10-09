@@ -2,3 +2,4 @@
 # Format: <path glob> | <rule> | <reason>. Each listed line must also contain
 # fake, test, planted or example — anything else is a real finding.
 tests/scopes/install.sh | quoted-secret | env-file parser test: a planted, obviously fake value in quotes proves export/quote handling
+tests/scopes/doctor.sh | quoted-secret | ak env import test: a planted, obviously fake value in quotes proves export/quote lines are imported

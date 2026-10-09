@@ -68,7 +68,7 @@ ak claude-glm @work         # Claude Code routed to Z.AI with ZAI_CODING_API_KEY
 ak claude -- @src/app.ts    # after --, everything goes to the CLI untouched
 ```
 
-Grammar: `ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]`.
+Grammar: `ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]`.
 Only a first `@name` is a profile; `@default` is the CLI's own home.
 
 ## Accounts (profiles)
@@ -124,6 +124,10 @@ For Herdr: pass each line as `herdr pane split --env KEY=VALUE`, then
 more than an environment (`ak env` says so on stderr): run
 `ak <kind> @profile` in the pane instead.
 
+To bring keys over from another env file, the user runs
+`ak env import <file>`: it copies `KEY=value` lines, never overwrites a key
+and prints names only. Never read or display the source file's values.
+
 ## Installing CLIs: `ak install`
 
 ```bash
@@ -135,10 +139,11 @@ Ask before installing: it installs software on the user's machine.
 
 ## Permissions
 
-By default `ak` adds no autonomy flag: the CLI asks before acting, exactly
-as when the user types its name. The opt-ins are `--auto` on one command,
-`AGENTKIT_PERMISSIONS=auto` in the user's environment, and the `classic`
-alias preset. They are the user's decisions (see the trust boundary).
+By default `ak` adds the CLI's own autonomy flag: the agent acts without
+asking. Autonomy is meant for disposable or sandboxed environments. The
+opt-out is `--ask` on one command or `AGENTKIT_PERMISSIONS=ask` in the user's
+environment; it always wins and is inherited by nested launches. Choosing a
+posture is the user's decision (see the trust boundary).
 
 ## Trust boundary (write scope)
 
@@ -148,8 +153,10 @@ alias preset. They are the user's decisions (see the trust boundary).
   (`ak profiles add`), launching or running an agent, adding an alias. Each
   of these acts on the user's machine; when the request is not explicit,
   ask first.
-- **Never:** add `--auto`, set `AGENTKIT_PERMISSIONS=auto` or turn on the
-  `classic` preset unless the user asked for autonomy for that specific use;
+- **Never:** override the user's opt-out — no `--auto` and no
+  `AGENTKIT_PERMISSIONS=auto` when they set `AGENTKIT_PERMISSIONS=ask` or
+  asked for `--ask`, and never remove the opt-out from their env file; turn
+  on the `classic` preset without a request;
   write, print, copy or echo a key value (refer to variables by name; the
   user fills `~/.config/agentkit/env` themselves — never ask them to paste a
   key into the conversation); delete a profile, uninstall the kit or edit

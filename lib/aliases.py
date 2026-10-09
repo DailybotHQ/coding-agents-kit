@@ -1,7 +1,7 @@
 """`ak alias` — shell shortcuts for ak, and the guarded shell rc block.
 
     ak alias [list]
-    ak alias add <name> <kind> [@profile] [--auto]
+    ak alias add <name> <kind> [@profile] [--ask | --auto]
     ak alias rm <name>
     ak alias preset classic [--on | --off]
     ak alias rc [--install | --remove | --print]
@@ -16,8 +16,9 @@ sources that file through one guarded block:
     # <<< agentkit <<<
 
 The block is replaced in place (never duplicated) and removed cleanly.
-The `classic` preset recreates the predecessor kit's wrapper names as
-`ak <kind> --auto`; it ships off. POSIX shells only (bash, zsh, sh).
+The `classic` preset recreates the predecessor kit's wrapper names as plain
+shortcuts for `ak <kind>` (autonomy follows the user's posture: the default,
+or --ask / AGENTKIT_PERMISSIONS=ask); it ships off. POSIX shells only (bash, zsh, sh).
 """
 
 import json
@@ -99,14 +100,16 @@ def render(state):
         lines.append("# classic preset (ak alias preset classic --off to remove)")
         for name, kind in CLASSIC:
             names.add(name)
-            lines.append("%s() { %s %s --auto \"$@\"; }" % (name, _sh_quote(ak), kind))
+            lines.append("%s() { %s %s \"$@\"; }" % (name, _sh_quote(ak), kind))
     for alias in state["custom"]:
         if alias["name"] in names:
             continue
         words = [alias["kind"]]
         if alias.get("profile"):
             words.append(alias["profile"])
-        if alias.get("auto"):
+        if alias.get("ask"):
+            words.append("--ask")
+        elif alias.get("auto"):
             words.append("--auto")
         lines.append("%s() { %s %s \"$@\"; }" % (alias["name"], _sh_quote(ak), " ".join(_sh_quote(w) for w in words)))
     return "\n".join(lines) + "\n"
@@ -212,36 +215,45 @@ def _ensure_rc(env, quiet=False):
             common.warn("updated %s (open a new shell, or: . %s)" % (path, path))
 
 
+def _posture(alias):
+    return "--ask" if alias.get("ask") else "--auto" if alias.get("auto") else ""
+
+
 def cmd_list(state):
     print("classic preset: %s" % ("on" if state["classic"] else "off (ak alias preset classic --on)"))
     if state["classic"]:
         for name, kind in CLASSIC:
-            print("  %-12s ak %s --auto" % (name, kind))
+            print("  %-12s ak %s" % (name, kind))
     if state["custom"]:
         print("custom:")
         for a in state["custom"]:
             print("  %-12s ak %s" % (a["name"], " ".join(w for w in (a["kind"], a.get("profile") or "",
-                                                                    "--auto" if a.get("auto") else "") if w)))
+                                                                    _posture(a)) if w)))
     elif not state["classic"]:
-        print("(no custom aliases — ak alias add <name> <kind> [@profile] [--auto])")
+        print("(no custom aliases — ak alias add <name> <kind> [@profile] [--ask | --auto])")
     return 0
 
 
 def cmd_add(model, state, args, env):
     if len(args) < 2:
-        raise AkError("usage: ak alias add <name> <kind> [@profile] [--auto]", EXIT_USAGE)
+        raise AkError("usage: ak alias add <name> <kind> [@profile] [--ask | --auto]", EXIT_USAGE)
     name, kind = args[0], args[1]
     profile = None
     auto = False
+    ask = False
     for extra in args[2:]:
         if extra == "--auto":
             auto = True
+        elif extra == "--ask":
+            ask = True
         elif extra.startswith("@") and profile is None:
             import profiles
             normalized = profiles.normalize(extra[1:])
             profile = "@" + normalized if normalized else None
         else:
-            raise AkError("usage: ak alias add <name> <kind> [@profile] [--auto]", EXIT_USAGE)
+            raise AkError("usage: ak alias add <name> <kind> [@profile] [--ask | --auto]", EXIT_USAGE)
+    if auto and ask:
+        raise AkError("--ask and --auto contradict each other; pass one", EXIT_USAGE)
     if not _NAME.match(name):
         raise AkError("'%s' is not an alias name: 1-32 letters, digits or '_', not starting with a digit"
                       % name, EXIT_USAGE)
@@ -253,12 +265,12 @@ def cmd_add(model, state, args, env):
         raise AkError("'%s' belongs to the classic preset, which is on" % name, EXIT_USAGE)
     replaced = any(a["name"] == name for a in state["custom"])
     state["custom"] = [a for a in state["custom"] if a["name"] != name]
-    state["custom"].append({"name": name, "kind": kind, "profile": profile, "auto": auto})
+    state["custom"].append({"name": name, "kind": kind, "profile": profile, "auto": auto, "ask": ask})
     state["custom"].sort(key=lambda a: a["name"])
     save(state)
     _ensure_rc(env)
     print("%s %s -> ak %s" % ("replaced" if replaced else "added", name,
-                              " ".join(w for w in (kind, profile or "", "--auto" if auto else "") if w)))
+                              " ".join(w for w in (kind, profile or "", "--ask" if ask else "--auto" if auto else "") if w)))
     return 0
 
 
@@ -288,7 +300,7 @@ def cmd_preset(state, args, env):
     save(state)
     if on:
         _ensure_rc(env)
-        print("classic preset on: %s (each is ak <kind> --auto — autonomy on)"
+        print("classic preset on: %s (each is ak <kind>; autonomy follows your posture)"
               % " ".join(n for n, _ in CLASSIC))
     else:
         print("classic preset off (open a new shell, or: unset -f %s)" % " ".join(n for n, _ in CLASSIC))
@@ -326,5 +338,5 @@ def main(model, args, env):
         return cmd_preset(state, rest, env)
     if sub == "rc":
         return cmd_rc(rest, env)
-    raise AkError("unknown alias command '%s'. Use: list | add <name> <kind> [@profile] [--auto] | rm <name> | "
+    raise AkError("unknown alias command '%s'. Use: list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | "
                   "preset classic [--on|--off] | rc [--install|--remove|--print]" % sub, EXIT_USAGE)
