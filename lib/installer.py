@@ -164,10 +164,19 @@ def _safe_members(archive, strip):
     return out
 
 
-def _link(target, name):
+def _link(cli_name, target, name, owned_root):
+    """Link ~/.local/bin/<name> -> target. Only a missing path or a symlink
+    that already points into `owned_root` (an earlier install of this CLI)
+    is replaced; anything else is left alone and reported."""
     os.makedirs(bin_dir(), exist_ok=True)
     link = os.path.join(bin_dir(), name)
     if os.path.lexists(link):
+        current = os.path.realpath(link) if os.path.islink(link) else None
+        root = os.path.realpath(owned_root)
+        if current is None or not (current == root or current.startswith(root + os.sep)):
+            print("%s: left %s alone (it is not a link this kit made); run %s directly"
+                  % (cli_name, link, target))
+            return
         os.remove(link)
     os.symlink(target, link)
 
@@ -202,11 +211,15 @@ def _install_binary(cli_name, cli, inst, plat, tmpdir, env, allow_unverified):
     except Exception:
         shutil.rmtree(staging, ignore_errors=True)
         raise
+    previous = into + ".agentkit-old"
+    shutil.rmtree(previous, ignore_errors=True)
     if os.path.isdir(into):
-        shutil.rmtree(into)
+        os.replace(into, previous)
     os.replace(staging, into)
+    shutil.rmtree(previous, ignore_errors=True)
+    owned = os.path.dirname(into)
     for name, rel in sorted(inst.get("links", {}).items()):
-        _link(os.path.join(into, rel), name)
+        _link(cli_name, os.path.join(into, rel), name, owned)
     return True
 
 

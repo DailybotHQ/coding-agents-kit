@@ -122,14 +122,15 @@ def permissions_mode(env):
 def resolve_auto(flag_auto, flag_ask, env):
     """True when the launch adds the CLI's autonomy flag.
 
-    Order: an explicit --ask / --auto, then AGENTKIT_PERMISSIONS, then the
-    default (auto). The opt-out always wins over the default.
+    The opt-out always wins: --ask, or AGENTKIT_PERMISSIONS=ask (set by the
+    user or inherited from an `ak` that asked) — even over an explicit
+    --auto, so an agent cannot type its way out of the user's opt-out.
+    Otherwise autonomy: --auto, AGENTKIT_PERMISSIONS=auto, or the default.
     """
-    if flag_ask:
+    mode = permissions_mode(env)
+    if flag_ask or mode == "ask":
         return False
-    if flag_auto:
-        return True
-    return permissions_mode(env) == "auto"
+    return True
 
 
 class Prepared(object):

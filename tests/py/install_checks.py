@@ -177,3 +177,33 @@ ok_, out, home, npm_log = run("cline")
 check("unverified: refused without --allow-unverified", not ok_ and "--allow-unverified" in out and npm_log == "", out)
 ok_, out, home, npm_log = run("cline", allow=True)
 check("unverified: installs with --allow-unverified and says so", ok_ and "UNVERIFIED" in out and "NPM install -g" in npm_log, out)
+
+# links: a foreign ~/.local/bin/agent is left alone; the kit's own link is replaced
+home = os.path.join(SCRATCH, "home-links")
+shutil.rmtree(home, ignore_errors=True)
+os.makedirs(os.path.join(home, ".local", "bin"))
+foreign = os.path.join(home, ".local", "bin", "agent")
+with open(foreign, "w") as fh:
+    fh.write("#!/bin/sh\necho another tool\n")
+os.environ["HOME"] = home
+env = {"HOME": home, "PATH": BIN + ":/usr/bin:/bin"}
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    first = installer.install_one(model, "cursor", env, plat="linux-x64")
+check("links: a foreign ~/.local/bin/agent is left alone and reported",
+      first and not os.path.islink(foreign) and open(foreign).read().endswith("another tool\n")
+      and "left %s alone" % foreign in out.getvalue(), out.getvalue())
+link = os.path.join(home, ".local", "bin", "cursor-agent")
+os.remove(link)
+os.symlink(os.path.join(home, ".local", "share", "cursor-agent", "versions", "old", "cursor-agent"), link)
+os.makedirs(os.path.join(home, ".local", "share", "cursor-agent", "versions", "old"))
+with contextlib.redirect_stdout(io.StringIO()):
+    again = installer._install_binary("cursor", model.clis["cursor"], model.clis["cursor"]["install"], "linux-x64",
+                                      os.path.join(SCRATCH, "tmp-links"), env, False) \
+        if os.makedirs(os.path.join(SCRATCH, "tmp-links"), exist_ok=True) is None else False
+check("links: a link this kit made (into its versions directory) is replaced",
+      again and os.path.realpath(link).endswith(os.path.join(model.clis["cursor"]["install"]["version"], "cursor-agent")),
+      os.path.realpath(link))
+check("tarball: a reinstall leaves no .agentkit-old or .agentkit-new behind",
+      not any(p.endswith((".agentkit-old", ".agentkit-new"))
+              for p in os.listdir(os.path.join(home, ".local", "share", "cursor-agent", "versions"))))

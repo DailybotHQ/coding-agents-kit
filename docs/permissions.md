@@ -13,10 +13,15 @@ wins.
 | `AGENTKIT_PERMISSIONS=ask` in the environment or in `~/.config/agentkit/env` | every launch that sees it asks, nested launches included |
 | `ak <kind> --auto …` / `AGENTKIT_PERMISSIONS=auto` | explicit autonomy (the default made explicit) |
 
-Resolution order: an explicit `--ask` or `--auto` on the command, then
-`AGENTKIT_PERMISSIONS`, then the default. `--ask` with `--auto` is a usage
-error (exit 2). Any other value of `AGENTKIT_PERMISSIONS` is a usage error
-and launches nothing.
+Resolution: **the opt-out always wins.** `--ask`, or `AGENTKIT_PERMISSIONS=ask`
+(set by you or inherited from an `ak` that asked), means no flag — even when
+the command also says `--auto`, so an agent cannot type its way out of your
+opt-out. Otherwise the launch is autonomous (`--auto`,
+`AGENTKIT_PERMISSIONS=auto`, or the default). An inherited
+`AGENTKIT_PERMISSIONS=ask` also outranks `AGENTKIT_PERMISSIONS=auto` in your
+env file. `--ask` with `--auto` on one command is a usage error (exit 2).
+Any other value of `AGENTKIT_PERMISSIONS` is a usage error and launches
+nothing.
 
 ## What the default adds — the CLI's own flag, nothing else
 
@@ -44,7 +49,9 @@ after `--` or after a CLI argument they belong to the CLI.
 
 When a launch asks, `ak` passes `AGENTKIT_PERMISSIONS=ask` to the CLI it
 starts, so an agent that launches another agent (`ak run codex …` from inside
-a Claude session) asks too. When a launch is autonomous, `ak` removes
+a Claude session) asks too — even if your env file says
+`AGENTKIT_PERMISSIONS=auto` (the nested `ak` re-reads it, and the inherited
+opt-out outranks it). When a launch is autonomous, `ak` removes
 `AGENTKIT_PERMISSIONS` from the CLI's environment, and nested launches follow
 the default.
 

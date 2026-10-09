@@ -186,4 +186,6 @@ def load_env_file(env):
             value = value[1:value.index(value[0], 1)]   # quoted: up to the closing quote
         elif " #" in value:
             value = value.split(" #", 1)[0].rstrip()    # unquoted: drop a trailing comment
+        if name == "AGENTKIT_PERMISSIONS" and (env.get(name) or "").strip().lower() == "ask":
+            continue  # an inherited opt-out outranks the file (as in lib/common.sh)
         env[name] = value
