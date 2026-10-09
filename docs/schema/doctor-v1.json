@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.1.0/docs/schema/doctor-v1.json",
+  "title": "ak doctor --json (interface 1)",
+  "description": "What coding-agents-kit reports about a machine. Never contains a secret value: keys are variable names only. Consumers check `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["interface", "version", "os", "kinds", "profiles", "keys", "permissions", "aliases", "herdr_hooks"],
+  "properties": {
+    "interface": { "const": 1 },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.]+)?$" },
+    "os": { "enum": ["macos", "linux", "windows", "unknown"] },
+    "kinds": {
+      "type": "object",
+      "description": "One entry per kind in providers.toml.",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["installed", "version", "logged_in"],
+        "properties": {
+          "installed": { "type": "boolean" },
+          "version": { "type": ["string", "null"] },
+          "logged_in": { "type": ["boolean", "null"], "description": "@default only. null = cannot tell from files. Provider kinds: their key variable is set." },
+          "path": { "type": ["string", "null"] },
+          "cli": { "type": "string" },
+          "provider": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "description": "Named profiles per CLI (@default is implicit).",
+      "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9._-]{1,32}$" } }
+    },
+    "keys": {
+      "type": "array",
+      "description": "Names of provider key variables that are set (base and per-profile). Never values.",
+      "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }
+    },
+    "permissions": { "enum": ["ask", "auto"] },
+    "aliases": {
+      "type": "object",
+      "required": ["classic", "custom"],
+      "properties": {
+        "classic": { "type": "boolean" },
+        "custom": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "herdr_hooks": {
+      "type": "object",
+      "description": "Per CLI that Herdr integrates, per profile (@default included): whether Herdr's state hook files are present in that home.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "enum": ["present", "absent"] }
+      }
+    },
+    "env_file": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "mode": { "type": ["string", "null"] }
+      }
+    },
+    "problems": { "type": "array", "items": { "type": "string" } }
+  }
+}
