@@ -109,6 +109,7 @@ register = "home:hooks.json"
 [clis.cursor]
 name = "Cursor Agent"
 executable = "agent"
+resolver = "cursor"
 herdr_kind = "cursor"
 isolation = "cursor-home"
 auto = ["--force"]

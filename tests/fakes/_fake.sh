@@ -17,6 +17,7 @@
 #   FAKE_SLEEP=<s>     sleep before answering (timeouts, cancellation)
 #   FAKE_CHILD_PID=<f> start a grandchild `sleep`, write its pid to <f>
 #   FAKE_STDERR=<text> written to stderr (the CLI's transcript)
+#   FAKE_ENV_NAMES=1   also print ENVNAME=<name> for every variable (no values)
 #   FAKE_SHOW_SECRETS=1 print secret-carrying variables' values (key-routing
 #                      tests only; the security scope never sets it)
 #   FAKE_CLINE_HISTORY=<file> what `cline history --json` prints
@@ -42,7 +43,12 @@ esac
 
 fake_record() {
   echo "CLI=${fake_name}"
+  echo "PID=$$"
   echo "CWD=$(pwd)"
+  if [ "${FAKE_ENV_NAMES:-}" = 1 ]; then
+    # Names only, never values: proves which variables reached the CLI.
+    env | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/ENVNAME=\1/p'
+  fi
   for var in HOME CLAUDE_CONFIG_DIR CODEX_HOME AGENT_CLI_CREDENTIAL_STORE CURSOR_CONFIG_DIR \
       XDG_CONFIG_HOME XDG_DATA_HOME XDG_STATE_HOME XDG_CACHE_HOME PI_CODING_AGENT_DIR \
       CLINE_DIR GROK_HOME ANTHROPIC_BASE_URL API_TIMEOUT_MS ANTHROPIC_DEFAULT_OPUS_MODEL \
