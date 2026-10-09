@@ -215,7 +215,12 @@ def _install_binary(cli_name, cli, inst, plat, tmpdir, env, allow_unverified):
     shutil.rmtree(previous, ignore_errors=True)
     if os.path.isdir(into):
         os.replace(into, previous)
-    os.replace(staging, into)
+    try:
+        os.replace(staging, into)
+    except OSError:
+        if os.path.isdir(previous) and not os.path.exists(into):
+            os.replace(previous, into)   # put the previous version back
+        raise
     shutil.rmtree(previous, ignore_errors=True)
     owned = os.path.dirname(into)
     for name, rel in sorted(inst.get("links", {}).items()):

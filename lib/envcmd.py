@@ -107,8 +107,17 @@ def _plain_value(raw):
         return inner if "'" not in inner else None
     if len(value) >= 2 and value[0] == value[-1] == '"':
         inner = value[1:-1]
-        return inner if not any(c in inner for c in '"$`\\!') else None
+        # no ' either: the value is re-written single-quoted, where a ' would end it
+        return inner if not any(c in inner for c in '"$`\\!\'') else None
     return value if value and all(c in _PLAIN for c in value) else None
+
+
+def _quoted(value):
+    """`value` as one single-quoted shell word (it never contains a quote by
+    construction; this is the second line of defence)."""
+    if "'" in value or "\n" in value or "\r" in value:
+        raise AkError("internal: refusing to write a value that is not plain data")
+    return "'%s'" % value
 
 
 def import_file(source, env):
@@ -150,14 +159,15 @@ def import_file(source, env):
         else:
             present.add(name)
             imported.append(name)
-            out.append("%s='%s'" % (name, _plain_value(raw)))
+            out.append("%s=%s" % (name, _quoted(_plain_value(raw))))
     if out:
         directory = os.path.dirname(dest)
         if not os.path.isdir(directory):
             os.makedirs(directory, 0o700)
         fd = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
         with os.fdopen(fd, "a") as fh:
-            fh.write("\n# imported from %s by `ak env import` on %s\n" % (source, datetime.date.today().isoformat()))
+            label = "".join(c if c.isprintable() else "?" for c in source)
+            fh.write("\n# imported from %s by `ak env import` on %s\n" % (label, datetime.date.today().isoformat()))
             fh.write("\n".join(out) + "\n")
         if os.name != "nt":
             os.chmod(dest, 0o600)

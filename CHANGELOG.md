@@ -12,6 +12,15 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`ak env import` could still import shell code** (a fix to the 0.2.1
+  hardening): a single quote inside a double-quoted value ended the
+  re-quoted word, so `Q="a'; touch x; '"` ran when the env file was next
+  sourced. Values with a quote are refused in every form, a second guard
+  refuses to write one, and the source path in the header comment is
+  printable-only. A failed tarball swap now puts the previous version back.
+
 ## [0.2.1] - 2026-10-09
 
 Interface stays **1**. Security fixes from the v0.2.0 review: the opt-out always wins.

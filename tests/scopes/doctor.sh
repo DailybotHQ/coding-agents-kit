@@ -156,7 +156,8 @@ scope_doctor() {
   box_env_file XAI_API_KEY=planted-kept-1
   printf '%s\n' '# legacy file' 'export ZAI_CODING_API_KEY="planted-import-2"' 'XAI_API_KEY=planted-other-3' \
     'EMPTY=' 'if true; then :; fi' 'OPENAI_API_KEY_WORK=planted-import-4' \
-    'RUN_A=$(touch planted-ran-a)' 'RUN_B=ok; touch planted-ran-b' 'RUN_C="`touch planted-ran-c`"' > "${BOX}/legacy"
+    'RUN_A=$(touch planted-ran-a)' 'RUN_B=ok; touch planted-ran-b' 'RUN_C="`touch planted-ran-c`"' \
+    "RUN_D=\"a'; touch planted-ran-d; '\"" > "${BOX}/legacy"
   chmod 600 "${BOX}/legacy"
   out="$(ak -- env import "${BOX}/legacy")"; status=$?
   expect_eq "ak env import succeeds" "${status}" 0
@@ -171,6 +172,7 @@ scope_doctor() {
   expect_has "a command substitution is refused" "${out}" "skipped RUN_A: the value is shell code"
   expect_has "a value with ; is refused" "${out}" "skipped RUN_B: the value is shell code"
   expect_has "a value with backquotes is refused" "${out}" "skipped RUN_C: the value is shell code"
+  expect_has "a single quote inside a double-quoted value is refused (it would end the re-quoted word)" "${out}" "skipped RUN_D: the value is shell code"
   check "no shell code reached the env file" bash -c "! grep -q 'RUN_' '${BOX}/home/.config/agentkit/env'"
   ak -- doctor >/dev/null
   check "loading the env file afterwards ran nothing" bash -c "! ls '${BOX}/work' '${BOX}/home' | grep -q planted-ran"
