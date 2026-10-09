@@ -1,40 +1,57 @@
 # coding-agents-kit
 
-Install and launch every terminal coding agent with one command surface: `ak <kind> [@profile]`. Canonical kinds (claude, codex, cursor, opencode, pi, cline, grok) plus provider variants (glm, azure, xai), multiple accounts per CLI through profiles, the same session flags everywhere, headless runs (`ak run`) and a doctor. Pass-through by default; autonomy is an explicit opt-in. API keys never land in config files.
+One command surface for every terminal coding agent: `ak <kind> [@profile]`.
 
-> **v0.1.1 — interface 1.** Part of the [DeepWorkPlan](https://deepworkplan.com) ecosystem, and fully usable without it.
+[![CI](https://github.com/DailybotHQ/coding-agents-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DailybotHQ/coding-agents-kit/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/DailybotHQ/coding-agents-kit?sort=semver)](https://github.com/DailybotHQ/coding-agents-kit/releases)
+[![License: MIT](https://img.shields.io/github/license/DailybotHQ/coding-agents-kit)](LICENSE)
 
-## Why
+## What it is
 
 Every coding-agent CLI has its own flags for continuing a session, its own
 way to keep a second account apart, its own headless mode and its own
-"skip all permission prompts" switch. `ak` puts one grammar over all of
-them, keeps accounts and provider keys separate, and never turns autonomy
-on behind your back.
+"skip all permission prompts" switch. `ak` (also `agentkit`) puts one
+grammar over all of them:
+
+- **Kinds** — `claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`,
+  `grok`, plus provider routes (`claude-glm`, `codex-azure`,
+  `opencode-xai`, …). Kinds are data in [`providers.toml`](providers.toml).
+- **Profiles** — several accounts per CLI (`ak claude @work`), each with its
+  own login, sessions and provider keys.
+- **The same session flags everywhere** — `-c`, `-r [id]`, `-l`, mapped to
+  each CLI's own form.
+- **Pass-through by default** — no permission-bypass flag unless you opt in
+  with `--auto`.
+- **Interface 1 for other tools** — `ak run` (headless, one JSON result),
+  `ak env` (a profile's environment), `ak doctor --json`.
+- **Keys stay in one file** — provider keys never land in a config file.
+
+Requirements: bash (macOS, Linux, WSL) or PowerShell (Windows), and
+python3 ≥ 3.9. Nothing else.
 
 ## Install
 
 ```bash
 git clone --branch v0.1.1 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
-ak doctor            # what is installed and configured
-ak install codex     # a missing CLI, from its vendor, pinned
 ```
 
-Windows: `.\coding-agents-kit\install.ps1`. Needs bash (macOS/Linux) and
-python3 ≥ 3.9; nothing else. `--no-rc` for scripts and containers. Details:
-[install](docs/install.md).
+Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
+`./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
+[docs/install.md](docs/install.md).
 
-## Usage
+## Quickstart
 
 ```bash
+ak doctor                  # what is installed and configured
+ak install codex           # a missing CLI, from its vendor, pinned
 ak                         # list the kinds and which CLIs are installed
 ak claude                  # Claude Code, exactly as `claude` (no flags added)
 ak codex -c                # continue the newest Codex session (codex resume --last)
-ak cursor -r <id>          # resume a Cursor chat by id
-ak claude-glm              # Claude Code routed to Z.AI GLM (key from the env file)
 ak claude @work -c         # a second Claude account, continue its newest session
+ak claude-glm              # Claude Code routed to Z.AI GLM (key from ~/.config/agentkit/env)
 ak claude --auto           # opt in to the CLI's own autonomy flag for this launch
 ak claude -- @src/app.ts   # `--` sends everything after it to the CLI untouched
+ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the failing test"
 ```
 
 The grammar is the same for every kind:
@@ -50,45 +67,40 @@ ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [
 | `-r` | `--resume` (picker) | `resume --all` | `--resume` | refused: run `opencode session list` | `--resume` | `history` | `--resume` |
 | `-l` | (passed through) | `resume --last` | `ls` | (passed through) | (passed through) | (passed through) | (passed through) |
 
-Only the head of the arguments belongs to `ak`: the first token it does not
-recognise, and everything after it, reaches the CLI unchanged. `ak` replaces
-itself with the CLI (`exec`), so Herdr and your terminal see the agent itself.
+Only the head of the arguments belongs to `ak`; the first token it does not
+recognise, and everything after it, reaches the CLI unchanged. `ak`
+replaces itself with the CLI (`exec`), so Herdr and your terminal see the
+agent itself.
 
-More: [kinds and providers](docs/kinds.md) · [profiles](docs/profiles.md) · [permissions](docs/permissions.md) · [`ak run`](docs/run.md) · [`ak doctor` / `ak env`](docs/doctor.md) · [install and aliases](docs/install.md) · [testing](docs/TESTING_GUIDE.md).
+## Documentation
 
-## Headless, env and doctor (interface 1)
+- [Kinds and providers](docs/kinds.md) — the data model, provider keys, adding a kind
+- [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
+- [Permissions](docs/permissions.md) — pass-through, `--auto`, the `classic` aliases
+- [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
+- [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
+- [Install, `ak install`, aliases](docs/install.md)
+- [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
+- For agents: `ak --skill` prints the bundled skill; install it with
+  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.1.1 --skill agentkit`.
 
-```bash
-ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the failing test"
-ak env claude @work        # KEY=VALUE lines for another launcher (Herdr), never a secret
-ak doctor --json           # {"interface": 1, "kinds": …, "profiles": …, "keys": [names only], …}
-```
+## Security
 
-`ak run` exits 0 success · 1 agent failure · 2 usage · 3 not installed / not
-logged in / key or profile missing · 4 timeout · 5 cancelled; with
-`--output-format json` stdout is exactly one JSON object. See
-[`ak run`](docs/run.md) and [`ak doctor` / `ak env`](docs/doctor.md).
+Pass-through by default, keys only in `~/.config/agentkit/env` (mode 600),
+no network except `ak install` fetching a pinned vendor installer you asked
+for. Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
+the threat model is [docs/SECURITY.md](docs/SECURITY.md).
 
-## Security model
+## Contributing
 
-- **Pass-through by default.** No permission-bypass flag is ever added
-  unless you pass `--auto` or set `AGENTKIT_PERMISSIONS=auto`; agents started
-  by an agent do not inherit it. The `classic` aliases (`claudex`, …) ship off.
-- **Keys stay where you put them:** `~/.config/agentkit/env` (mode 600; a
-  file others can write is refused). The kit prints and writes variable
-  names only; provider configs reference keys (`env_key`, `{env:KEY}`,
-  `"$KEY"`). Cline's key on its command line is the one documented exception.
-- **No surprises on your machine:** one guarded rc block (`--no-rc` to
-  skip), no network except `ak install` fetching a pinned vendor installer
-  you asked for, never piped into a shell.
-
-Full threat model: [SECURITY](docs/SECURITY.md).
-
-## For agents
-
-`ak --skill` prints the bundled skill; install it into an agent with
-`npx --yes skills add DailybotHQ/coding-agents-kit@v0.1.1 --skill agentkit`.
+Contributions are welcome: [CONTRIBUTING.md](CONTRIBUTING.md) (setup, the
+test gate, commit and PR flow) and [AGENTS.md](AGENTS.md) for coding agents.
+Please follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## License
 
 MIT — see [LICENSE](LICENSE). Credits in [CREDITS.md](CREDITS.md).
+
+---
+
+Part of the [DeepWorkPlan](https://deepworkplan.com) ecosystem — works on its own.

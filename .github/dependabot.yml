@@ -1,0 +1,10 @@
+# The kit has no package dependencies (python3 standard library and bash),
+# so the only ecosystem to watch is the pinned GitHub Actions.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci

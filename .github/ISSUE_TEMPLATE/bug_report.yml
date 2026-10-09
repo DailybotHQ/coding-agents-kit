@@ -1,0 +1,44 @@
+name: Bug report
+description: Something in ak / agentkit does not work as documented.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report. **Security vulnerabilities go to SECURITY.md (private reporting), never here.**
+        Never paste an API key or token — refer to variables by name.
+  - type: input
+    id: version
+    attributes:
+      label: ak version
+      description: Output of `ak --version`.
+      placeholder: agentkit 0.1.1 (interface 1)
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [macOS, Linux, WSL, Windows (PowerShell), Windows (Git Bash), Other]
+    validations:
+      required: true
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact `ak …` command (and kind/CLI involved).
+      placeholder: ak codex @work -c
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: ak doctor --json
+      description: Optional. It contains key *names* only, never values — still, review it before pasting.
+      render: json

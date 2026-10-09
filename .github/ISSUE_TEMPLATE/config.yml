@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/DailybotHQ/coding-agents-kit/security/advisories/new
+    about: Never in a public issue — see SECURITY.md.
+  - name: Documentation
+    url: https://github.com/DailybotHQ/coding-agents-kit/tree/main/docs
+    about: Kinds, profiles, permissions, ak run, doctor and install.

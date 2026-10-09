@@ -1,0 +1,23 @@
+name: Feature request
+description: A new kind, provider, verb or behaviour.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What are you trying to do, and what gets in the way today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposal
+      description: The behaviour you would like. A new kind is usually a `providers.toml` entry — name the CLI, its flags and docs.
+    validations:
+      required: true
+  - type: textarea
+    id: interface
+    attributes:
+      label: Impact on interface 1
+      description: Does this change `ak doctor --json`, `ak env` or `ak run` output? (Breaking changes bump the interface.)

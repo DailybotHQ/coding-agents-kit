@@ -40,6 +40,7 @@ when nothing failed.
 | anything that prints, logs or writes | `security` |
 | the frozen interface (grammar, env prefix, outputs) | `contract` |
 | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow`, any tracked file | `hygiene` (and the CI job `public hygiene`: `bash scripts/check-public-hygiene.sh`) |
+| repository meta (README sections, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `.github/`, release workflow) | `oss` |
 | a shared module or several surfaces | the full suite |
 
 `live` runs a real CLI and is never part of the default run: it reports
