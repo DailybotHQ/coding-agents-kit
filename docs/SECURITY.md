@@ -1,9 +1,14 @@
 # Security
 
 coding-agents-kit starts programs that can read and change your files and
-run commands. Its job is to add **no risk of its own**: no secret value
-leaves the place you put it, no autonomy is granted unless you ask for it,
-and nothing is installed or written outside the paths documented here.
+run commands. **Autonomy is the default:** every launch adds the CLI's own
+autonomy flag, so an agent runs any command your user can run without asking
+first. Autonomy is meant for disposable or sandboxed environments
+(containers, virtual machines, throwaway worktrees). On a host you care
+about, opt out with `--ask` on a launch or `AGENTKIT_PERMISSIONS=ask` in
+`~/.config/agentkit/env`; the opt-out always wins. Beyond that choice, the
+kit adds **no risk of its own**: no secret value leaves the place you put
+it, and nothing is installed or written outside the paths documented here.
 
 Report a vulnerability privately through GitHub's security advisories for
 `DailybotHQ/coding-agents-kit` (Security → Report a vulnerability), not in a
@@ -15,7 +20,7 @@ public issue.
 | --- | --- | --- |
 | Provider keys (`*_API_KEY`, `*_TOKEN`) | printed, logged, written to a config file, committed, passed to the wrong CLI or account | Keys live only in the env file (mode 600) and in the process environment of the one CLI that needs them. Config writers store references (`env_key`, `{env:KEY}`, `"$KEY"`), never values. `ak env`, `ak doctor`, errors and `ak run` envelopes print variable **names** only. A named profile reads only its own `<KEY>_<SUFFIX>` and never falls back to the default key; the per-profile variables are removed from the CLI's environment. The `security` test scope plants values and searches every output and every written file. |
 | The env file | another local user writes shell code into it (it is sourced) | `ak` refuses to load a group- or world-writable env file (exit 70) and warns when it is readable by others. The installer creates it mode 600 in a 700 directory and never overwrites it. On Windows it is created readable by the current user only and read as plain `KEY=value` lines (never executed). |
-| Your files and machine | an agent acting without asking | **Pass-through by default:** no permission-bypass flag is ever added unless you pass `--auto` or set `AGENTKIT_PERMISSIONS=auto`; an invalid value refuses to launch. The flags exist only as data. Autonomy is not inherited from a shell or a single command: `AGENTKIT_PERMISSIONS` is removed from the CLI's environment, so agents started by an agent ask again — unless the user's own env file sets `AGENTKIT_PERMISSIONS=auto`, which is then the user's global posture and applies to every launch, nested ones included. See [permissions](permissions.md). |
+| Your files and machine | an agent acting without asking | **This is the accepted default, not a control:** autonomy is on, because the kit is meant for disposable or sandboxed environments. The controls are the opt-out and its reach: `--ask` or `AGENTKIT_PERMISSIONS=ask` suppresses the flag on every launch path (interactive, `ak run`, profiles, presets, aliases), and the opt-out is passed on to nested launches, so agents started by an opted-out agent ask too. An invalid value refuses to launch. The flags exist only as data in `providers.toml`; `ak doctor` warns when autonomy is on outside a container. See [permissions](permissions.md). |
 | Accounts | one account's sessions or tokens used by another | Profiles are separate directories (mode 700) per CLI and name; names are validated (no path separators, no `..`), `profiles rm` refuses symlinks and anything outside the profiles root. |
 | Supply chain | a tampered or floating installer | Kit installs are a pinned git tag. `ak install` uses each vendor's official channel over HTTPS only, pinned to an exact version where the vendor allows it (npm packages, Claude Code's script argument); a vendor script is downloaded to a private temporary file and then run — never piped from the network into a shell. Cursor's and Grok's installers cannot be pinned, which the data states. CI actions are pinned by commit SHA. |
 | Shell rc files | silent or repeated edits | One guarded block, replaced in place, removed byte-exactly; a symlinked rc is edited where it points, never replaced. An install made with `--no-rc` (remembered) or `AGENTKIT_NO_RC=1` keeps `ak alias` away from rc files too; only an explicit `ak alias rc --install` writes one. |

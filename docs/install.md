@@ -72,7 +72,7 @@ arguments, which is fine for what you type but unsafe for text that comes
 from elsewhere (a prompt from another agent). Two other differences from
 macOS/Linux: the env file is read as plain `KEY=value`
 lines (no shell code), and `ak alias` targets POSIX shells only — use
-`ak <kind> --auto` instead of the `classic` aliases. Profiles of Cursor and
+`ak <kind>` instead of the `classic` aliases. Profiles of Cursor and
 OpenCode link your other dotfiles into the profile home with symlinks,
 which Windows allows only with Developer Mode or elevated rights; without
 them those links are skipped.
@@ -110,7 +110,7 @@ missing).
 
 ```bash
 ak alias add w claude @work          # w  -> ak claude @work
-ak alias add yolo codex --auto       # yolo -> ak codex --auto
+ak alias add careful codex --ask     # careful -> ak codex --ask (always asks)
 ak alias rm w
 ak alias                             # list
 ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx
@@ -122,6 +122,7 @@ by absolute path. Names are 1–32 letters, digits or `_` (portable to every
 POSIX shell) and may not shadow `ak`, `agentkit` or a CLI ak launches.
 
 The **`classic` preset** recreates the predecessor kit's wrapper names as
-`ak <kind> --auto` — autonomy on — for muscle memory and existing docs. It
-ships **off**; turning it on is your explicit choice (see
+plain shortcuts for `ak <kind>`, for muscle memory and existing docs. They
+follow your posture: autonomy by default, or the opt-out
+(`AGENTKIT_PERMISSIONS=ask`). It ships **off** (see
 [permissions](permissions.md)).

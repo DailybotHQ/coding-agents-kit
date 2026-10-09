@@ -1,7 +1,7 @@
 # `ak run` — one prompt, headless
 
 ```
-ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--auto] -- "<prompt>"
+ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
 ```
 
 Runs one prompt non-interactively in `--cwd` (default: the current
@@ -13,9 +13,11 @@ can start any agent the same way and read one result.
   prompt from stdin.
 - `@profile` (or `AGENTKIT_PROFILE`) must already exist: `ak run` never asks
   questions and never creates a profile.
-- `--auto` (or `AGENTKIT_PERMISSIONS=auto`) adds the CLI's autonomy flag for
-  this run only. Without it the CLI runs in its default posture, which for
-  most CLIs means tools that need approval are refused rather than run.
+- Like every launch, a run adds the CLI's autonomy flag by default.
+  `--ask` (or `AGENTKIT_PERMISSIONS=ask`) opts out for this run: the CLI runs
+  in its own default posture, which for most headless CLIs means tools that
+  need approval are refused rather than run. `--ask` with `--auto` is a usage
+  error.
 - `--timeout SECONDS` kills the whole process tree when it expires (`0` =
   none). Cline also receives it as its own `-t`.
 

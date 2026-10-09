@@ -30,7 +30,7 @@ when nothing failed.
 | `providers.toml`, `lib/kinds.py`, `lib/writers.py`, `lib/tomlmini.py` | `kinds`, `dispatch`, `permissions` |
 | `bin/ak`, `bin/agentkit`, `lib/common.sh`, `lib/ak.py`, `lib/launch.py`, `lib/common.py` | `dispatch`, `permissions`, `profiles` |
 | `lib/profiles.py` | `profiles` (+ `doctor`, `run`) |
-| permission posture (`--auto`, `AGENTKIT_PERMISSIONS`) | `permissions` |
+| permission posture (`--ask`, `--auto`, `AGENTKIT_PERMISSIONS`, `box_posture`) | `permissions` |
 | `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
 | `ak run` (`lib/run.py`) | `run` |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`) | `install` |
@@ -125,3 +125,7 @@ Add it to the scope file in `tests/scopes/<scope>.sh` (a function named
 `scope_<scope>`), using the helpers in `tests/lib.sh`: `box_new` for an
 isolated world, `ak` / `ak_split` to run the kit inside it, and
 `check` / `expect_eq` / `expect_line` / `expect_has` / `expect_lacks`.
+Every launch adds the CLI's autonomy flag by default, so a scope that pins
+exact argv grammar calls `box_posture ask` after `box_new` (the box then runs
+every command with `AGENTKIT_PERMISSIONS=ask`); the `permissions` scope owns
+the default and the opt-out.

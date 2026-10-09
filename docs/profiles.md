@@ -16,10 +16,10 @@ ak claude-glm @2       # Z.AI through Claude Code, with ZAI_CODING_API_KEY_2
 ## Syntax
 
 ```
-ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
 ```
 
-- **Only the first argument after the kind (ignoring `--auto`) can be a
+- **Only the first argument after the kind (ignoring `--ask` and `--auto`) can be a
   profile, and only when it starts with `@`.** `@2`, `@work`, `@client-x`.
   Anything else behaves exactly as the CLI expects: `ak claude 2` sends the
   prompt "2", `ak claude mcp list` runs that subcommand.

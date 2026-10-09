@@ -60,7 +60,10 @@ check("E005: no iex / Invoke-Expression", not re.search(r"\b(iex|Invoke-Expressi
 model = kinds.load()
 bypass = sorted(set(f for c in model.clis.values() for f in c["auto"]) - {"--auto"})
 spelled = [f for f in bypass if re.search(re.escape(f) + r"(?![A-Za-z-])", text)]
-check("E006: no CLI autonomy flag is spelled (only ak's own --auto)", not spelled, str(spelled))
+check("E006: no CLI autonomy flag is spelled (they live only in providers.toml)", not spelled, str(spelled))
+check("E006: the skill documents the opt-out (--ask and AGENTKIT_PERMISSIONS=ask)",
+      "--ask" in text and "AGENTKIT_PERMISSIONS=ask" in text)
+check("E006: the skill never tells an agent to override the opt-out", "override the user's opt-out" in text)
 for line in re.findall(r"git clone[^\n`]*", text):
     check("W012: git clone pinned to a tag (%s)" % line[:60], "--branch v" in line, line)
 for line in re.findall(r"skills add [^\s`]+", text):

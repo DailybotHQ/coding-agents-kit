@@ -32,8 +32,10 @@ Adding a kind is a data entry in `providers.toml` plus a test — see
   variables by name. Test fixtures that look like secrets must be visibly
   fake (`fake`, `test`, `planted`, `example`) and listed in
   `.public-hygiene-allow` with a reason.
-- Never add a permission-bypass flag outside `providers.toml`'s `auto` field,
-  and never apply it by default.
+- Autonomy flags live only in `providers.toml`'s `auto` field. `ak` applies
+  them by default, and the opt-out (`--ask`, `AGENTKIT_PERMISSIONS=ask`) must
+  suppress them on every launch path: interactive, `ak run`, profiles,
+  presets, aliases and nested launches.
 - No fetch-piped-to-shell lines; pin every external tool and action by
   version (actions by commit SHA).
 - No private context in a public repository: no personal paths, internal
