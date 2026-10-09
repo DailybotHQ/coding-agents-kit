@@ -33,7 +33,7 @@ python3 ≥ 3.9. Nothing else.
 ## Install
 
 ```bash
-git clone --branch v0.2.2 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
@@ -83,7 +83,7 @@ agent itself.
 - [Install, `ak install`, aliases](docs/install.md)
 - [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
 - For agents: `ak --skill` prints the bundled skill; install it with
-  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.2.2 --skill agentkit`.
+  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.3.0 --skill agentkit`.
 
 ## Security
 

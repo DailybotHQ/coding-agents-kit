@@ -12,6 +12,10 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-09
+
+Interface stays **1**. The `providers` alias preset.
+
 ### Added
 
 - **`providers` alias preset** (`ak alias preset providers --on`): one
@@ -180,7 +184,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.2.2...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.1
 [0.2.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.0
