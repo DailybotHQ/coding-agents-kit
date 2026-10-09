@@ -39,9 +39,12 @@ scope_oss() {
 
   # Agent entry point and ignore rules.
   expect_eq "CLAUDE.md is a symlink to AGENTS.md" "$(readlink "${ROOT}/CLAUDE.md")" "AGENTS.md"
-  for w in '.dwp/' 'tmp/' '.env' '.env.*' '!.env.example' '.DS_Store'; do
+  for w in '.dwp/*' '!.dwp/config.json' 'tmp/' '.env' '.env.*' '!.env.example' '.DS_Store'; do
     check ".gitignore has ${w}" grep -qxF -- "${w}" "${ROOT}/.gitignore"
   done
+  # Plans stay ignored; only the DeepWorkPlan addon registry is shared.
+  check ".dwp/ plans are ignored" git -C "${ROOT}" check-ignore -q --no-index .dwp/plans/x
+  check "the DeepWorkPlan addon registry is not ignored" bash -c "! git -C '${ROOT}' check-ignore -q --no-index .dwp/config.json"
 
   # .github.
   check "issue config disables blank issues and routes security privately" bash -c "grep -q 'blank_issues_enabled: false' '${ROOT}/.github/ISSUE_TEMPLATE/config.yml' && grep -q 'security/advisories/new' '${ROOT}/.github/ISSUE_TEMPLATE/config.yml'"
