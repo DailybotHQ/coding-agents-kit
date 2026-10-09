@@ -1,11 +1,14 @@
-"""`ak <kind> [@profile] [--auto] [-c | -r [id] | -l] [--] [cli args…]`.
+"""`ak <kind> [@profile] [--ask | --auto] [-c | -r [id] | -l] [--] [cli args…]`.
 
 The kit reads only the head of the arguments; everything after the first
 token it does not own (or after `--`) reaches the CLI untouched:
 
-  * `@name` is a profile only as the first non-`--auto` argument after the
-    kind (AGENTKIT_PROFILE is the fallback; a positional profile wins);
-  * `--auto` (anywhere in the head) adds the CLI's own autonomy flag;
+  * `@name` is a profile only as the first argument after the kind that is
+    not `--ask`/`--auto` (AGENTKIT_PROFILE is the fallback; a positional
+    profile wins);
+  * autonomy is the default: every launch adds the CLI's own autonomy flag
+    (providers.toml). `--ask` (anywhere in the head) or
+    AGENTKIT_PERMISSIONS=ask opts out; `--auto` is accepted and explicit;
   * one session flag: -c/--continue, -r/--resume [id], and -l/--last where
     the CLI defines it (Codex: continue; Cursor: list) — mapped per CLI
     from providers.toml;
@@ -35,6 +38,7 @@ class Head(object):
         self.profile_token = None
         self.profile_from_env = False
         self.auto = False
+        self.ask = False
         self.session = None      # continue | resume | pick | list
         self.session_id = None
         self.passthrough = False
@@ -53,8 +57,11 @@ def parse_head(cli, args, env):
             head.passthrough = True
             i += 1
             break
-        if tok == "--auto":
-            head.auto = True
+        if tok in ("--auto", "--ask"):
+            if tok == "--auto":
+                head.auto = True
+            else:
+                head.ask = True
             i += 1
             continue
         if tok.startswith("@") and not seen_non_auto and head.profile_token is None:
@@ -83,6 +90,8 @@ def parse_head(cli, args, env):
             continue
         break
     head.rest = list(args[i:])
+    if head.auto and head.ask:
+        raise AkError("--ask and --auto contradict each other; pass one", EXIT_USAGE)
     if head.profile_token is None and env.get("AGENTKIT_PROFILE"):
         head.profile_token = env["AGENTKIT_PROFILE"]
         if not head.profile_token.startswith("@"):
@@ -103,10 +112,24 @@ def profile_name(head):
 
 
 def permissions_mode(env):
-    value = (env.get("AGENTKIT_PERMISSIONS") or "ask").strip().lower()
+    """The environment's posture: AGENTKIT_PERMISSIONS, else the default auto."""
+    value = (env.get("AGENTKIT_PERMISSIONS") or "auto").strip().lower()
     if value not in ("ask", "auto"):
         raise AkError("AGENTKIT_PERMISSIONS must be 'ask' or 'auto' (got '%s')" % value, EXIT_USAGE)
     return value
+
+
+def resolve_auto(flag_auto, flag_ask, env):
+    """True when the launch adds the CLI's autonomy flag.
+
+    Order: an explicit --ask / --auto, then AGENTKIT_PERMISSIONS, then the
+    default (auto). The opt-out always wins over the default.
+    """
+    if flag_ask:
+        return False
+    if flag_auto:
+        return True
+    return permissions_mode(env) == "auto"
 
 
 class Prepared(object):
@@ -152,7 +175,7 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
         if key_error:
             raise key_error
     profiles.activate(kind.cli_name, kind.cli, name, directory, env)
-    auto = head.auto or permissions_mode(env) == "auto"
+    auto = resolve_auto(head.auto, head.ask, env)
     ctx = kinds.Context(kind, env, base_env.get("HOME") or common.home(), profile_dir=directory,
                         profile_label=profiles.label(name), allow_secret=(purpose != "print"))
     return Prepared(kind, exe, env, name, directory, ctx, auto)
@@ -168,10 +191,17 @@ def finish_env(model, prep):
     provider_env, _ = kinds.provider_env(prep.kind, prep.ctx, include_secret=True)
     prep.env.update(provider_env)
     profiles.strip_profile_keys(model, prep.env)
-    # Autonomy is decided per launch and never inherited: a nested `ak` (a
-    # sub-agent started by this agent) asks again unless it is told --auto
-    # or reads AGENTKIT_PERMISSIONS=auto from the user's own env file.
-    prep.env.pop("AGENTKIT_PERMISSIONS", None)
+    propagate_posture(prep.env, prep.auto)
+
+
+def propagate_posture(env, auto):
+    """The opt-out is inherited, autonomy is not exported: a nested `ak` (a
+    sub-agent started by this agent) asks too when this launch asked, and
+    otherwise falls back to the default."""
+    if auto:
+        env.pop("AGENTKIT_PERMISSIONS", None)
+    else:
+        env["AGENTKIT_PERMISSIONS"] = "ask"
 
 
 def cline_latest_session(prep):

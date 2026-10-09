@@ -1,11 +1,11 @@
 """ak / agentkit — the python core behind bin/ak.
 
-    ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--auto] -- "<prompt>"
+    ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
     ak env <kind> [@profile]
     ak doctor [--json]
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
-    ak alias [list | add <name> <kind> [@profile] [--auto] | rm <name> | preset classic [--on|--off]]
+    ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic [--on|--off]]
     ak install [<cli>…] [--all]
     ak --skill | --version | --help
 """
@@ -20,18 +20,19 @@ import kinds  # noqa: E402
 from common import AkError  # noqa: E402
 
 USAGE = """usage:
-  ak <kind> [@profile] [--auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--auto] -- "<prompt>"
+  ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
   ak env <kind> [@profile]
   ak doctor [--json]
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
-  ak alias [list | add <name> <kind> [@profile] [--auto] | rm <name> | preset classic [--on|--off]]
+  ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic [--on|--off]]
   ak install [<cli>…] [--all]
   ak --skill | --version | --help
 
 Kinds: {kinds}
-Pass-through by default: ak adds no permission-bypass flag unless you pass
---auto or set AGENTKIT_PERMISSIONS=auto. Docs: {root}/docs/
+Autonomy by default: every launch adds the CLI's own autonomy flag. Opt out
+with --ask or AGENTKIT_PERMISSIONS=ask (meant for hosts; autonomy is meant for
+disposable or sandboxed environments). Docs: {root}/docs/
 """
 
 

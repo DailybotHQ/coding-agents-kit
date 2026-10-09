@@ -59,7 +59,7 @@ scope_contract() {
   expect_eq "§2.1 grammar: ak install <cli> (installed: skip)" "${status}" 0
 
   # §2.1 profiles: only a first @ after the kind; @default/@1 = own home; names.
-  out="$(ak -- claude x @work)"
+  out="$(ak -- claude --ask x @work)"
   expect_eq "§2.1 only a first argument starting with @ is a profile" "$(argv_of "${out}")" "x|@work"
   for k in @default @1; do
     out="$(ak -- grok "${k}")"
@@ -82,9 +82,13 @@ scope_contract() {
   ak_split -- codex-xai @nokey; status=$?
   expect_has "§2.1 a missing key is an error naming the variable, never a fallback" "${status}:$(cat "${BOX}/err")" "3:ak: XAI_API_KEY_NOKEY is not set"
 
-  # §2.1 / §5 / §9 permissions: pass-through; --auto / AGENTKIT_PERMISSIONS=auto.
+  # §2.1 / §5 / §9 permissions: autonomy by default; --ask / AGENTKIT_PERMISSIONS=ask opt out.
   out="$(ak -- claude)"
-  expect_eq "§2.1 §9 pass-through by default: no flag added" "$(argv_of "${out}")" ""
+  expect_eq "§2.1 §9 autonomy by default: the CLI's own flag" "$(argv_of "${out}")" "--dangerously-skip-permissions"
+  out="$(ak -- claude --ask)"
+  expect_eq "§2.1 --ask opts out: no flag added" "$(argv_of "${out}")" ""
+  out="$(ak AGENTKIT_PERMISSIONS=ask -- grok)"
+  expect_eq "§2.1 AGENTKIT_PERMISSIONS=ask opts out" "$(argv_of "${out}")" ""
   out="$(ak -- claude --auto)"
   expect_eq "§2.1 --auto adds the CLI's own flag" "$(argv_of "${out}")" "--dangerously-skip-permissions"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- grok)"

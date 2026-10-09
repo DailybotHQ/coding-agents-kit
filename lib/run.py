@@ -48,7 +48,7 @@ CAPTURE_CAP = 8 * 1024 * 1024   # bytes of CLI stdout kept for extraction
 KILL_GRACE = 3.0                # seconds between SIGTERM and SIGKILL
 
 USAGE = ('usage: ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] '
-         '[--output-format text|json] [--auto] -- "<prompt>"')
+         '[--output-format text|json] [--ask | --auto] -- "<prompt>"')
 
 
 class Options(object):
@@ -59,6 +59,7 @@ class Options(object):
         self.timeout = None
         self.fmt = "text"
         self.auto = False
+        self.ask = False
         self.prompt = None
 
 
@@ -80,6 +81,8 @@ def parse(args, env):
             opts.profile_token = tok
         elif tok == "--auto":
             opts.auto = True
+        elif tok == "--ask":
+            opts.ask = True
         elif tok in ("--cwd", "--timeout", "--output-format"):
             if i + 1 >= n:
                 raise AkError("%s needs a value. %s" % (tok, USAGE), EXIT_USAGE)
@@ -103,6 +106,8 @@ def parse(args, env):
         else:
             raise AkError("unknown option '%s'. %s" % (tok, USAGE), EXIT_USAGE)
         i += 1
+    if opts.auto and opts.ask:
+        raise AkError("--ask and --auto contradict each other; pass one", EXIT_USAGE)
     if not seen_dashdash:
         raise AkError('the prompt goes after --. %s' % USAGE, EXIT_USAGE)
     words = args[i:]
@@ -383,6 +388,7 @@ def main(model, args, env):
         head = launch.Head()
         head.profile_token = opts.profile_token
         head.auto = opts.auto
+        head.ask = opts.ask
         prep = launch.prepare(model, opts.kind, head, env, purpose="run")
         profile_label = profiles.label(prep.profile)
         login = profiles.login_state(model, prep.kind.cli_name, prep.profile, prep.env) \

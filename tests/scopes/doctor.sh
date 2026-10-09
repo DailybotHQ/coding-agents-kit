@@ -44,7 +44,7 @@ scope_doctor() {
   expect_eq "doctor lists key names (base and per profile)" \
     "$(json_get "${doc}" 'd["keys"]')" '["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_KEY_2", "XAI_API_KEY", "XAI_API_KEY_2", "ZAI_CODING_API_KEY", "ZAI_CODING_API_KEY_2"]'
   expect_eq "provider kinds are logged in when their key is set" "$(json_get "${doc}" 'd["kinds"]["claude-glm"]["logged_in"]')" true
-  expect_eq "permissions default to ask" "$(json_get "${doc}" 'd["permissions"]')" ask
+  expect_eq "permissions default to auto" "$(json_get "${doc}" 'd["permissions"]')" auto
   expect_eq "the classic preset is off by default" "$(json_get "${doc}" 'd["aliases"]')" '{"classic": false, "custom": []}'
   expect_eq "herdr hooks are reported per profile" "$(json_get "${doc}" 'd["herdr_hooks"]["claude"]')" '{"@default": "absent", "@work": "absent"}'
   expect_eq "cline (no Herdr integration) has no hook entry" "$(json_get "${doc}" '"cline" in d["herdr_hooks"]')" false
@@ -83,7 +83,9 @@ scope_doctor() {
   out="$(ak -- doctor)"; status=$?
   expect_eq "text doctor exits 0" "${status}" 0
   expect_has "text doctor names the install command for a missing CLI" "${out}" "not installed — ak install pi"
-  expect_has "text doctor states the posture" "${out}" "permissions: ask"
+  expect_has "text doctor states the posture" "${out}" "permissions: auto"
+  expect_has "text doctor names the opt-out" "${out}" "opt out with --ask or AGENTKIT_PERMISSIONS=ask"
+  expect_has "text doctor warns about autonomy outside a container" "${out}" "autonomy is meant for disposable or sandboxed environments"
   out="$(ak -- doctor --bogus)"; status=$?
   expect_eq "doctor with an unknown option is a usage error" "${status}" 2
 

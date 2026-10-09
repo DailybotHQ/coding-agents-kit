@@ -18,16 +18,18 @@ scope_aliases() {
   # --- classic preset ------------------------------------------------------------
   out="$(ak SHELL=/bin/zsh -- alias preset classic --on)"; status=$?
   expect_eq "preset classic --on exits 0" "${status}" 0
-  expect_has "turning the preset on says autonomy is on" "${out}" "autonomy on"
+  expect_has "turning the preset on says the names follow the posture" "${out}" "autonomy follows your posture"
   check "aliases.json records the preset" grep -q '"classic": true' "${cfg}"
   expect_eq "aliases.json is mode 600" "$(file_mode "${cfg}")" 600
   for a in claudex codexx cursorx opencodex pix clinex grokx; do
     check "classic defines ${a}" grep -q "^${a}() {" "${script}"
   done
-  check "every classic alias is ak <kind> --auto" bash -c "[ \$(grep -c -- \"--auto \\\"\\\$@\\\"; }\$\" '${script}') -eq 7 ]"
+  check "no classic alias spells --auto or --ask (plain names)" bash -c "! grep -E -- '--(auto|ask)' '${script}'"
   check "aliases.sh is valid sh" sh -n "${script}"
   out="$(box_run -- bash -c ". '${script}'; claudex @work -c")"
-  expect_eq "claudex @work -c runs ak claude --auto @work -c" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
+  expect_eq "claudex @work -c runs ak claude @work -c (default autonomy)" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
+  out="$(box_run AGENTKIT_PERMISSIONS=ask -- bash -c ". '${script}'; claudex @work -c")"
+  expect_eq "claudex honours the opt-out" "$(argv_of "${out}")" "--continue"
   expect_line "claudex keeps the profile" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/work"
   out="$(box_run -- bash -c ". '${script}'; codexx -l")"
   expect_eq "codexx -l runs codex resume --last with its autonomy flag" "$(argv_of "${out}")" "resume|--last|--dangerously-bypass-approvals-and-sandbox"
@@ -52,13 +54,19 @@ scope_aliases() {
   expect_line "the custom alias uses its profile" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/work"
   ak -- alias add glm claude-glm >/dev/null
   out="$(box_run ZAI_CODING_API_KEY=k -- bash -c ". '${script}'; glm")"
-  expect_eq "a custom alias without --auto adds no autonomy flag" "$(argv_of "${out}")" ""
+  expect_eq "a custom alias without a posture follows the default (autonomy)" "$(argv_of "${out}")" "--dangerously-skip-permissions"
+  out="$(ak -- alias add careful claude --ask)"
+  expect_has "alias add records an --ask posture" "${out}" "added careful -> ak claude --ask"
+  out="$(box_run -- bash -c ". '${script}'; careful")"
+  expect_eq "a custom alias with --ask adds no autonomy flag" "$(argv_of "${out}")" ""
+  out="$(ak -- alias add both claude --ask --auto)"; status=$?
+  expect_eq "alias add refuses --ask with --auto" "${status}" 2
   out="$(ak -- alias add glm codex)"
   expect_has "adding an existing name replaces it" "${out}" "replaced glm"
   out="$(ak -- alias list)"
   expect_has "alias list shows custom aliases" "${out}" "work_claude"
   ak_split -- doctor --json
-  expect_eq "doctor lists custom alias names" "$(json_get "${BOX}/out" 'd["aliases"]["custom"]')" '["glm", "work_claude"]'
+  expect_eq "doctor lists custom alias names" "$(json_get "${BOX}/out" 'd["aliases"]["custom"]')" '["careful", "glm", "work_claude"]'
   for bad in "ak claude" "claude claude" "agent cursor" "1abc claude" "a/b claude" "my-claude claude" "x nope" "x claude @a/b" "x claude extra"; do
     # shellcheck disable=SC2086
     out="$(ak -- alias add ${bad})"; status=$?

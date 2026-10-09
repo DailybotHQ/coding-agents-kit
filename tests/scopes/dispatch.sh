@@ -13,6 +13,7 @@ dispatch_case() {
 scope_dispatch() {
   local out status row args want
   box_new dispatch
+  box_posture ask  # argv grammar; the permissions scope owns the default
   printf '[{"sessionId":"sess-old","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-01T00:00:00Z"},{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"},{"sessionId":"sess-sub","cwd":"%s","isSubagent":true,"updatedAt":"2026-10-07T00:00:00Z"},{"sessionId":"sess-other","cwd":"/elsewhere","isSubagent":false,"updatedAt":"2026-10-08T00:00:00Z"}]\n' \
     "${BOX}/work" "${BOX}/work" "${BOX}/work" > "${BOX}/cline-history.json"
 
@@ -125,12 +126,14 @@ scope_dispatch() {
 
   # Not installed: exit 3 and the install command, nothing launched.
   box_new dispatch-missing claude
+  box_posture ask  # argv grammar; the permissions scope owns the default
   out="$(ak -- codex)"; status=$?
   expect_eq "a CLI that is not installed exits 3" "${status}" 3
   expect_has "a CLI that is not installed names ak install" "${out}" "ak install codex"
 
   # Cursor: a Grok-installed `agent` is not Cursor; cursor-agent is preferred.
   box_new dispatch-cursor
+  box_posture ask  # argv grammar; the permissions scope owns the default
   mkdir -p "${BOX}/home/.grok/bin"
   mv "${BOX}/bin/agent" "${BOX}/home/.grok/bin/agent"
   printf '#!/bin/sh\necho "grok 1.0.0"\n' > "${BOX}/home/.grok/bin/agent"
@@ -144,6 +147,7 @@ scope_dispatch() {
 
   # The env file: loaded as shell, keys reach the CLI, names never leak.
   box_new dispatch-envfile
+  box_posture ask  # argv grammar; the permissions scope owns the default
   box_env_file 'ZAI_CODING_API_KEY=fake-zai-file' 'ZAI_CODING_API_KEY_2=fake-zai-two' 'echo "${UNSET_IN_ENV_FILE}" >/dev/null'
   out="$(ak FAKE_ENV_NAMES=1 -- claude-glm)"; status=$?
   expect_eq "the env file is loaded (claude-glm finds its key)" "${status}" 0

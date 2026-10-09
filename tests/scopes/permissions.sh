@@ -1,6 +1,7 @@
 # shellcheck shell=bash
-# Permission posture: pass-through by default, the CLI's own autonomy flag
-# only on an explicit opt-in (--auto or AGENTKIT_PERMISSIONS=auto).
+# Permission posture: autonomy by default (the CLI's own autonomy flag on
+# every launch), with an opt-out that always wins: --ask or
+# AGENTKIT_PERMISSIONS=ask.
 
 AUTONOMY_FLAGS="--dangerously-skip-permissions --dangerously-bypass-approvals-and-sandbox --force --yolo --auto --approve --always-approve"
 
@@ -33,52 +34,69 @@ scope_permissions() {
     k="${row%%|*}"; flag="${row#*|}"
     ak_split -- "${k}"
     got="$(autonomy_in "$(argv_of "$(cat "${BOX}/out")")")"
-    expect_eq "${k}: no autonomy flag by default" "${got}" ""
+    expect_eq "${k}: exactly ${flag} by default" "${got}" "${flag} 1"
     ak_split -- "${k}" --auto
     got="$(autonomy_in "$(argv_of "$(cat "${BOX}/out")")")"
-    expect_eq "${k} --auto: exactly ${flag}" "${got}" "${flag} 1"
-    ak_split AGENTKIT_PERMISSIONS=auto -- "${k}"
+    expect_eq "${k} --auto: exactly ${flag} (explicit, same as the default)" "${got}" "${flag} 1"
+    ak_split -- "${k}" --ask
     got="$(autonomy_in "$(argv_of "$(cat "${BOX}/out")")")"
-    expect_eq "${k} with AGENTKIT_PERMISSIONS=auto: exactly ${flag}" "${got}" "${flag} 1"
+    expect_eq "${k} --ask: no autonomy flag" "${got}" ""
+    ak_split AGENTKIT_PERMISSIONS=ask -- "${k}"
+    got="$(autonomy_in "$(argv_of "$(cat "${BOX}/out")")")"
+    expect_eq "${k} with AGENTKIT_PERMISSIONS=ask: no autonomy flag" "${got}" ""
   done
 
-  # Position: --auto may sit before or after the profile and the session flag.
+  # Position: --ask / --auto may sit before or after the profile and the session flag.
   mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/2"
+  out="$(ak -- claude @2 -c)"
+  expect_eq "ak claude @2 -c (the default adds the flag)" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
+  expect_line "the profile applies" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/2"
+  out="$(ak -- claude --ask @2 -c)"
+  expect_eq "ak claude --ask @2 -c" "$(argv_of "${out}")" "--continue"
+  expect_line "the profile still applies after --ask" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/2"
+  out="$(ak -- claude @2 -c --ask)"
+  expect_eq "ak claude @2 -c --ask" "$(argv_of "${out}")" "--continue"
   out="$(ak -- claude --auto @2 -c)"
-  expect_eq "ak claude --auto @2 -c (the classic alias form)" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
-  expect_line "the profile still applies after --auto" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/2"
-  out="$(ak -- claude @2 -c --auto)"
-  expect_eq "ak claude @2 -c --auto" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
-  out="$(ak -- claude -- --auto)"
+  expect_eq "ak claude --auto @2 -c (explicit)" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
+  out="$(ak -- claude --ask -- --auto)"
   expect_eq "after --, --auto is the CLI's argument" "$(argv_of "${out}")" "--auto"
-  out="$(ak -- claude fix --auto)"
+  out="$(ak -- claude --ask fix --auto)"
   expect_eq "--auto after a CLI argument is the CLI's" "$(argv_of "${out}")" "fix|--auto"
+  out="$(ak -- claude --ask --auto)"; status=$?
+  expect_eq "--ask with --auto is a usage error" "${status}" 2
+  expect_has "the contradiction is explained" "${out}" "--ask and --auto contradict each other"
 
-  # Explicit ask, the env file, invalid values.
-  out="$(ak AGENTKIT_PERMISSIONS=ask -- codex)"
-  expect_eq "AGENTKIT_PERMISSIONS=ask adds nothing" "$(argv_of "${out}")" ""
-  out="$(ak AGENTKIT_PERMISSIONS=AUTO -- codex)"
-  expect_eq "AGENTKIT_PERMISSIONS is case-insensitive" "$(argv_of "${out}")" "--dangerously-bypass-approvals-and-sandbox"
+  # The flag wins over the environment; the environment wins over the default.
+  out="$(ak AGENTKIT_PERMISSIONS=ask -- codex --auto)"
+  expect_eq "--auto overrides AGENTKIT_PERMISSIONS=ask" "$(argv_of "${out}")" "--dangerously-bypass-approvals-and-sandbox"
+  out="$(ak AGENTKIT_PERMISSIONS=auto -- codex --ask)"
+  expect_eq "--ask overrides AGENTKIT_PERMISSIONS=auto" "$(argv_of "${out}")" ""
+  out="$(ak AGENTKIT_PERMISSIONS=ASK -- codex)"
+  expect_eq "AGENTKIT_PERMISSIONS is case-insensitive" "$(argv_of "${out}")" ""
   out="$(ak AGENTKIT_PERMISSIONS=yolo -- codex)"; status=$?
   expect_eq "an invalid AGENTKIT_PERMISSIONS is a usage error" "${status}" 2
   expect_has "the invalid value is explained" "${out}" "AGENTKIT_PERMISSIONS must be 'ask' or 'auto'"
   expect_eq "an invalid AGENTKIT_PERMISSIONS launches nothing" "$(grep -c '^CLI=' <<<"${out}")" 0
-  box_env_file AGENTKIT_PERMISSIONS=auto
+  box_env_file AGENTKIT_PERMISSIONS=ask
   out="$(ak -- grok)"
-  expect_eq "AGENTKIT_PERMISSIONS=auto in the env file opts in" "$(argv_of "${out}")" "--always-approve"
+  expect_eq "AGENTKIT_PERMISSIONS=ask in the env file opts out" "$(argv_of "${out}")" ""
   box_env_file ZAI_CODING_API_KEY=fake-zai
 
-  # Autonomy is never inherited by what the agent starts.
+  # The opt-out is inherited by what the agent starts; autonomy is not exported.
+  out="$(ak AGENTKIT_PERMISSIONS=ask -- claude)"
+  expect_line "an opted-out launch passes AGENTKIT_PERMISSIONS=ask on" "${out}" "AGENTKIT_PERMISSIONS=ask"
+  out="$(ak -- claude --ask)"
+  expect_line "--ask passes AGENTKIT_PERMISSIONS=ask on (a nested ak asks too)" "${out}" "AGENTKIT_PERMISSIONS=ask"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- claude)"
-  expect_line "AGENTKIT_PERMISSIONS is not passed to the CLI" "${out}" "AGENTKIT_PERMISSIONS="
+  expect_line "an autonomous launch does not export AGENTKIT_PERMISSIONS" "${out}" "AGENTKIT_PERMISSIONS="
 
-  # Listing modes never carry an autonomy flag, even with --auto.
-  out="$(ak -- cursor --auto -l)"
-  expect_eq "cursor --auto -l stays a plain listing" "$(argv_of "${out}")" "ls"
-  out="$(ak -- cline --auto -r)"
-  expect_eq "cline --auto -r stays a plain history" "$(argv_of "${out}")" "history"
+  # Listing modes never carry an autonomy flag.
+  out="$(ak -- cursor -l)"
+  expect_eq "cursor -l stays a plain listing" "$(argv_of "${out}")" "ls"
+  out="$(ak -- cline -r)"
+  expect_eq "cline -r stays a plain history" "$(argv_of "${out}")" "history"
 
-  # The flags exist only as data: no code path can add one by default.
+  # The flags exist only as data: no code path spells one.
   if grep -rnE -- '--dangerously|--yolo|--always-approve|"--force"|"--approve"' "${ROOT}/lib" "${ROOT}/bin" >/dev/null; then
     fail "an autonomy flag is spelled in lib/ or bin/ code"
   else

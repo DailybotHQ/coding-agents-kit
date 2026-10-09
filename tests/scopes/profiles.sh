@@ -18,6 +18,7 @@ var_of() {
 scope_profiles() {
   local out status root c args want bad prof dir knob cont row k fam knobvar
   box_new profiles
+  box_posture ask  # argv grammar; the permissions scope owns the default
   profiles_env
   root="${BOX}/home/.local/share/agentkit/profiles"
 
@@ -98,6 +99,7 @@ scope_profiles() {
 
   # --- profile 1 changes nothing --------------------------------------------
   box_new profiles-p1
+  box_posture ask  # argv grammar; the permissions scope owns the default
   for k in claude codex cursor opencode pi cline grok; do
     out="$(ak -- "${k}" @default)"
     if [[ -z "$(var_of "${out}" CLAUDE_CONFIG_DIR)$(var_of "${out}" CODEX_HOME)$(var_of "${out}" XDG_DATA_HOME)$(var_of "${out}" PI_CODING_AGENT_DIR)$(var_of "${out}" CLINE_DIR)$(var_of "${out}" GROK_HOME)$(var_of "${out}" AGENT_CLI_CREDENTIAL_STORE)$(var_of "${out}" AGENTKIT_ACTIVE_PROFILE)" \
@@ -109,6 +111,7 @@ scope_profiles() {
 
   # --- every kind: no profile, @2, @work, with -c ---------------------------
   box_new profiles
+  box_posture ask  # argv grammar; the permissions scope owns the default
   profiles_env
   mkdir -p "${root}"/{claude,codex,cursor,opencode,pi,cline,grok}/{2,work}
   printf '[{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"}]\n' "${BOX}/work" > "${BOX}/cline-history.json"
@@ -215,6 +218,7 @@ scope_profiles() {
 
   # --- ak profiles ls | add | path | rm | run ---------------------------------
   box_new profiles-cli
+  box_posture ask  # argv grammar; the permissions scope owns the default
   box_env_file ZAI_CODING_API_KEY_2=fake-zai-two
   local kroot="${BOX}/home/.local/share/agentkit/profiles"
   out="$(ak -- profiles)"

@@ -14,6 +14,7 @@ ALL_CLIS="claude codex agent opencode pi cline grok"
 # box_new <name> [cli...] — a fresh box; the named fakes (default: all).
 box_new() {
   BOX="${SANDBOX}/$1"
+  BOX_POSTURE=""
   shift
   rm -rf "${BOX}"
   mkdir -p "${BOX}/home" "${BOX}/bin" "${BOX}/work" "${BOX}/tmp"
@@ -27,6 +28,21 @@ box_new() {
   done
 }
 
+# BOX_POSTURE=ask|auto — a box-wide AGENTKIT_PERMISSIONS for every command
+# the box runs (empty: the kit's default, autonomy). Scopes that pin exact
+# argv grammar set BOX_POSTURE=ask so the autonomy flag does not enter every
+# expectation; the permissions scope owns the default. A VAR=value passed to
+# a helper still wins (env -i keeps the last assignment).
+# box_posture ask|auto|"" — set the box-wide posture (see BOX_POSTURE above).
+box_posture() {
+  BOX_POSTURE="$1"
+}
+
+posture_env() {
+  POSTURE=()
+  if [[ -n "${BOX_POSTURE:-}" ]]; then POSTURE=("AGENTKIT_PERMISSIONS=${BOX_POSTURE}"); fi
+}
+
 # box_env_file <line...> — the box's kit env file (mode 600).
 box_env_file() {
   mkdir -p "${BOX}/home/.config/agentkit"
@@ -37,21 +53,23 @@ box_env_file() {
 # box_run [VAR=value...] -- <command...> — runs a command inside the box
 # (cwd $BOX/work unless BOX_CWD is set), stdin closed, stdout+stderr merged.
 box_run() {
-  local -a envs=()
+  local -a envs=() POSTURE=()
+  posture_env
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${envs[@]+"${envs[@]}"} "$@" </dev/null 2>&1 )
+      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" </dev/null 2>&1 )
 }
 
 # box_pipe [VAR=value...] -- <command...> — like box_run, but stdin is the
 # caller's (to answer a [y/N] question through a pipe).
 box_pipe() {
-  local -a envs=()
+  local -a envs=() POSTURE=()
+  posture_env
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${envs[@]+"${envs[@]}"} "$@" 2>&1 )
+      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" 2>&1 )
 }
 
 # ak [VAR=value...] -- <ak args...> — runs bin/ak in the box (merged output).
@@ -65,11 +83,12 @@ ak() {
 # ak_split [VAR=value...] -- <ak args...> — stdout to $BOX/out, stderr to
 # $BOX/err; returns the exit status.
 ak_split() {
-  local -a envs=()
+  local -a envs=() POSTURE=()
+  posture_env
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${envs[@]+"${envs[@]}"} bash "${ROOT}/bin/ak" "$@" \
+      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} bash "${ROOT}/bin/ak" "$@" \
       </dev/null >"${BOX}/out" 2>"${BOX}/err" )
 }
 
