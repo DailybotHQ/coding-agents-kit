@@ -15,7 +15,7 @@ export AGENTKIT_ROOT
 
 # shellcheck source=lib/common.sh
 . "${AGENTKIT_ROOT}/lib/common.sh"
-agentkit_load_env
+agentkit_load_env || exit 70
 export AGENTKIT_ENV_LOADED=1
 
 if ! py="$(agentkit_python)"; then

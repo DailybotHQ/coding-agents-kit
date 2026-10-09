@@ -17,7 +17,9 @@ agentkit_load_env() {
   [[ -f "${env_file}" ]] || return 0
   # GNU stat first: on Linux `stat -f` is filesystem status and "succeeds".
   perms="$(stat -c '%a' "${env_file}" 2>/dev/null || stat -f '%Lp' "${env_file}" 2>/dev/null || echo 600)"
+  # Sourcing runs the file as code: one that others can write is refused.
   case "${perms}" in
+    *[2367][0-7]|*[2367]) printf 'ak: refusing to load %s: mode %s lets other users write code that ak would run as you. Fix: chmod 600 %s\n' "${env_file}" "${perms}" "${env_file}" >&2; return 1 ;;
     600|400|700|500) ;;
     *) printf 'ak: warning: %s is mode %s; it holds keys, run: chmod 600 %s\n' "${env_file}" "${perms}" "${env_file}" >&2 ;;
   esac

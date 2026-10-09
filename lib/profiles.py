@@ -361,7 +361,7 @@ def cmd_run(model, args, env):
 
 
 def exec_command(argv, env):
-    if os.name == "nt":  # no exec(): stay the parent and pass the status on
+    if os.name == "nt":  # Windows cannot replace the process: stay the parent, pass the status on
         import subprocess
         return subprocess.call(argv, env=env)
     exe = argv[0] if os.sep in argv[0] else common.which(argv[0], env)
