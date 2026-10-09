@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | --- | --- |
-| 0.2.0 (latest) | yes |
+| 0.2.1 (latest) | yes |
+| 0.2.0 | no — upgrade: an inherited opt-out could be lost (fixed in 0.2.1) |
 | 0.1.1 | yes |
 | 0.1.0 | no — affected by [GHSA-38vm-3jxc-qr92](https://github.com/DailybotHQ/coding-agents-kit/security/advisories/GHSA-38vm-3jxc-qr92); upgrade to 0.1.1 |
 
