@@ -169,6 +169,10 @@ def finish_env(model, prep):
     provider_env, _ = kinds.provider_env(prep.kind, prep.ctx, include_secret=True)
     prep.env.update(provider_env)
     profiles.strip_profile_keys(model, prep.env)
+    # Autonomy is decided per launch and never inherited: a nested `ak` (a
+    # sub-agent started by this agent) asks again unless it is told --auto
+    # or reads AGENTKIT_PERMISSIONS=auto from the user's own env file.
+    prep.env.pop("AGENTKIT_PERMISSIONS", None)
 
 
 def cline_latest_session(prep):
