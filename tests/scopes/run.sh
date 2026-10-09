@@ -97,10 +97,13 @@ scope_run() {
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex --ask --auto --cwd "${p}" -- "x"; status=$?
   expect_eq "ak run --ask --auto is a usage error" "${status}" 2
-  box_posture ask
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex --auto --cwd "${p}" -- "x"
-  expect_eq "ak run --auto adds the flag for this run" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"
+  expect_eq "ak run --auto adds the flag for this run (no opt-out in effect)" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=ask -- run codex --auto --cwd "${p}" -- "x"
+  expect_eq "ak run --auto under AGENTKIT_PERMISSIONS=ask still asks (the opt-out wins)" "$(logged_argv)" "exec|-C|${p}|x"
+  box_posture ask
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=auto -- run grok --cwd "${p}" -- "x"
   expect_eq "AGENTKIT_PERMISSIONS=auto applies to ak run" "$(logged_argv)" "-p|x|--cwd|${p}|--always-approve"

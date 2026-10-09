@@ -12,6 +12,24 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **An inherited opt-out could be lost.** A nested `ak` re-reads the env
+  file, and an `AGENTKIT_PERMISSIONS=auto` line there (the v0.1 opt-in)
+  replaced the `AGENTKIT_PERMISSIONS=ask` its parent passed on, so a
+  sub-agent of an opted-out agent ran with autonomy. The inherited `ask`
+  now outranks the file, in the bash launcher and the python core.
+- **The opt-out now also wins over an explicit `--auto`**, so an alias or an
+  agent that types `--auto` cannot bypass `AGENTKIT_PERMISSIONS=ask`.
+- **`ak env import` imports plain data only.** Values a shell would
+  interpret (`$(…)`, backquotes, `$`, `;`, `&`, `|`) were copied into the
+  sourced env file; they are now skipped and reported, and imported values
+  are written as single-quoted literals.
+- **`ak install cursor` no longer replaces a foreign `~/.local/bin/agent`**
+  (or `cursor-agent`): only a missing path or a link into the kit's own
+  versions directory is replaced; anything else is left alone and reported.
+  A reinstall keeps the previous tree until the new one is in place.
+
 ## [0.2.0] - 2026-10-09
 
 Interface stays **1**. Autonomy by default (breaking behaviour), verified CLI installs, `ak env import`.

@@ -12,7 +12,7 @@ agentkit_env_file() {
 }
 
 agentkit_load_env() {
-  local env_file perms flags
+  local env_file perms flags inherited
   env_file="$(agentkit_env_file)"
   [[ -f "${env_file}" ]] || return 0
   # GNU stat first: on Linux `stat -f` is filesystem status and "succeeds".
@@ -26,11 +26,18 @@ agentkit_load_env() {
   # The file is the user's shell code: an unset variable or a failing line
   # in it must not abort the launcher, so -e and -u are off while it runs.
   flags="$-"
+  # An opt-out this process inherited (AGENTKIT_PERMISSIONS=ask, passed on by
+  # an `ak` that asked) outranks anything the env file says: a nested agent
+  # never regains autonomy by re-reading the user's file.
+  inherited="${AGENTKIT_PERMISSIONS:-}"
   set +eu
   set -a
   # shellcheck disable=SC1090
   . "${env_file}"
   set +a
+  case "${inherited}" in
+    [Aa][Ss][Kk]) AGENTKIT_PERMISSIONS=ask; export AGENTKIT_PERMISSIONS ;;
+  esac
   [[ "${flags}" == *e* ]] && set -e
   [[ "${flags}" == *u* ]] && set -u
   return 0

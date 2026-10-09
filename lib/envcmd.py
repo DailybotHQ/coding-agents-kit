@@ -93,6 +93,24 @@ def _value_is_empty(raw):
     return value in ("", "''", '""')
 
 
+_PLAIN = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_./:@+=,%-~")
+
+
+def _plain_value(raw):
+    """The literal value of a KEY=value line when it is plain data, else
+    None. The env file is sourced by bash, so anything a shell would
+    interpret ($, backquotes, ;, &, |, redirections, spaces outside quotes,
+    escapes) is refused rather than copied."""
+    value = raw.split("=", 1)[1].strip()
+    if len(value) >= 2 and value[0] == value[-1] == "'":
+        inner = value[1:-1]
+        return inner if "'" not in inner else None
+    if len(value) >= 2 and value[0] == value[-1] == '"':
+        inner = value[1:-1]
+        return inner if not any(c in inner for c in '"$`\\!') else None
+    return value if value and all(c in _PLAIN for c in value) else None
+
+
 def import_file(source, env):
     """Copy KEY=value lines from `source` into the env file. Never
     overwrites a key, never prints a value; returns (imported, skipped)
@@ -127,10 +145,12 @@ def import_file(source, env):
             skipped.append((name, "already set in %s" % dest))
         elif _value_is_empty(raw):
             skipped.append((name, "empty"))
+        elif _plain_value(raw) is None:
+            skipped.append((name, "the value is shell code, not plain data (copy it by hand if you trust it)"))
         else:
             present.add(name)
             imported.append(name)
-            out.append(stripped)
+            out.append("%s='%s'" % (name, _plain_value(raw)))
     if out:
         directory = os.path.dirname(dest)
         if not os.path.isdir(directory):

@@ -16,8 +16,8 @@ can start any agent the same way and read one result.
 - Like every launch, a run adds the CLI's autonomy flag by default.
   `--ask` (or `AGENTKIT_PERMISSIONS=ask`) opts out for this run: the CLI runs
   in its own default posture, which for most headless CLIs means tools that
-  need approval are refused rather than run. `--ask` with `--auto` is a usage
-  error.
+  need approval are refused rather than run. The opt-out wins over `--auto`;
+  `--ask` with `--auto` on one command is a usage error.
 - `--timeout SECONDS` kills the whole process tree when it expires (`0` =
   none). Cline also receives it as its own `-t`.
 

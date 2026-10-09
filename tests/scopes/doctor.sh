@@ -155,7 +155,8 @@ scope_doctor() {
   box_new env-import
   box_env_file XAI_API_KEY=planted-kept-1
   printf '%s\n' '# legacy file' 'export ZAI_CODING_API_KEY="planted-import-2"' 'XAI_API_KEY=planted-other-3' \
-    'EMPTY=' 'if true; then :; fi' 'OPENAI_API_KEY_WORK=planted-import-4' > "${BOX}/legacy"
+    'EMPTY=' 'if true; then :; fi' 'OPENAI_API_KEY_WORK=planted-import-4' \
+    'RUN_A=$(touch planted-ran-a)' 'RUN_B=ok; touch planted-ran-b' 'RUN_C="`touch planted-ran-c`"' > "${BOX}/legacy"
   chmod 600 "${BOX}/legacy"
   out="$(ak -- env import "${BOX}/legacy")"; status=$?
   expect_eq "ak env import succeeds" "${status}" 0
@@ -165,7 +166,14 @@ scope_doctor() {
   expect_has "an empty value is skipped" "${out}" "skipped EMPTY: empty"
   check "the existing value is untouched" grep -qx 'XAI_API_KEY=planted-kept-1' "${BOX}/home/.config/agentkit/env"
   check "the other file's value for an existing key is not copied" bash -c "! grep -q planted-other-3 '${BOX}/home/.config/agentkit/env'"
-  check "profile-suffixed keys are kept as they are" grep -qx 'OPENAI_API_KEY_WORK=planted-import-4' "${BOX}/home/.config/agentkit/env"
+  check "profile-suffixed keys are kept as they are" grep -qx "OPENAI_API_KEY_WORK='planted-import-4'" "${BOX}/home/.config/agentkit/env"
+  check "a quoted value is written as a plain single-quoted literal" grep -qx "ZAI_CODING_API_KEY='planted-import-2'" "${BOX}/home/.config/agentkit/env"
+  expect_has "a command substitution is refused" "${out}" "skipped RUN_A: the value is shell code"
+  expect_has "a value with ; is refused" "${out}" "skipped RUN_B: the value is shell code"
+  expect_has "a value with backquotes is refused" "${out}" "skipped RUN_C: the value is shell code"
+  check "no shell code reached the env file" bash -c "! grep -q 'RUN_' '${BOX}/home/.config/agentkit/env'"
+  ak -- doctor >/dev/null
+  check "loading the env file afterwards ran nothing" bash -c "! ls '${BOX}/work' '${BOX}/home' | grep -q planted-ran"
   expect_eq "the env file stays mode 600" "$(file_mode "${BOX}/home/.config/agentkit/env")" 600
   expect_lacks "no planted value is printed" "${out}" "planted-"
   out="$(ak -- env import "${BOX}/legacy")"

@@ -68,7 +68,7 @@ scope_permissions() {
 
   # The flag wins over the environment; the environment wins over the default.
   out="$(ak AGENTKIT_PERMISSIONS=ask -- codex --auto)"
-  expect_eq "--auto overrides AGENTKIT_PERMISSIONS=ask" "$(argv_of "${out}")" "--dangerously-bypass-approvals-and-sandbox"
+  expect_eq "AGENTKIT_PERMISSIONS=ask wins over an explicit --auto (an agent cannot type its way out)" "$(argv_of "${out}")" ""
   out="$(ak AGENTKIT_PERMISSIONS=auto -- codex --ask)"
   expect_eq "--ask overrides AGENTKIT_PERMISSIONS=auto" "$(argv_of "${out}")" ""
   out="$(ak AGENTKIT_PERMISSIONS=ASK -- codex)"
@@ -80,6 +80,17 @@ scope_permissions() {
   box_env_file AGENTKIT_PERMISSIONS=ask
   out="$(ak -- grok)"
   expect_eq "AGENTKIT_PERMISSIONS=ask in the env file opts out" "$(argv_of "${out}")" ""
+  out="$(ak -- grok --auto)"
+  expect_eq "the env-file opt-out also wins over --auto" "$(argv_of "${out}")" ""
+  # The v0.1 opt-in line in an env file never overrides an inherited opt-out:
+  # a nested ak (started by an agent that asked) re-reads the file.
+  box_env_file AGENTKIT_PERMISSIONS=auto
+  out="$(ak AGENTKIT_PERMISSIONS=ask -- claude)"
+  expect_eq "an inherited ask outranks AGENTKIT_PERMISSIONS=auto in the env file (bash launcher)" "$(argv_of "${out}")" ""
+  out="$(box_run AGENTKIT_PERMISSIONS=ask -- "${AK_PY}" "${ROOT}/lib/ak.py" claude)"
+  expect_eq "an inherited ask outranks the env file in the python core (the Windows path)" "$(argv_of "${out}")" ""
+  out="$(ak -- claude)"
+  expect_eq "AGENTKIT_PERMISSIONS=auto in the env file alone is autonomy" "$(argv_of "${out}")" "--dangerously-skip-permissions"
   box_env_file ZAI_CODING_API_KEY=fake-zai
 
   # The opt-out is inherited by what the agent starts; autonomy is not exported.

@@ -122,12 +122,12 @@ assert argv_key == ["cline-azure", "cline-xai"], argv_key' "${ROOT}"
       "${ROOT}/install.ps1" "${ROOT}/docs" "${ROOT}/README.md" >/dev/null; then
     fail "a fetch-piped-to-shell line is spelled somewhere in the product"
   else pass "no fetch-piped-to-shell line anywhere in the product or its docs"; fi
-  check "every install channel is https and pinned or states why not" "${AK_PY}" -c '
+  check "every install channel is https, pinned and verified (no unverified exception ships)" "${AK_PY}" -c '
 import sys; sys.path.insert(0, sys.argv[1] + "/lib"); import kinds
 for c in kinds.load().clis.values():
     i = c["install"]
     assert i["channel"] == "npm" or i["url"].startswith("https://"), i
-    assert i.get("version") or i.get("unpinned"), i' "${ROOT}"
+    assert i.get("version") and not kinds.install_problems(i) and not i.get("unverified"), i' "${ROOT}"
   check "docs/SECURITY.md exists and covers the threat model" grep -q '^## Threat model' "${ROOT}/docs/SECURITY.md"
 
   # --- regressions for the pre-release review ----------------------------------
