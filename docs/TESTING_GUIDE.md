@@ -33,6 +33,7 @@ when nothing failed.
 | permission posture (`--ask`, `--auto`, `AGENTKIT_PERMISSIONS`, `box_posture`) | `permissions` |
 | `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
 | `ak run` (`lib/run.py`) | `run` |
+| `ak usage` (`lib/usage.py`, `docs/schema/usage-v1.json`, the usage tables of `providers.toml`, checks in `tests/py/usage_checks.py`) | `usage` (pipeline, rendering, the launcher), `usage-providers` (one adapter at a time, the end-to-end layout; `tests/py/usage_provider_checks.py`), `kinds` (the tables), `security` (secrecy, read-only, loopback-only) |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
@@ -42,6 +43,11 @@ when nothing failed.
 | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow`, any tracked file | `hygiene` (and the CI job `public hygiene`: `bash scripts/check-public-hygiene.sh`) |
 | repository meta (README sections, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `.github/`, release workflow) | `oss` |
 | a shared module or several surfaces | the full suite |
+
+`ak usage` is tested against a loopback fake endpoint (`tests/py/fake_usage_server.py`),
+never the network. Its pipeline and adapter checks are bash-free python
+(`python3 tests/py/usage_checks.py`, `python3 tests/py/usage_provider_checks.py`),
+so the Windows CI job runs them natively; the scopes fold their `ok`/`FAIL` lines in.
 
 `live` runs a real CLI and is never part of the default run: it reports
 `unavailable` unless `AGENTKIT_TEST_LIVE=1` is set, because a real CLI reads

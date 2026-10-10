@@ -76,7 +76,7 @@ check("works alone: no dependency on another skill or DeepWorkPlan",
       "deepworkplan" not in text.lower() and ".dwp" not in text)
 
 # --- every taught `ak` command is valid grammar --------------------------------
-verbs = {"run", "env", "doctor", "profiles", "alias", "install", "--skill", "--version", "--help"}
+verbs = {"run", "env", "doctor", "usage", "profiles", "alias", "install", "--skill", "--version", "--help"}
 commands = []
 for block in re.findall(r"```(?:bash|sh)?\n(.*?)```", text, re.S):
     for line in block.splitlines():

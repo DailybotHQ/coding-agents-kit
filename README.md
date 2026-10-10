@@ -25,6 +25,9 @@ grammar over all of them:
   disposable or sandboxed environments: on a host, opt out.
 - **Interface 1 for other tools** — `ak run` (headless, one JSON result),
   `ak env` (a profile's environment), `ak doctor --json`.
+- **Quota of every account** — `ak usage` lists the 5-hour and weekly windows
+  of each Claude, Codex and Z.AI account in one table (`--json` for tools),
+  read-only, with `n/d` rows where no quota can be read.
 - **Keys stay in one file** — provider keys never land in a config file.
 
 Requirements: bash (macOS, Linux, WSL) or PowerShell (Windows), and
@@ -52,6 +55,7 @@ ak claude @work -c         # a second Claude account, continue its newest sessio
 ak claude-glm              # Claude Code routed to Z.AI GLM (key from ~/.config/agentkit/env)
 ak claude --ask            # opt out for this launch: the CLI asks before acting
 ak claude -- @src/app.ts   # `--` sends everything after it to the CLI untouched
+ak usage                   # quota and usage of every account, one row each
 ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the failing test"
 ```
 
@@ -79,6 +83,7 @@ agent itself.
 - [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
 - [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` and `providers` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
+- [`ak usage`](docs/usage.md) — quota per account, `--json` ([schema](docs/schema/usage-v1.json))
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)
 - [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
@@ -90,7 +95,8 @@ agent itself.
 Autonomy by default with an always-effective opt-out (`--ask`,
 `AGENTKIT_PERMISSIONS=ask`), keys only in `~/.config/agentkit/env` (mode 600),
 no network except `ak install` fetching a pinned vendor installer you asked
-for. Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
+for and `ak usage` querying the usage endpoint of an account you run (one
+request per account, read-only). Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
 the threat model is [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Contributing

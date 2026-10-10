@@ -51,6 +51,9 @@ No credential file is opened, with one exception: Claude's `.claude.json`
 is checked for the `oauthAccount` entry that names the account (it holds no
 token; the token is in the Keychain on macOS).
 
+See also [`ak usage`](usage.md) for the quota of each account (`ak usage --json`
+is a separate, additive surface; `doctor-v1` is unchanged).
+
 ## `ak env <kind> [@profile]`
 
 Prints the environment that points a CLI at a profile, as `KEY=VALUE`

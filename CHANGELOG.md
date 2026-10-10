@@ -12,6 +12,34 @@ permission posture changes.
 
 ## [Unreleased]
 
+Interface stays **1**. `ak usage`.
+
+### Added
+
+- **`ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]`**:
+  the quota and usage of every account, one row per credential identity, in
+  one table. Live for Claude Code subscriptions (5-hour, weekly and per-model
+  windows), Codex ChatGPT logins (session, weekly and named limits) and the
+  Z.AI coding plan (one row per key, shared by the `*-glm` kinds); Cursor, Grok,
+  xAI and Azure OpenAI are `n/d` with their reason, and OpenCode, Pi and Cline
+  report through the provider behind each kind. Rows are fetched in parallel
+  and a failing row never hides the others. Read-only: it never refreshes a
+  login, prints a token or writes under a profile. The endpoints are
+  vendor-internal and unofficial. Works the same on Linux, macOS and Windows.
+- **`usage-v1` JSON schema** (`docs/schema/usage-v1.json`): an additive,
+  versioned surface; interface 1 and `doctor-v1` are unchanged.
+- **`[clis.<cli>.usage]` / `[providers.<id>.usage]` tables** in `providers.toml`
+  with a closed, validated key set (https only, `{token}` only in header values).
+- Tests: the `usage` and `usage-providers` scopes, bash-free checks that run
+  natively on Windows in CI, and a loopback fake endpoint.
+
+### Security
+
+- `ak usage` is the first command that reads login content and queries a
+  vendor on your behalf. See `docs/SECURITY.md`, "Quota queries": fixed https
+  hosts, no redirect, loopback-only override, no refresh, no write, planted-secret
+  tests. The "no network except `ak install`" statement now names `ak usage`.
+
 ## [0.3.0] - 2026-10-09
 
 Interface stays **1**. The `providers` alias preset.
