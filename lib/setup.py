@@ -22,6 +22,7 @@ import json
 import os
 import platform
 import re
+import shlex
 import stat
 import subprocess
 import sys
@@ -48,6 +49,26 @@ USAGE = """usage: ak setup probe [--json]
 Read-only helpers of the agentkit-setup skill: they observe and render, never install, repair or write
 (except an explicit --out, which never overwrites).
 """
+
+
+# ---------------------------------------------------------------- helpers
+
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def printable(value, limit=80):
+    """Text that came from the environment or from another program's output is
+    shown on a terminal: drop control characters (no escape sequence reaches
+    the screen) and cap it."""
+    return None if value is None else _CONTROL.sub("", str(value))[:limit]
+
+
+def quote_path(path, os_name):
+    """A path as one shell word, so a repair command built from it cannot be
+    split or injected into (POSIX single quotes; PowerShell doubled quotes)."""
+    if os_name == "windows":
+        return "'%s'" % path.replace("'", "''")
+    return shlex.quote(path)
 
 
 # ------------------------------------------------------------------ host
@@ -105,7 +126,7 @@ class Host(object):
         except (OSError, subprocess.SubprocessError):
             return None
         out = proc.stdout.decode("utf-8", "replace").strip().splitlines()
-        return out[0].strip()[:80] if out else None
+        return printable(out[0].strip()) if out else None
 
     def home(self):
         return self.env.get("HOME") or self.env.get("USERPROFILE") or common.home()
@@ -151,7 +172,7 @@ def _container(host):
 def _shell(host, os_name):
     shell = host.env.get("SHELL")
     if shell:
-        return os.path.basename(shell.replace("\\", "/")) or None
+        return printable(os.path.basename(shell.replace("\\", "/")), 40) or None
     if os_name == "windows":
         if host.env.get("PSModulePath"):
             return "powershell"
@@ -246,7 +267,7 @@ def collect(model, env, host=None):
         "root": (euid == 0) if euid is not None else None,
         "home_writable": bool(host.writable(home)),
         "shell": _shell(host, os_name),
-        "python": {"version": py_version, "ok": bool(py_ok)},
+        "python": {"version": printable(py_version, 40), "ok": bool(py_ok)},
         "tools": tools,
         "install": _install(host, env),
         "env_file": env_file,
@@ -337,8 +358,9 @@ def _installer_command(report, os_name):
     root = common.KIT_ROOT
     quiet = report["container"]["detected"] or report["ci"]
     if os_name == "windows":
-        return '& "%s" -NoPath' % os.path.join(root, "install.ps1") if quiet else '& "%s"' % os.path.join(root, "install.ps1")
-    return 'bash "%s"%s' % (os.path.join(root, "install.sh"), " --no-rc" if quiet else "")
+        script = "& %s" % quote_path(os.path.join(root, "install.ps1"), "windows")
+        return script + (" -NoPath" if quiet else "")
+    return "bash %s%s" % (quote_path(os.path.join(root, "install.sh"), os_name), " --no-rc" if quiet else "")
 
 
 def _check(cid, status, message, repair=None):
@@ -371,7 +393,8 @@ def verify(model, env, opts, host=None):
             checks.append(_check("path.ak", "ok", "ak is on PATH"))
         else:
             bin_dir = os.path.join(inst["path"], "bin")
-            fix = ('$env:Path = "%s;" + $env:Path' % bin_dir) if os_name == "windows" else 'export PATH="%s:$PATH"' % bin_dir
+            fix = ("$env:Path = %s + $env:Path" % quote_path(bin_dir + ";", "windows")) if os_name == "windows" \
+                else 'export PATH=%s:"$PATH"' % quote_path(bin_dir, os_name)
             checks.append(_check("path.ak", "warn", "ak is not on PATH", fix))
     else:
         checks.append(_check("install.marker", "fail", "no kit install was found", _installer_command(report, os_name)))
@@ -385,7 +408,8 @@ def verify(model, env, opts, host=None):
     else:
         checks.append(_check("envfile.exists", "ok", "the env file exists"))
         if ef["mode"] is not None and ef["mode"] not in ("600", "400"):
-            checks.append(_check("envfile.mode", "fail", "the env file is mode %s and holds keys" % ef["mode"], 'chmod 600 "%s"' % ef["path"]))
+            checks.append(_check("envfile.mode", "fail", "the env file is mode %s and holds keys" % ef["mode"],
+                                 "chmod 600 %s" % quote_path(ef["path"], os_name)))
         else:
             checks.append(_check("envfile.mode", "ok", "the env file is private" if ef["mode"] else "file modes do not apply here"))
     for cli_name in opts["cli"]:
@@ -425,9 +449,9 @@ def verify(model, env, opts, host=None):
         else:
             line = "AGENTKIT_PERMISSIONS=%s" % opts["expect_posture"]
             if os_name == "windows":
-                fix = 'Add-Content -Path "%s" -Value "%s"' % (ef["path"], line)
+                fix = "Add-Content -Path %s -Value '%s'" % (quote_path(ef["path"], "windows"), line)
             else:
-                fix = "printf '%%s\\n' '%s' >> \"%s\"" % (line, ef["path"])
+                fix = "printf '%%s\\n' '%s' >> %s" % (line, quote_path(ef["path"], os_name))
             checks.append(_check("posture.matches", "fail", "the posture is %s, expected %s" % (raw, opts["expect_posture"]), fix))
     if inst["found"] and inst["no_rc"]:
         blocks = _rc_block_files(host)

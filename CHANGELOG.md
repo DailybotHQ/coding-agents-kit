@@ -12,7 +12,7 @@ permission posture changes.
 
 ## [Unreleased]
 
-Interface stays **1**. `ak usage`.
+Interface stays **1**. `ak usage`, and the `agentkit-setup` skill with `ak setup`.
 
 ### Added
 
@@ -32,7 +32,6 @@ Interface stays **1**. `ak usage`.
   with a closed, validated key set (https only, `{token}` only in header values).
 - Tests: the `usage` and `usage-providers` scopes, bash-free checks that run
   natively on Windows in CI, and a loopback fake endpoint.
-
 - **`agentkit-setup` skill and `ak setup probe | verify | docker`**: a configurator an agent follows to install,
   configure, verify, repair and upgrade the kit on macOS, Linux, WSL, Windows and in containers. The skill asks
   before each system package, shell rc edit, autonomy choice, profile, CLI install, repository write and uninstall,

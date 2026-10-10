@@ -14,6 +14,7 @@ import hashlib
 import io
 import json
 import os
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -299,7 +300,7 @@ check("setup verify: a healthy setup passes with every check ok and validates ag
 check("setup verify: schema and interface", rep["schema"] == "setup-verify-v1" and rep["interface"] == 1)
 
 # every failing check names the exact repair
-installer = 'bash "%s"' % os.path.join(common.KIT_ROOT, "install.sh")
+installer = "bash %s" % setup.quote_path(os.path.join(common.KIT_ROOT, "install.sh"), "linux")
 no_kit = by_id(verify([]))
 check("setup verify: no install fails with the installer command", no_kit["install.marker"]["status"] == "fail"
       and no_kit["install.marker"]["repair"] == installer, str(no_kit["install.marker"]))
@@ -307,16 +308,16 @@ in_container = by_id(verify([], {"files": {"/.dockerenv": ""}}))
 check("setup verify: in a container the installer command carries --no-rc", in_container["install.marker"]["repair"] == installer + " --no-rc")
 win_fix = by_id(verify([], {"os": "windows", "euid": None, "files": {"/.dockerenv": ""}}, {"USERPROFILE": HOME, "PATH": ""}))
 check("setup verify: on Windows the installer command is PowerShell (-NoPath in a container)",
-      win_fix["install.marker"]["repair"] == '& "%s" -NoPath' % os.path.join(common.KIT_ROOT, "install.ps1"), str(win_fix["install.marker"]))
+      win_fix["install.marker"]["repair"] == "& '%s' -NoPath" % os.path.join(common.KIT_ROOT, "install.ps1"), str(win_fix["install.marker"]))
 old_inst = by_id(verify([], {"tools": {"ak": "/x/ak"}}, env_for({"AGENTKIT_HOME": inst_dir})))
 check("setup verify: an install older than this code warns with the installer command",
       old_inst["install.version"]["status"] == "warn" and old_inst["install.version"]["repair"] == installer, str(old_inst["install.version"]))
 off_path = by_id(verify([], {}, env_for({"AGENTKIT_HOME": good_dir})))
 check("setup verify: an install not on PATH warns with the export command",
-      off_path["path.ak"]["status"] == "warn" and off_path["path.ak"]["repair"] == 'export PATH="%s:$PATH"' % os.path.join(good_dir, "bin"), str(off_path["path.ak"]))
+      off_path["path.ak"]["status"] == "warn" and off_path["path.ak"]["repair"] == 'export PATH=%s:"$PATH"' % setup.quote_path(os.path.join(good_dir, "bin"), "linux"), str(off_path["path.ak"]))
 win_path = by_id(verify([], {"os": "windows", "euid": None}, {"USERPROFILE": HOME, "AGENTKIT_HOME": good_dir, "PATH": ""}))
 check("setup verify: the Windows PATH repair is a PowerShell line",
-      win_path["path.ak"]["repair"] == '$env:Path = "%s;" + $env:Path' % os.path.join(good_dir, "bin"), str(win_path["path.ak"]))
+      win_path["path.ak"]["repair"] == "$env:Path = '%s;' + $env:Path" % os.path.join(good_dir, "bin"), str(win_path["path.ak"]))
 old_py = by_id(verify([], {"py": ("3.8.0", False)}))
 check("setup verify: an old python fails and only the person can act (no repair command)",
       old_py["python.version"]["status"] == "fail" and old_py["python.version"]["repair"] is None)
@@ -327,7 +328,7 @@ if os.name != "nt":
     open(open_env, "w").close()
     os.chmod(open_env, 0o644)
     loose_chk = by_id(verify([], {}, env_for({"AGENTKIT_ENV": open_env})))["envfile.mode"]
-    check("setup verify: an open env file fails with chmod 600", loose_chk["status"] == "fail" and loose_chk["repair"] == 'chmod 600 "%s"' % open_env, str(loose_chk))
+    check("setup verify: an open env file fails with chmod 600", loose_chk["status"] == "fail" and loose_chk["repair"] == "chmod 600 %s" % setup.quote_path(open_env, "linux"), str(loose_chk))
 missing_cli = by_id(verify(["--cli", "codex,pi"], good_tools, good_env))
 check("setup verify: a wanted CLI that is missing fails with ak install; a present one is ok",
       missing_cli["cli.pi.installed"]["status"] == "fail" and missing_cli["cli.pi.installed"]["repair"] == "ak install pi"
@@ -348,7 +349,7 @@ check("setup verify: a key that is set is ok and one that is not fails, by name 
       and good_env_file in keys_chk["keys.XAI_API_KEY.set"]["message"])
 post = by_id(verify(["--expect-posture", "ask"], good_tools, good_env))["posture.matches"]
 check("setup verify: a posture mismatch fails with the line to add to the env file",
-      post["status"] == "fail" and post["repair"] == "printf '%%s\\n' 'AGENTKIT_PERMISSIONS=ask' >> \"%s\"" % good_env_file, str(post))
+      post["status"] == "fail" and post["repair"] == "printf '%%s\\n' 'AGENTKIT_PERMISSIONS=ask' >> %s" % setup.quote_path(good_env_file, "linux"), str(post))
 check("setup verify: a matching posture is ok",
       by_id(verify(["--expect-posture", "ask"], good_tools, env_for({"AGENTKIT_HOME": good_dir, "AGENTKIT_ENV": good_env_file, "AGENTKIT_PERMISSIONS": "ask"})))["posture.matches"]["status"] == "ok"
       and by_id(verify(["--expect-posture", "auto"], good_tools, good_env))["posture.matches"]["status"] == "ok")
@@ -483,6 +484,25 @@ if os.name != "nt":
     seen = open(env_marker).read() if os.path.exists(env_marker) else "never ran"
     check("setup probe: a tool run for its version never sees a key or token variable (other variables pass)",
           seen == "unset|unset|visible", seen)
+
+# review hardening: repair commands are built from environment paths and must not be injectable
+evil = os.path.join(TMP, 'we"ird $(touch pwned) `id` ; dir')
+os.makedirs(evil, exist_ok=True)
+evil_env = os.path.join(evil, "env")
+open(evil_env, "w").close()
+if os.name != "nt":
+    os.chmod(evil_env, 0o644)
+    cmd = by_id(verify([], {}, env_for({"AGENTKIT_ENV": evil_env})))["envfile.mode"]["repair"]
+    check("setup review: a path with quotes, $(), backticks and ; is one shell word in the repair command",
+          shlex.split(cmd) == ["chmod", "600", evil_env], cmd)
+    check("setup review: ... and running the repair changes the mode without executing the path",
+          subprocess.run(["sh", "-c", cmd], cwd=TMP).returncode == 0 and oct(os.stat(evil_env).st_mode & 0o777) == "0o600"
+          and not os.path.exists(os.path.join(TMP, "pwned")))
+check("setup review: PowerShell paths are single-quoted with doubled quotes", setup.quote_path("C:\\it's here\\env", "windows") == "'C:\\it''s here\\env'")
+hostile = probe({"tools": {"git": "/usr/bin/git"}}, env_for({"SHELL": "/bin/ba\x1b[31msh\x07"}))
+check("setup review: control characters from SHELL or a tool's version never reach the report",
+      hostile["shell"] == "ba[31msh" and "\x1b" not in json.dumps(hostile) and "\x07" not in json.dumps(hostile), str(hostile["shell"]))
+check("setup review: printable caps and cleans", setup.printable("a\x1bb" + "c" * 200, 10) == "abcccccccc")
 
 # static portability rule
 import re  # noqa: E402
