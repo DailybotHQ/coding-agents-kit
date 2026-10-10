@@ -833,11 +833,21 @@ def parse_args(args):
     return opts
 
 
+def emit(stream, text):
+    """Write text to a console without ever failing on its encoding: a legacy
+    console (cp1252 on Windows) gets '?' for what it cannot show."""
+    try:
+        stream.write(text)
+    except UnicodeEncodeError:
+        encoding = getattr(stream, "encoding", None) or "ascii"
+        stream.write(text.encode(encoding, "replace").decode(encoding, "replace"))
+
+
 def main(model, args, env, now=None, stdout=None, platform=None):
     stdout = stdout or sys.stdout
     opts = parse_args(args)
     if opts.get("help"):
-        stdout.write(USAGE)
+        emit(stdout, USAGE)
         return EXIT_OK
     now = common_now() if now is None else now
     platform = platform or Platform.current(env, stdout)
@@ -851,13 +861,13 @@ def main(model, args, env, now=None, stdout=None, platform=None):
             hint = "%s%s is not set, so there is no %s account for %s" % (base, suffix, provider, opts["profile"])
         common.warn("nothing to report: " + hint)
         if opts["json"]:
-            stdout.write(render_json([], now))
+            emit(stdout, render_json([], now))
         return EXIT_NOTHING
     results = fetch_all(rows, env, opts["timeout"], now)
     if opts["json"]:
-        stdout.write(render_json(results, now))
+        emit(stdout, render_json(results, now))
     else:
-        stdout.write(render_table(results, platform, platform.supports_color(not opts["color"]), now))
+        emit(stdout, render_table(results, platform, platform.supports_color(not opts["color"]), now))
     return EXIT_PROBLEM if any(r["status"] in PROBLEM_STATUSES for r in results) else EXIT_OK
 
 

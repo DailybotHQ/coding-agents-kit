@@ -117,7 +117,11 @@ no other tool version changes flag behaviour.
 
 `.github/workflows/ci.yml` runs the full suite on ubuntu and macOS, again
 under python 3.9, and a Windows job that parses every PowerShell file and runs
-the python core natively (`ak --version`, `ak doctor --json`).
+the python core natively (`ak --version`, `ak doctor --json`). The Windows job
+also runs the bash-free checks of `ak usage` (`tests/py/usage_checks.py`,
+`tests/py/usage_provider_checks.py`) and a smoke of `ak.cmd usage --json`
+against the loopback fake endpoint of `tests/py/fake_usage_server.py`, so
+Windows evidence is native, not inferred.
 
 ## Writing a check
 

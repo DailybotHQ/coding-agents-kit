@@ -44,6 +44,15 @@ scope_usage() {
   out="$(ak AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH=http://example.com/x -- usage claude)"; status=$?
   expect_eq "usage core: a non-loopback URL override is refused or unused (never fetched)" "$([[ ${status} -eq 1 || ${status} -eq 2 ]] && echo ok)" ok
 
+  # Portability: the shared code path has no POSIX-only primitive (the same
+  # rule the plan's gate repeats); Windows runs the python core natively.
+  check "usage platform: lib/usage.py imports nothing POSIX-only and calls no fork/alarm/getuid" \
+    bash -c '! grep -Eq "import (fcntl|pwd|grp|termios|resource)|os\.fork|signal\.alarm|os\.getuid" "$1"' _ "${ROOT}/lib/usage.py"
+  check "usage platform: lib/usage.py hardcodes no /home or C:\\ path" \
+    bash -c '! grep -Eq "(/home/|C:[\\])" "$1"' _ "${ROOT}/lib/usage.py"
+  check "usage platform: CI runs the bash-free checks natively on Windows" \
+    bash -c 'grep -q "usage_checks.py" "$1" && grep -q "usage_provider_checks.py" "$1"' _ "${ROOT}/.github/workflows/ci.yml"
+
   # The real HOME-equivalent stays untouched: a run writes nothing in the box.
   local before after
   before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"

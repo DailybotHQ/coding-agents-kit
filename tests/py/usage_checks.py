@@ -396,6 +396,57 @@ check("usage resilience: exit codes - ok 0, problem 1, usage 2, nothing 3",
       and run(["claude", "@nowhere"], ENV)[0] == 3)
 check("usage resilience: no failure message carries a token", PLANTED_LOGIN not in leak_probe and PLANTED_PROVIDER not in leak_probe)
 
+
+# --------------------------------------------------------------- platforms
+
+PLATFORMS = [usage.Platform(n, False, "utf-8", {}) for n in ("linux", "macos", "windows")]
+rendered = [run(["claude", "@default"], ENV, platform=p)[1] for p in PLATFORMS]
+check("usage platform: the table is identical on Linux, macOS and Windows once colour is off",
+      len(set(rendered)) == 1, "\n---\n".join(rendered))
+check("usage platform: JSON is identical on all three",
+      len({run(["--json", "claude", "@default"], ENV, platform=p)[1] for p in PLATFORMS}) == 1)
+check("usage platform: colour needs a terminal everywhere, and on Windows one that announces itself",
+      [usage.Platform(n, True, "utf-8", {"TERM": "xterm"}).supports_color() for n in ("linux", "macos", "windows")] == [True, True, True]
+      and not usage.Platform("windows", True, "utf-8", {}).supports_color()
+      and not usage.Platform("windows", False, "utf-8", {"WT_SESSION": "1"}).supports_color())
+check("usage platform: a legacy console encoding gets the ASCII bar, UTF-8 the blocks",
+      "#" in run(["claude", "@default"], ENV, platform=usage.Platform("windows", False, "cp1252", {}))[1]
+      and "\u2588" in run(["claude", "@default"], ENV, platform=usage.Platform("windows", False, "utf-8", {}))[1])
+
+# Windows: no HOME, only USERPROFILE; a login file with a BOM and CRLF line ends
+win_env = {k: v for k, v in ENV.items() if k != "HOME"}
+win_env["USERPROFILE"] = HOME
+bom = "\ufeff" + json.dumps({"token": PLANTED_LOGIN}, indent=2).replace("\n", "\r\n")
+with open(os.path.join(HOME, ".claude", ".credentials.json"), "wb") as handle:
+    handle.write(bom.encode("utf-8"))
+check("usage platform: the home comes from USERPROFILE when HOME is unset (Windows)",
+      rows_of(["claude", "@default"], win_env)[1][0]["status"] == "ok")
+check("usage platform: a UTF-8 BOM and CRLF in a login file are tolerated", rows_of(["claude", "@default"], win_env)[1][0]["status"] == "ok")
+login(os.path.join(HOME, ".claude", ".credentials.json"))
+
+
+class CP1252Out(io.StringIO):
+    encoding = "cp1252"
+
+    def write(self, text):
+        text.encode("cp1252")        # what a legacy console does: raises on what it cannot show
+        return io.StringIO.write(self, text)
+
+
+odd = copy.deepcopy(WINDOWS_OK)
+odd["plan"] = "Max \u2605 5x"
+server.set_routes({"/claude": {"json": odd}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+legacy = CP1252Out()
+code = usage.main(MODEL, ["claude", "@default"], ENV, now=NOW, stdout=legacy, platform=usage.Platform("windows", False, "cp1252", {}))
+check("usage platform: a character the console cannot show is replaced, never raised", code == 0 and "Max ? 5x" in legacy.getvalue(), legacy.getvalue()[:200])
+server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+
+# no POSIX-only primitive in the shared code path (also enforced by the scope and the gate)
+import re  # noqa: E402
+source = open(os.path.join(ROOT, "lib", "usage.py"), encoding="utf-8").read()
+banned = re.findall(r"import (?:fcntl|pwd|grp|termios|resource)\b|os\.fork|signal\.alarm|os\.getuid\b|/home/|C:\\\\", source)
+check("usage platform: lib/usage.py has no POSIX-only import or hardcoded path", not banned, str(banned))
+
 server.stop()
 if FAILS:
     sys.exit(1)
