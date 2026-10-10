@@ -21,4 +21,27 @@ scope_setup_skill() {
   check "setup-skill: install.sh ships the skill and its references" test -f "${dest}/skills/agentkit-setup/references/container.md"
   out="$(box_run -- "${dest}/bin/ak" --skill setup)"
   expect_has "setup-skill: the installed ak --skill setup prints the installed copy" "${out}" "name: agentkit-setup"
+
+  setup_skill_scenarios
 }
+
+# Executable documentation: the commands the skill teaches are extracted and run
+# in sandboxes (tests/py/skill_scenarios.py); then three deliberate drifts of the
+# words prove the suite notices when the skill and the tool disagree.
+setup_skill_scenarios() {
+  local drift copy out status
+  py_checks skill_scenarios.py "${ROOT}"
+  for drift in "install.sh --no-rc|install.sh --no-rcc" "--branch v0.3.0|--branch v9.9.9" "setup verify --json|setup verify --jsno"; do
+    copy="${SANDBOX}/skill-drift"
+    rm -rf "${copy}"
+    cp -R "${ROOT}/skills/agentkit-setup" "${copy}"
+    sed -e "s|${drift%%|*}|${drift##*|}|g" "${copy}/SKILL.md" > "${copy}/SKILL.md.new" && mv "${copy}/SKILL.md.new" "${copy}/SKILL.md"
+    for f in "${copy}"/references/*.md; do
+      sed -e "s|${drift%%|*}|${drift##*|}|g" "${f}" > "${f}.new" && mv "${f}.new" "${f}"
+    done
+    out="$("${AK_PY}" "${ROOT}/tests/py/skill_scenarios.py" "${ROOT}" --skill-dir "${copy}" 2>&1)"; status=$?
+    expect_eq "setup-skill scenario mutation: a drifted '${drift%%|*}' makes the executable documentation fail" \
+      "${status}:$([[ ${out} == *"FAIL "* ]] && echo failed)" "1:failed"
+  done
+}
+
