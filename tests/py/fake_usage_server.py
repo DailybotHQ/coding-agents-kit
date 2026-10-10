@@ -5,7 +5,8 @@ Importable (`FakeUsageServer`) and runnable:
     python3 fake_usage_server.py --routes ROUTES.json --port-file PORT --log LOG
 
 Routes map a path to {"status": 200, "json": {...}} or {"body": "text"}, with
-optional "delay" (seconds), "headers" and "redirect" (a Location). The routes
+optional "delay" (seconds), "headers", "redirect" (a Location) and
+"by_bearer" ({token: route keys to override for that credential}). The routes
 file is re-read on every request, so a test can change the mode while the
 server runs. The request log keeps the path, the method and a short sha256 of
 the Authorization header (never the header itself), so a test can assert
@@ -47,6 +48,11 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             with open(self.server.log_file, "a", encoding="utf-8") as handle:
                 handle.write(json.dumps(entry) + "\n")
         route = self._routes().get(self.path.split("?")[0])
+        if route is not None and "by_bearer" in route:
+            # per-credential answers: {"by_bearer": {"<token>": {route}}, ...default route keys...}
+            token = auth[7:] if auth.startswith("Bearer ") else auth
+            override = route["by_bearer"].get(token)
+            route = dict(route, **override) if override is not None else route
         if route is None:
             self.send_response(404)
             self.end_headers()

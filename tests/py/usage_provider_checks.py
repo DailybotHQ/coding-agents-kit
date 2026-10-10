@@ -14,8 +14,10 @@ import io
 import json
 import os
 import stat
+import subprocess
 import sys
 import tempfile
+import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(os.path.dirname(HERE))
@@ -458,6 +460,113 @@ check("usage nd: every n/d row has a one-line reason and no error",
 text = run([], nd_env)[1]
 check("usage nd: the table marks them n/d", text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]))
 INSTALLED.clear()
+
+
+# ================================================================ scenario
+# The layout this feature was built for: three Claude, three Codex, one
+# Cursor, Grok and a Z.AI subscription (two keys), all at once.
+
+shutil_rm(PROFILES, ignore_errors=True)
+shutil_rm(os.path.join(HOME, ".claude"), ignore_errors=True)
+shutil_rm(os.path.join(HOME, ".codex"), ignore_errors=True)
+os.makedirs(PROFILES)
+INSTALLED.clear()
+INSTALLED.update(["claude", "codex", "cursor", "grok"])
+LAYOUT = {  # (cli, profile name or None) -> (5h %, weekly %)
+    ("claude", None): (10, 5), ("claude", "work"): (55, 20), ("claude", "2"): (91, 70),
+    ("codex", None): (12, 3), ("codex", "client"): (64, 30), ("codex", "2"): (98, 88)}
+by_claude, by_codex = {}, {}
+for (cli_name, name), (five, week) in LAYOUT.items():
+    if cli_name == "claude":
+        directory = os.path.join(HOME, ".claude") if name is None else os.path.join(PROFILES, "claude", name)
+        tok = "planted-claude-%s-0x1" % (name or "default")
+        claude_login(directory, accessToken=tok)
+        by_claude[tok] = {"json": {"five_hour": {"utilization": five, "resets_at": "2099-01-01T00:00:00Z"},
+                                   "seven_day": {"utilization": week, "resets_at": "2099-01-05T00:00:00Z"}}}
+    else:
+        directory = os.path.join(HOME, ".codex") if name is None else os.path.join(PROFILES, "codex", name)
+        tok = jwt({"exp": NOW + 3600, "sub": (name or "default")})     # distinct per account
+        codex_login(directory, plan="plus", access_token=tok)
+        by_codex[tok] = {"json": {"rate_limit": {"primary_window": {"used_percent": five, "reset_at": 4070908800},
+                                                 "secondary_window": {"used_percent": week, "reset_at": 4071340800}}}}
+os.makedirs(os.path.join(PROFILES, "cursor", "default_unused"), exist_ok=True)
+shutil_rm(os.path.join(PROFILES, "cursor"), ignore_errors=True)
+zkeys = {"ZAI_CODING_API_KEY": "planted-zai-base-0x1", "ZAI_CODING_API_KEY_2": "planted-zai-two-0x1"}
+by_zai = {zkeys["ZAI_CODING_API_KEY"]: {"json": {"data": {"planName": "lite", "limits": [{"type": "TOKENS_LIMIT", "percentage": 48, "nextResetTime": 4070908800000}]}}},
+          zkeys["ZAI_CODING_API_KEY_2"]: {"json": {"data": {"planName": "pro", "limits": [{"type": "TOKENS_LIMIT", "percentage": 77, "nextResetTime": 4070908800000}]}}}}
+
+
+def scenario_routes(**patch):
+    routes = {"/claude": {"by_bearer": dict(by_claude)}, "/codex": {"by_bearer": dict(by_codex)}, "/zai": {"by_bearer": dict(by_zai)}}
+    for path, bearer, change in patch.get("patch", []):
+        routes[path]["by_bearer"][bearer] = change
+    return routes
+
+
+server.set_routes(scenario_routes())
+senv = env_for(zkeys)
+before = snapshot(TMP)
+server.requests[:] = []
+code, rows, _ = rows_of([], senv)
+first_run_requests = len(server.requests)
+got = {(r["cli"], r["profile"]): r for r in rows}
+check("usage scenario: every account of the layout has exactly one row",
+      sorted(got) == sorted([("claude", "@default"), ("claude", "@work"), ("claude", "@2"), ("codex", "@default"), ("codex", "@client"),
+                             ("codex", "@2"), ("cursor", "@default"), ("grok", "@default"), ("zai", "@default"), ("zai", "@2")]),
+      str(sorted(got)))
+mixed = []
+for (cli_name, name), (five, week) in LAYOUT.items():
+    label = "@" + (name or "default")
+    w = got[(cli_name, label)]["windows"]
+    if [w[0]["used_pct"], w[1]["used_pct"]] != [five, week]:
+        mixed.append((cli_name, label, [x["used_pct"] for x in w]))
+check("usage scenario: no account's numbers are mixed up with another's", not mixed, str(mixed))
+check("usage scenario: Z.AI shows each key's own plan and quota",
+      (got[("zai", "@default")]["plan"], got[("zai", "@default")]["windows"][0]["used_pct"]) == ("lite", 48)
+      and (got[("zai", "@2")]["plan"], got[("zai", "@2")]["windows"][0]["used_pct"]) == ("pro", 77))
+check("usage scenario: Cursor and Grok are n/d with their reasons",
+      got[("cursor", "@default")]["status"] == "unsupported" and got[("grok", "@default")]["status"] == "unsupported")
+check("usage scenario: the whole layout is healthy (exit 0)", code == 0, str(code))
+text = run([], senv)[1]
+check("usage scenario: the table carries every account and its numbers",
+      all(tag in text for tag in ("@client", "91%", "98%", "77%", "n/d")) and text.count("\n") >= 14)
+check("usage scenario: the first run made one request per live row (eight)", first_run_requests == 8, str(first_run_requests))
+doc_path = os.path.join(TMP, "scenario.json")
+write(doc_path, run(["--json"], senv)[1])
+verdict = subprocess.run([sys.executable, os.path.join(HERE, "schema_check.py"), os.path.join(ROOT, "docs", "schema", "usage-v1.json"), doc_path],
+                         stdout=subprocess.PIPE, stderr=subprocess.STDOUT).stdout.decode().strip()
+check("usage scenario: --json validates against the schema", verdict == "valid", verdict)
+os.remove(doc_path)
+check("usage scenario: kind and profile filters work on the layout",
+      [r["profile"] for r in rows_of(["codex", "@client"], senv)[1]] == ["@client"]
+      and {r["cli"] for r in rows_of(["claude-glm"], senv)[1]} == {"zai"})
+
+# partial failure: one slow, one rejected, one with a changed shape
+slow_tok = [t for t in by_claude if "work" in t][0]
+bad_tok = [t for t in by_codex][1]
+shape_tok = [t for t in by_claude if "-2-" in t][0]
+server.set_routes(scenario_routes(patch=[("/claude", slow_tok, {"delay": 3}), ("/codex", bad_tok, {"status": 401, "json": {}}),
+                                         ("/claude", shape_tok, {"json": {"surprise": True}})]))
+started = time.time()
+code, rows, _ = rows_of(["--timeout", "1"], senv)
+elapsed = time.time() - started
+got = {(r["cli"], r["profile"]): r for r in rows}
+statuses = {k: v["status"] for k, v in got.items()}
+check("usage scenario: failures stay on their rows; healthy rows keep their numbers",
+      got[("claude", "@default")]["status"] == "ok" and got[("claude", "@default")]["windows"][0]["used_pct"] == 10
+      and got[("codex", "@2")]["windows"][0]["used_pct"] == 98
+      and sum(1 for v in statuses.values() if v == "ok") >= 5, str(statuses))
+check("usage scenario: slow, rejected and reshaped rows are reported with their own status",
+      got[("claude", "@work")]["error"] == "timed out after 1s" and got[("claude", "@2")]["error"] == "unexpected response shape"
+      and "no_scope" in statuses.values(), str(statuses))
+check("usage scenario: partial failure exits 1 and finishes near the timeout, not the sum", code == 1 and elapsed < 3.5, "%s %.1f" % (code, elapsed))
+alltext = run([], senv)[1] + run(["--json"], senv)[1]
+check("usage scenario: no token or key of the layout appears in any output",
+      not any(t in alltext for t in list(by_claude) + list(zkeys.values())) and "planted-zai" not in alltext)
+server.set_routes(scenario_routes())
+after = snapshot(TMP)
+check("usage scenario: every profile directory and the env are byte-identical after all runs",
+      [x[:2] for x in before] == [x[:2] for x in after] and [x[2] for x in before] == [x[2] for x in after])
 
 server.stop()
 if FAILS:
