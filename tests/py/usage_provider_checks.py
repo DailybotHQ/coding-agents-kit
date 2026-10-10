@@ -33,6 +33,7 @@ NOW = 1790000000.0
 PLANTED_LOGIN = "PLANTED-LOGIN-5c1d9e0003"
 PLANTED_PROVIDER = "PLANTED-KEY-5c1d9e0004"
 PLANTED_REFRESH = "PLANTED-REFRESH-0009"
+PLANTED_REFRESH2 = "PLANTED-REFRESH-0010"
 
 
 def check(name, cond, why=""):
@@ -221,6 +222,100 @@ if os.name != "nt":
     r = rows_of(["claude", "@default"], kenv)[1][0]
     check("usage claude: the Keychain is not consulted off macOS", r["status"] == "no_login", str(r))
     usage.os_name = common.os_name
+
+
+# =================================================================== codex
+
+import base64  # noqa: E402
+
+
+def jwt(payload):
+    enc = lambda obj: base64.urlsafe_b64encode(json.dumps(obj).encode()).decode().rstrip("=")  # noqa: E731
+    return "%s.%s.%s" % (enc({"alg": "none"}), enc(payload), "sig")
+
+
+CODEX_OK = {"plan_type": "plus",
+            "rate_limit": {"primary_window": {"used_percent": 35, "reset_at": 1790004800, "limit_window_seconds": 18000},
+                           "secondary_window": {"used_percent": 14.5, "reset_at": 1790400000, "limit_window_seconds": 604800}},
+            "additional_rate_limits": [{"limit_name": "codex-spark", "rate_limit": {
+                "primary_window": {"used_percent": 3, "reset_at": 1790004800},
+                "secondary_window": {"used_percent": 1, "reset_at": 1790400000}}}]}
+INSTALLED.add("codex")
+
+
+def codex_login(directory, exp=NOW + 3600, plan="plus", **tokens):
+    body = {"OPENAI_API_KEY": None, "tokens": {"access_token": jwt({"exp": exp}), "refresh_token": PLANTED_REFRESH2,
+                                               "id_token": jwt({"https://api.openai.com/auth": {"chatgpt_plan_type": plan}}),
+                                               "account_id": "acct-0001"}, "last_refresh": "2026-10-10T00:00:00Z"}
+    body["tokens"].update(tokens)
+    write(os.path.join(directory, "auth.json"), json.dumps(body))
+
+
+shutil_rm = __import__("shutil").rmtree
+codex_login(os.path.join(HOME, ".codex"))
+codex_login(os.path.join(PROFILES, "codex", "client"), plan="team")
+codex_login(os.path.join(PROFILES, "codex", "2"), plan="pro")
+codex_login(os.path.join(PROFILES, "codex", "old"), exp=NOW - 5)
+write(os.path.join(PROFILES, "codex", "apikey", "auth.json"), json.dumps({"OPENAI_API_KEY": "x" * 8, "tokens": None}))
+write(os.path.join(PROFILES, "codex", "broken", "auth.json"), "{ nope")
+os.makedirs(os.path.join(PROFILES, "codex", "none"))
+server.set_routes({"/codex": {"json": CODEX_OK}})
+server.requests[:] = []
+code, rows, err = rows_of(["codex"])
+served = len([r for r in server.requests if r["path"] == "/codex"])
+by = {r["profile"]: r for r in rows}
+check("usage codex: three accounts plus special cases give independent rows",
+      [r["profile"] for r in rows] == ["@default", "@2", "@apikey", "@broken", "@client", "@none", "@old"], str([r["profile"] for r in rows]))
+d = by["@default"]
+check("usage codex: session and weekly windows are mapped",
+      d["status"] == "ok" and [w["id"] for w in d["windows"][:2]] == ["5h", "7d"] and d["windows"][0]["used_pct"] == 35
+      and d["windows"][1]["used_pct"] == 14.5 and d["windows"][0]["window_seconds"] == 18000, str(d))
+check("usage codex: reset times are ISO UTC", d["windows"][0]["resets_at"] == usage.iso_utc(1790004800), str(d["windows"][0]))
+check("usage codex: additional named limits become windows of their own",
+      [w["id"] for w in d["windows"][2:]] == ["codex-spark", "codex-spark-7d"], str(d["windows"]))
+check("usage codex: the response's plan label wins when present", d["plan"] == "plus" and by["@client"]["plan"] == "plus")
+CODEX_NOPLAN = {k: v for k, v in CODEX_OK.items() if k != "plan_type"}
+server.set_routes({"/codex": {"json": CODEX_NOPLAN}})
+_, rows2, _ = rows_of(["codex"])
+by2 = {r["profile"]: r for r in rows2}
+check("usage codex: otherwise the plan comes from the login's plan claim",
+      by2["@default"]["plan"] == "plus" and by2["@client"]["plan"] == "team" and by2["@2"]["plan"] == "pro")
+server.set_routes({"/codex": {"json": CODEX_OK}})
+check("usage codex: an API-key login is unsupported with a reason, not an error",
+      by["@apikey"]["status"] == "unsupported" and "API-key" in by["@apikey"]["reason"] and by["@apikey"]["error"] is None, str(by["@apikey"]))
+check("usage codex: an expired token is reported without a request", by["@old"]["status"] == "expired")
+check("usage codex: a profile without a login file is no_login", by["@none"]["status"] == "no_login")
+check("usage codex: an unreadable login file is an error row", by["@broken"]["status"] == "error")
+check("usage codex: only live logins made a request (default, 2, client)", served == 3, str(served))
+check("usage codex: the exit code is 1 while any row needs attention", code == 1)
+server.requests[:] = []
+rows_of(["codex", "@client"])
+check("usage codex: the bearer reached the endpoint, hashed in the log",
+      hashlib.sha256(("Bearer " + json.loads(open(os.path.join(PROFILES, "codex", "client", "auth.json")).read())["tokens"]["access_token"]).encode()).hexdigest()[:12]
+      in [r["auth"] for r in server.requests])
+server.set_routes({"/codex": {"json": {"rate_limit": {"primary_window": {"used_percent": "lots"}}}}})
+check("usage codex: a non-numeric percent is an unexpected shape", rows_of(["codex", "@client"])[1][0]["error"] == "unexpected response shape")
+server.set_routes({"/codex": {"json": {"unrelated": 1}}})
+check("usage codex: a response without rate_limit is an unexpected shape", rows_of(["codex", "@client"])[1][0]["error"] == "unexpected response shape")
+server.set_routes({"/codex": {"json": {"rate_limit": {"secondary_window": {"used_percent": 20, "reset_after_seconds": 3600}}}}})
+r = rows_of(["codex", "@client"])[1][0]
+check("usage codex: a weekly-only response with a relative reset still maps",
+      r["status"] == "ok" and r["windows"][0]["id"] == "7d" and r["windows"][0]["resets_at"].endswith("Z"), str(r))
+server.set_routes({"/codex": {"json": CODEX_NOPLAN}})
+check("usage codex: the default home follows CODEX_HOME",
+      (codex_login(os.path.join(TMP, "codex-elsewhere"), plan="edu"),
+       rows_of(["codex", "@default"], env_for({"CODEX_HOME": os.path.join(TMP, "codex-elsewhere")}))[1][0]["plan"])[1] == "edu")
+
+before = snapshot(TMP)
+blob = ""
+for args in ([], ["--json"], ["codex"], ["codex", "@old"]):
+    c, o, e = run(args)
+    blob += o + e
+access = json.loads(open(os.path.join(PROFILES, "codex", "client", "auth.json")).read())["tokens"]["access_token"]
+check("usage codex: no access, refresh or id token reaches any output",
+      access not in blob and PLANTED_REFRESH2 not in blob and "acct-0001" not in blob)
+check("usage codex: logins are byte- and mtime-identical after runs (no refresh, no write)", before == snapshot(TMP))
+check("usage codex: no request ever targeted a refresh path", all("oauth" not in r["path"] and "token" not in r["path"] for r in server.requests))
 
 server.stop()
 if FAILS:

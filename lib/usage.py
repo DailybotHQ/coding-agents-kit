@@ -104,7 +104,7 @@ class Failure(object):
     message that never contains a secret."""
 
     def __init__(self, status, message):
-        assert status in STATUSES and status not in ("ok", "unsupported")
+        assert status in STATUSES and status != "ok"
         self.status = status
         self.message = message
 
@@ -440,6 +440,8 @@ def evaluate(row, env, timeout, now):
         return _result(row, "error", error="no parser for this source in this version")
     cred = credential_of(row, env, adapter)
     if isinstance(cred, Failure):
+        if cred.status == "unsupported":
+            return _result(row, "unsupported", reason=cred.message)
         return _result(row, cred.status, error=cred.message)
     if cred.expires_at is not None and cred.expires_at <= now:
         return _result(row, "expired", error="the login has expired; open this profile once to renew it")
@@ -584,6 +586,91 @@ class AnthropicOAuth(Adapter):
 
 
 register(AnthropicOAuth())
+
+
+def _jwt_claims(token):
+    """The claims of a JWT (not verified; read only for expiry and plan), or {}."""
+    import base64
+    try:
+        part = token.split(".")[1]
+        part += "=" * (-len(part) % 4)
+        claims = json.loads(base64.urlsafe_b64decode(part.encode("ascii")).decode("utf-8"))
+        return claims if isinstance(claims, dict) else {}
+    except Exception:
+        return {}
+
+
+class ChatGPTWham(Adapter):
+    """Codex with a ChatGPT login: GET /backend-api/wham/usage. The primary
+    window is the session (5-hour) window, the secondary the weekly one;
+    additional named limits are reported as windows of their own. Field names
+    inside a window are assumption A3 (to confirm on real accounts); a changed
+    shape degrades to an error row. An API-key login has no subscription quota
+    and is reported unsupported. Tokens are never refreshed: Codex refreshes
+    its own login."""
+
+    id = "chatgpt-wham"
+
+    def credential_from_file(self, doc):
+        tokens = doc.get("tokens") if isinstance(doc, dict) and isinstance(doc.get("tokens"), dict) else {}
+        access = tokens.get("access_token")
+        if not isinstance(access, str) or not access:
+            if isinstance(doc, dict) and doc.get("OPENAI_API_KEY"):
+                return Failure("unsupported", "an API-key login has no subscription quota to read")
+            return Failure("no_login", "the login file holds no ChatGPT login")
+        plan = None
+        id_token = tokens.get("id_token")
+        if isinstance(id_token, str):
+            auth = _jwt_claims(id_token).get("https://api.openai.com/auth")
+            if isinstance(auth, dict) and isinstance(auth.get("chatgpt_plan_type"), str):
+                plan = auth["chatgpt_plan_type"]
+        exp = _jwt_claims(access).get("exp")
+        return Credential(access, float(exp) if isinstance(exp, (int, float)) and not isinstance(exp, bool) else None,
+                          None, plan)
+
+    @staticmethod
+    def _window(entry, wid, label, default_seconds):
+        if not isinstance(entry, dict):
+            raise ShapeError("window is not an object")
+        used = _number(entry.get("used_percent"))
+        seconds = entry.get("limit_window_seconds")
+        seconds = int(seconds) if isinstance(seconds, (int, float)) and not isinstance(seconds, bool) else default_seconds
+        reset = parse_time(entry.get("reset_at"))
+        after = entry.get("reset_after_seconds")
+        if reset is None and isinstance(after, (int, float)) and not isinstance(after, bool):
+            import time
+            reset = iso_utc(time.time() + after)
+        return window(wid, label, used, reset, seconds)
+
+    def parse(self, doc):
+        if not isinstance(doc, dict):
+            raise ShapeError("not an object")
+        limits = doc.get("rate_limit")
+        if not isinstance(limits, dict):
+            raise ShapeError("no rate_limit")
+        windows = []
+        if limits.get("primary_window") is not None:
+            windows.append(self._window(limits["primary_window"], "5h", "5-hour", 18000))
+        if limits.get("secondary_window") is not None:
+            windows.append(self._window(limits["secondary_window"], "7d", "7-day", 604800))
+        extra = doc.get("additional_rate_limits")
+        for item in extra if isinstance(extra, list) else []:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("limit_name") or item.get("name") or "extra"
+            slug = re.sub(r"[^a-z0-9]+", "-", str(name).lower()).strip("-") or "extra"
+            inner = item.get("rate_limit") if isinstance(item.get("rate_limit"), dict) else item
+            if inner.get("primary_window") is not None:
+                windows.append(self._window(inner["primary_window"], slug, "%s 5-hour" % name, 18000))
+            if inner.get("secondary_window") is not None:
+                windows.append(self._window(inner["secondary_window"], slug + "-7d", "%s 7-day" % name, 604800))
+        if not windows:
+            raise ShapeError("no known window")
+        plan = doc.get("plan_type")
+        return (plan if isinstance(plan, str) and plan else None), windows
+
+
+register(ChatGPTWham())
 
 
 # ------------------------------------------------------------- rendering
