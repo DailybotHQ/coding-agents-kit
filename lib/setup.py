@@ -439,6 +439,233 @@ def render_verify(report):
     return "\n".join(out) + "\n"
 
 
+# ---------------------------------------------------------------- docker
+
+BASES = {"debian": "debian:12-slim", "ubuntu": "ubuntu:24.04"}
+CONTAINER_HOME = "/home"    # where the recipes put a user's home inside the (Linux) container; not a host path
+FORMATS = ("dockerfile", "compose", "entrypoint", "devcontainer")
+RELEASE_URL = "https://github.com/DailybotHQ/coding-agents-kit/releases/download/%(ref)s/coding-agents-kit-%(ref)s.tar.gz"
+MUSL_REASON = ("alpine uses musl libc: the pinned CLI binaries are glibc builds and would not run; "
+               "use --base debian or ubuntu")
+REF_RE = re.compile(r"^v[0-9]+\.[0-9]+\.[0-9]+$")
+SHA_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+USER_RE = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+
+
+def recipe_problems(text, fmt):
+    """The safety rules every container recipe must satisfy (also run by the
+    renderer over its own output, which then fails closed). Returns the names
+    of the violated rules."""
+    problems = []
+    if re.search(r"(curl|wget)[^\n|]*\|\s*(ba|z)?sh\b", text):
+        problems.append("no-fetch-into-a-shell")
+    if re.search(r":latest\b", text):
+        problems.append("no-latest-tag")
+    if re.search(r"^\s*(ARG|ENV)\s+\S*(KEY|TOKEN|SECRET|PASSWORD)\S*", text, re.M | re.I):
+        problems.append("no-secret-in-arg-or-env")
+    if fmt == "compose" and re.search(r"^\s*-\s*\S*(KEY|TOKEN|SECRET|PASSWORD)\S*=", text, re.M | re.I):
+        problems.append("no-secret-value-in-compose")
+    if fmt == "dockerfile":
+        for image in re.findall(r"^FROM\s+(\S+)", text, re.M):
+            if ":" not in image or image.endswith(":latest"):
+                problems.append("from-pinned-by-tag")
+        users = [m.start() for m in re.finditer(r"^USER\s+(?!root\b|0\b)\S+", text, re.M)]
+        install = text.find("install.sh")
+        if not users or install < 0 or users[0] > install:
+            problems.append("non-root-user-before-install")
+        if re.search(r"^USER\s+(root|0)\b", text, re.M):
+            problems.append("no-root-user")
+        if "HEALTHCHECK" not in text:
+            problems.append("healthcheck")
+    if fmt in ("dockerfile", "devcontainer"):
+        check = text.find("sha256sum -c")
+        extract = text.find("tar -xzf")
+        if check < 0 or extract < 0 or check > extract:
+            problems.append("sha256-verified-before-extraction")
+        if "--no-rc" not in text:
+            problems.append("no-rc")
+    return sorted(set(problems))
+
+
+def parse_docker_args(model, args):
+    opts = {"base": "debian", "cli": [], "ref": None, "sha256": None, "user": "agent", "format": "dockerfile", "out": None}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg not in ("--base", "--cli", "--ref", "--sha256", "--user", "--format", "--out"):
+            raise AkError("unknown option '%s'. See: ak setup --help" % arg, EXIT_USAGE)
+        i += 1
+        if i >= len(args):
+            raise AkError("%s needs a value. See: ak setup --help" % arg, EXIT_USAGE)
+        value = args[i]
+        if arg == "--base":
+            if value == "alpine":
+                raise AkError(MUSL_REASON, EXIT_USAGE)
+            if value not in BASES:
+                raise AkError("--base must be one of: %s" % ", ".join(sorted(BASES)), EXIT_USAGE)
+            opts["base"] = value
+        elif arg == "--cli":
+            for name in _split_list(value):
+                if name not in model.clis:
+                    raise AkError("unknown CLI '%s'. CLIs: %s" % (name, " ".join(model.cli_names())), EXIT_USAGE)
+                opts["cli"].append(name)
+        elif arg == "--ref":
+            if not REF_RE.match(value):
+                raise AkError("--ref must be a release tag such as v0.3.0 (never a branch, never latest)", EXIT_USAGE)
+            opts["ref"] = value
+        elif arg == "--sha256":
+            if not SHA_RE.match(value):
+                raise AkError("--sha256 must be the 64 hex characters of coding-agents-kit-<tag>.tar.gz in the release's SHA256SUMS", EXIT_USAGE)
+            opts["sha256"] = value.lower()
+        elif arg == "--user":
+            if not USER_RE.match(value) or value in ("root", "0"):
+                raise AkError("--user must be a non-root user name (lower case letters, digits, _ or -)", EXIT_USAGE)
+            opts["user"] = value
+        elif arg == "--format":
+            if value not in FORMATS:
+                raise AkError("--format must be one of: %s" % ", ".join(FORMATS), EXIT_USAGE)
+            opts["format"] = value
+        else:
+            opts["out"] = value
+        i += 1
+    if not opts["ref"] or not opts["sha256"]:
+        raise AkError("--ref TAG and --sha256 HEX are required: take the digest from the release's SHA256SUMS "
+                      "(the line for coding-agents-kit-<tag>.tar.gz); ak never invents one", EXIT_USAGE)
+    return opts
+
+
+def _packages(model, opts):
+    packages = ["bash", "ca-certificates", "curl", "git", "python3"]
+    if any(model.clis[c].get("install", {}).get("channel") == "npm" for c in opts["cli"]):
+        packages += ["nodejs", "npm"]
+    return sorted(packages)
+
+
+def _key_names(model):
+    return sorted(set(p["key"] for p in model.providers.values()))
+
+
+def _download_lines(opts, dest):
+    """The download/verify/unpack steps shared by the Dockerfile and the
+    devcontainer: the digest is checked before anything is unpacked."""
+    url = RELEASE_URL % {"ref": opts["ref"]}
+    return ['mkdir -p %s' % dest,
+            'curl -fsSL -o %s/kit.tar.gz "%s"' % (dest, url),
+            'echo "%s  %s/kit.tar.gz" | sha256sum -c -' % (opts["sha256"], dest),
+            'tar -xzf %s/kit.tar.gz -C %s' % (dest, dest)]
+
+
+def render_dockerfile(model, opts):
+    user, ref = opts["user"], opts["ref"]
+    tarball = "/tmp/agentkit-src"
+    lines = ["# Generated by `ak setup docker` for coding-agents-kit %s. Nothing in this file is a secret." % ref,
+             "# The kit comes from its release tarball, verified against AGENTKIT_SHA256 before it is unpacked,",
+             "# and is installed for a non-root user with --no-rc. Keys reach the container at run time",
+             "# (environment or secrets), never through ARG or ENV. The pinned CLI binaries are glibc builds:",
+             "# this recipe supports debian and ubuntu only (docs/setup.md).",
+             "FROM %s" % BASES[opts["base"]],
+             "ARG AGENTKIT_REF=%s" % ref,
+             "ARG AGENTKIT_SHA256=%s" % opts["sha256"],
+             "ARG AGENT_USER=%s" % user,
+             "RUN apt-get update \\",
+             " && apt-get install -y --no-install-recommends %s \\" % " ".join(_packages(model, opts)),
+             " && rm -rf /var/lib/apt/lists/* \\",
+             ' && useradd --create-home --shell /bin/bash "${AGENT_USER}"',
+             "# Download, verify, unpack: the digest is checked before tar runs."]
+    steps = _download_lines(opts, tarball)
+    steps = [step.replace(opts["ref"], "${AGENTKIT_REF}").replace(opts["sha256"], "${AGENTKIT_SHA256}") for step in steps]
+    lines.append("RUN " + " \\\n && ".join(steps) + ' \\\n && chown -R "${AGENT_USER}" %s' % tarball)
+    lines += ["USER ${AGENT_USER}",
+              "RUN bash %s/coding-agents-kit-${AGENTKIT_REF}/install.sh --no-rc && rm -rf %s" % (tarball, tarball),
+              "ENV PATH=%s/${AGENT_USER}/.local/share/agentkit/bin:${PATH}" % CONTAINER_HOME]
+    if opts["cli"]:
+        lines += ["# CLIs are installed pinned and verified by ak itself. npm-installed ones need a recent Node:",
+                  "# for a pinned Node see devcontainer-kit (dck).",
+                  "RUN ak install %s" % " ".join(opts["cli"])]
+    lines += ['VOLUME ["%(h)s/${AGENT_USER}/.config/agentkit", "%(h)s/${AGENT_USER}/.local/share/agentkit/profiles"]' % {"h": CONTAINER_HOME},
+              'HEALTHCHECK --interval=5m --timeout=20s CMD ak doctor --json >/dev/null || exit 1']
+    return "\n".join(lines) + "\n"
+
+
+def render_compose(model, opts):
+    user = opts["user"]
+    home = "%s/%s" % (CONTAINER_HOME, user)
+    lines = ["# Generated by `ak setup docker`. Key names pass through from your shell or an env_file;",
+             "# no value is written here. Build the image from the Dockerfile of the same command.",
+             "services:",
+             "  agent:",
+             "    build:",
+             "      context: .",
+             "      args:",
+             '        AGENTKIT_REF: "%s"' % opts["ref"],
+             '        AGENTKIT_SHA256: "%s"' % opts["sha256"],
+             '    user: "%s"' % user,
+             "    environment:"]
+    lines += ["      - %s" % name for name in _key_names(model)]
+    lines += ["      - AGENTKIT_PERMISSIONS   # auto (the default) or ask; set it in your shell",
+              "    volumes:",
+              "      - agentkit-config:%s/.config/agentkit" % home,
+              "      - agentkit-profiles:%s/.local/share/agentkit/profiles" % home,
+              "    # read_only: true         # optional: also give the container a tmpfs for /tmp and its home",
+              "    # tty: true",
+              "volumes:",
+              "  agentkit-config:",
+              "  agentkit-profiles:"]
+    return "\n".join(lines) + "\n"
+
+
+ENTRYPOINT = """#!/bin/sh
+# Generated by `ak setup docker`. Sets the autonomy posture from AGENTKIT_POSTURE
+# (auto or ask) and runs the command. It carries no key and no flag.
+set -eu
+case "${AGENTKIT_POSTURE:-}" in
+  "") ;;
+  auto|ask) AGENTKIT_PERMISSIONS="${AGENTKIT_POSTURE}"; export AGENTKIT_PERMISSIONS ;;
+  *) echo "entrypoint: AGENTKIT_POSTURE must be auto or ask" >&2; exit 2 ;;
+esac
+exec "$@"
+"""
+
+
+def render_devcontainer(model, opts):
+    tarball = "/tmp/agentkit-src"
+    steps = _download_lines(opts, tarball)
+    steps.append("bash %s/coding-agents-kit-%s/install.sh --no-rc" % (tarball, opts["ref"]))
+    steps.append("rm -rf %s" % tarball)
+    command = " && ".join(steps)
+    if opts["cli"]:
+        command += ' && "$HOME/.local/share/agentkit/bin/ak" install %s' % " ".join(opts["cli"])
+    body = json.dumps({"name": "agentkit", "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+                       "postCreateCommand": command, "remoteUser": "vscode",
+                       "remoteEnv": {"PATH": "${containerEnv:PATH}:%s/vscode/.local/share/agentkit/bin" % CONTAINER_HOME}}, indent=2)
+    return ("// Generated by `ak setup docker`. For devcontainers prefer dck (devcontainer-kit): its images install\n"
+            "// this kit from the same pinned, sha256-verified tarball. This is the minimal alternative; keys come from\n"
+            "// your environment or secrets, never from this file.\n" + body + "\n")
+
+
+def render_docker(model, opts):
+    fmt = opts["format"]
+    text = {"dockerfile": render_dockerfile, "compose": render_compose, "devcontainer": render_devcontainer}.get(fmt)
+    text = text(model, opts) if text else ENTRYPOINT
+    problems = recipe_problems(text, fmt)
+    if problems:
+        raise AkError("internal: the %s recipe failed its own safety rules (%s); nothing was written" % (fmt, ", ".join(problems)),
+                      common.EXIT_INTERNAL)
+    return text
+
+
+def write_new(path, text):
+    """--out: a new file, mode 644, never overwriting."""
+    try:
+        fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+    except FileExistsError:
+        raise AkError("%s already exists; ak setup docker never overwrites a file" % path, EXIT_USAGE)
+    except OSError as exc:
+        raise AkError("cannot create %s: %s" % (path, exc.strerror or exc.__class__.__name__), EXIT_USAGE)
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as handle:
+        handle.write(text)
+
+
 # ------------------------------------------------------------------ main
 
 def main(model, args, env, host=None, stdout=None):
@@ -462,4 +689,13 @@ def main(model, args, env, host=None, stdout=None):
         report = verify(model, env, opts, host)
         stdout.write((json.dumps(report, indent=2, sort_keys=True) + "\n") if opts["json"] else render_verify(report))
         return EXIT_OK if report["ok"] else 1
+    if verb == "docker":
+        opts = parse_docker_args(model, rest)
+        text = render_docker(model, opts)
+        if opts["out"]:
+            write_new(opts["out"], text)
+            common.warn("wrote %s (%s)" % (opts["out"], opts["format"]))
+        else:
+            stdout.write(text)
+        return EXIT_OK
     raise AkError("unknown setup command '%s'. See: ak setup --help" % verb, EXIT_USAGE)

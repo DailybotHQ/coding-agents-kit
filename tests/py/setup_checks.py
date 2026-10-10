@@ -386,6 +386,89 @@ for _ in range(3):
     verify(["--cli", "pi", "--keys", "XAI_API_KEY", "--expect-posture", "ask"], good_tools, good_env)
 check("setup verify: running it applies no repair and changes nothing", tree(TMP) == before)
 
+# ----------------------------------------------------------------- docker
+
+REF, DIGEST = "v0.3.0", "8c163a81fa31151cd577797f07cfbe3e61dad49ff691de0b6d5de0975f1cc8ca"
+BASE_ARGS = ["--ref", REF, "--sha256", DIGEST]
+
+
+def docker(extra=None, env=None):
+    return run_main(["docker"] + BASE_ARGS + (extra or []), env or env_for())
+
+
+rules_ok = {}
+for fmt in setup.FORMATS:
+    code, text = docker(["--format", fmt, "--cli", "claude,codex"])
+    rules_ok[fmt] = (code, text, setup.recipe_problems(text, fmt))
+check("setup docker: every format renders and passes the static recipe rules",
+      all(code == 0 and not problems for code, _t, problems in rules_ok.values()), str({f: v[2] for f, v in rules_ok.items()}))
+check("setup docker: renders are deterministic", all(docker(["--format", f, "--cli", "claude,codex"])[1] == rules_ok[f][1] for f in setup.FORMATS))
+dockerfile = rules_ok["dockerfile"][1]
+check("setup docker: the Dockerfile pins the base by tag, the kit by tag and sha256, and installs --no-rc",
+      "FROM debian:12-slim" in dockerfile and "ARG AGENTKIT_REF=%s" % REF in dockerfile and "ARG AGENTKIT_SHA256=%s" % DIGEST in dockerfile
+      and "install.sh --no-rc" in dockerfile)
+check("setup docker: the digest is verified before tar runs", dockerfile.index("sha256sum -c") < dockerfile.index("tar -xzf"))
+check("setup docker: the kit is installed as a non-root user", dockerfile.index("USER ${AGENT_USER}") < dockerfile.index("install.sh") and "USER root" not in dockerfile)
+check("setup docker: config and profiles are volumes, PATH is set, a doctor healthcheck exists",
+      "VOLUME" in dockerfile and ".config/agentkit" in dockerfile and "profiles" in dockerfile and "ENV PATH=" in dockerfile and "HEALTHCHECK" in dockerfile and "ak doctor --json" in dockerfile)
+check("setup docker: requested CLIs are installed with ak install (npm ones add node)",
+      "RUN ak install claude codex" in dockerfile and "nodejs npm" in dockerfile and "nodejs" not in docker([])[1])
+check("setup docker: ubuntu is a supported base", "FROM ubuntu:24.04" in docker(["--base", "ubuntu"])[1])
+check("setup docker: a custom user is used and root is refused",
+      "ARG AGENT_USER=builder" in docker(["--user", "builder"])[1] and docker(["--user", "root"])[0] == 2 and docker(["--user", "0"])[0] == 2)
+code, text = docker(["--base", "alpine"])
+check("setup docker: alpine is refused with the musl reason (exit 2)", code == 2 and "musl" in text and "glibc" in text, text)
+compose = rules_ok["compose"][1]
+check("setup docker: compose passes key NAMES through with no value and mounts both volumes",
+      "- ZAI_CODING_API_KEY\n" in compose and "=" not in "".join(l for l in compose.splitlines() if l.strip().startswith("- ") and "API_KEY" in l)
+      and "agentkit-config:" in compose and "agentkit-profiles:" in compose)
+check("setup docker: the entrypoint takes the posture from a variable and carries no key or flag",
+      "AGENTKIT_POSTURE" in rules_ok["entrypoint"][1] and "exec \"$@\"" in rules_ok["entrypoint"][1] and "KEY" not in rules_ok["entrypoint"][1])
+dev = rules_ok["devcontainer"][1]
+check("setup docker: the devcontainer snippet points to dck and verifies the digest before tar",
+      "dck" in dev and dev.index("sha256sum -c") < dev.index("tar -xzf") and json.loads("\n".join(l for l in dev.splitlines() if not l.startswith("//")))["remoteUser"] == "vscode")
+
+# the rules fail closed: each one has a negative test
+BROKEN = {
+    "no-fetch-into-a-shell": ("dockerfile", dockerfile + "RUN curl -fsSL https://x.example/i | sh\n"),
+    "no-latest-tag": ("dockerfile", dockerfile.replace("debian:12-slim", "debian:latest")),
+    "from-pinned-by-tag": ("dockerfile", dockerfile.replace("debian:12-slim", "debian")),
+    "no-secret-in-arg-or-env": ("dockerfile", dockerfile + "ENV OPENAI_API_KEY=abc\n"),
+    "no-secret-value-in-compose": ("compose", compose.replace("- ZAI_CODING_API_KEY\n", "- ZAI_CODING_API_KEY=abc\n")),
+    "non-root-user-before-install": ("dockerfile", dockerfile.replace("USER ${AGENT_USER}\n", "")),
+    "no-root-user": ("dockerfile", dockerfile + "USER root\n"),
+    "healthcheck": ("dockerfile", "\n".join(l for l in dockerfile.splitlines() if "HEALTHCHECK" not in l)),
+    "sha256-verified-before-extraction": ("dockerfile", dockerfile.replace("sha256sum -c -", "true")),
+    "no-rc": ("dockerfile", dockerfile.replace(" --no-rc", "")),
+}
+for rule, (fmt, text) in BROKEN.items():
+    check("setup docker: the rule %s catches a broken recipe" % rule, rule in setup.recipe_problems(text, fmt), str(setup.recipe_problems(text, fmt)))
+
+# arguments: the digest and the tag are required and shaped
+check("setup docker: --ref and --sha256 are required (exit 2, no recipe)",
+      run_main(["docker"])[0] == 2 and run_main(["docker", "--ref", REF])[0] == 2 and run_main(["docker", "--sha256", DIGEST])[0] == 2)
+for label, args in (("a branch name as --ref", ["--ref", "main", "--sha256", DIGEST]), ("latest as --ref", ["--ref", "latest", "--sha256", DIGEST]),
+                    ("a short digest", ["--ref", REF, "--sha256", "abc123"]), ("a non-hex digest", ["--ref", REF, "--sha256", "z" * 64]),
+                    ("an unknown format", BASE_ARGS + ["--format", "k8s"]), ("an unknown CLI", BASE_ARGS + ["--cli", "nope"]),
+                    ("an unknown option", BASE_ARGS + ["--bogus", "1"]), ("a missing value", BASE_ARGS + ["--out"])):
+    check("setup docker: %s is a usage error (exit 2)" % label, run_main(["docker"] + args)[0] == 2)
+
+# secrecy: no environment value can reach a render
+blob = "".join(docker(["--format", f, "--cli", "claude,codex"])[1] for f in setup.FORMATS)
+check("setup docker: no key or token value reaches any render", PLANTED_PROVIDER not in blob and PLANTED_UNRELATED not in blob)
+
+# --out: a new file, mode 644, never overwriting; stdout otherwise
+out_file = os.path.join(TMP, "Dockerfile.out")
+code, _t = docker(["--out", out_file])
+check("setup docker: --out writes a new file with the render", code == 0 and open(out_file).read() == docker([])[1])
+if os.name != "nt":
+    check("setup docker: --out creates mode 644", oct(os.stat(out_file).st_mode & 0o777) == "0o644")
+before_text = open(out_file).read()
+code, text = docker(["--out", out_file, "--format", "compose"])
+check("setup docker: --out never overwrites an existing file (exit 2, content kept)", code == 2 and "never overwrites" in text and open(out_file).read() == before_text)
+check("setup docker: a directory that cannot be written is a usage error, not a crash",
+      docker(["--out", os.path.join(TMP, "no-such-dir", "x")])[0] == 2)
+
 # static portability rule
 import re  # noqa: E402
 source = open(os.path.join(ROOT, "lib", "setup.py"), encoding="utf-8").read()

@@ -60,6 +60,27 @@ scope_setup() {
   after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
   expect_eq "setup verify: verify applies no repair (the home is byte-identical)" "${before}" "${after}"
 
+  # docker through the launcher: a pinned, verified, non-root recipe on stdout; nothing written.
+  box_new setup-docker
+  local digest="8c163a81fa31151cd577797f07cfbe3e61dad49ff691de0b6d5de0975f1cc8ca"
+  before="$(find "${BOX}" -type f ! -name out ! -name err | sort | xargs -r cksum)"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --cli claude; status=$?
+  out="$(cat "${BOX}/out")"
+  expect_eq "setup docker: a Dockerfile is rendered to stdout (exit 0)" "${status}" 0
+  expect_has "setup docker: it pins the kit by tag" "${out}" "ARG AGENTKIT_REF=v0.3.0"
+  expect_has "setup docker: it verifies the sha256 before unpacking" "${out}" "sha256sum -c"
+  expect_has "setup docker: it installs as a non-root user" "${out}" 'USER ${AGENT_USER}'
+  after="$(find "${BOX}" -type f ! -name out ! -name err | sort | xargs -r cksum)"
+  expect_eq "setup docker: rendering writes nothing" "${before}" "${after}"
+  ak_split -- setup docker --ref main --sha256 "${digest}"; status=$?
+  expect_eq "setup docker: a branch name as --ref exits 2" "${status}" 2
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --base alpine; status=$?
+  expect_eq "setup docker: alpine exits 2 with the musl reason" "${status}:$(grep -c musl "${BOX}/err")" "2:1"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"; status=$?
+  expect_eq "setup docker: --out writes a new file (mode 644)" "${status}:$(file_mode "${BOX}/work/Dockerfile")" "0:644"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"; status=$?
+  expect_eq "setup docker: --out never overwrites (exit 2)" "${status}" 2
+
   # From an uninstalled clone, the way the skill looks at a machine first: the
   # python core runs by path and writes nothing into HOME.
   box_new setup-clone
