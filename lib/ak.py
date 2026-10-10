@@ -9,7 +9,7 @@
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
-    ak --skill | --version | --help
+    ak --skill [setup] | --version | --help
 """
 
 import os
@@ -31,7 +31,7 @@ USAGE = """usage:
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
-  ak --skill | --version | --help
+  ak --skill [setup] | --version | --help
 
 Kinds: {kinds}
 Autonomy by default: every launch adds the CLI's own autonomy flag. Opt out
@@ -50,8 +50,13 @@ def list_kinds(model):
     return 0
 
 
-def print_skill():
-    path = os.path.join(common.KIT_ROOT, "skills", "agentkit", "SKILL.md")
+SKILLS = {"": "agentkit", "agentkit": "agentkit", "setup": "agentkit-setup", "agentkit-setup": "agentkit-setup"}
+
+
+def print_skill(which=""):
+    if which not in SKILLS:
+        raise AkError("unknown skill '%s'. Skills: agentkit (default), setup" % which)
+    path = os.path.join(common.KIT_ROOT, "skills", SKILLS[which], "SKILL.md")
     try:
         with open(path) as handle:
             sys.stdout.write(handle.read())
@@ -79,7 +84,9 @@ def main(argv):
         sys.stdout.write(USAGE.format(kinds=" ".join(model.kind_names()), root=common.KIT_ROOT))
         return 0
     if first == "--skill":
-        return print_skill()
+        if len(rest) > 1:
+            raise AkError("usage: ak --skill [setup]")
+        return print_skill(rest[0] if rest else "")
     model = kinds.load()
     if first == "run":
         import run
