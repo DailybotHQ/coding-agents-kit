@@ -268,6 +268,124 @@ if os.name != "nt":
     check("setup probe: only the allow-listed tools are run for a version (git yes)", report["tools"]["git"]["version"] == "fake 1.0"
           and os.path.exists(marker_file + ".git") and report["tools"]["npm"]["version"] is None)
 
+# ----------------------------------------------------------------- verify
+
+def verify(args, host_facts=None, env=None):
+    env = env or env_for()
+    host = FakeHost(env, **(host_facts or {}))
+    opts = setup.parse_verify_args(MODEL, args)
+    return setup.verify(MODEL, env, opts, host)
+
+
+def by_id(report):
+    return {c["id"]: c for c in report["checks"]}
+
+
+good_dir = os.path.join(TMP, "agentkit-good")
+os.makedirs(os.path.join(good_dir, "lib"))
+open(os.path.join(good_dir, ".agentkit-install"), "w").close()
+with open(os.path.join(good_dir, "lib", "common.py"), "w") as handle:
+    handle.write('VERSION = "%s"\n' % common.VERSION)
+good_env_file = os.path.join(TMP, "good-env")
+with open(good_env_file, "w") as handle:
+    handle.write("ZAI_CODING_API_KEY=%s\n" % PLANTED_PROVIDER)
+os.chmod(good_env_file, 0o600)
+good_env = env_for({"AGENTKIT_HOME": good_dir, "AGENTKIT_ENV": good_env_file})
+good_tools = {"tools": {"ak": os.path.join(good_dir, "bin", "ak"), "codex": "/usr/bin/codex", "git": "/usr/bin/git"}}
+
+rep = verify([], good_tools, good_env)
+check("setup verify: a healthy setup passes with every check ok and validates against setup-verify-v1",
+      rep["ok"] and all(c["status"] == "ok" for c in rep["checks"]) and valid(rep, "setup-verify-v1.json") == "valid", str(rep["checks"]))
+check("setup verify: schema and interface", rep["schema"] == "setup-verify-v1" and rep["interface"] == 1)
+
+# every failing check names the exact repair
+installer = 'bash "%s"' % os.path.join(common.KIT_ROOT, "install.sh")
+no_kit = by_id(verify([]))
+check("setup verify: no install fails with the installer command", no_kit["install.marker"]["status"] == "fail"
+      and no_kit["install.marker"]["repair"] == installer, str(no_kit["install.marker"]))
+in_container = by_id(verify([], {"files": {"/.dockerenv": ""}}))
+check("setup verify: in a container the installer command carries --no-rc", in_container["install.marker"]["repair"] == installer + " --no-rc")
+win_fix = by_id(verify([], {"os": "windows", "euid": None, "files": {"/.dockerenv": ""}}, {"USERPROFILE": HOME, "PATH": ""}))
+check("setup verify: on Windows the installer command is PowerShell (-NoPath in a container)",
+      win_fix["install.marker"]["repair"] == '& "%s" -NoPath' % os.path.join(common.KIT_ROOT, "install.ps1"), str(win_fix["install.marker"]))
+old_inst = by_id(verify([], {"tools": {"ak": "/x/ak"}}, env_for({"AGENTKIT_HOME": inst_dir})))
+check("setup verify: an install older than this code warns with the installer command",
+      old_inst["install.version"]["status"] == "warn" and old_inst["install.version"]["repair"] == installer, str(old_inst["install.version"]))
+off_path = by_id(verify([], {}, env_for({"AGENTKIT_HOME": good_dir})))
+check("setup verify: an install not on PATH warns with the export command",
+      off_path["path.ak"]["status"] == "warn" and off_path["path.ak"]["repair"] == 'export PATH="%s:$PATH"' % os.path.join(good_dir, "bin"), str(off_path["path.ak"]))
+win_path = by_id(verify([], {"os": "windows", "euid": None}, {"USERPROFILE": HOME, "AGENTKIT_HOME": good_dir, "PATH": ""}))
+check("setup verify: the Windows PATH repair is a PowerShell line",
+      win_path["path.ak"]["repair"] == '$env:Path = "%s;" + $env:Path' % os.path.join(good_dir, "bin"), str(win_path["path.ak"]))
+old_py = by_id(verify([], {"py": ("3.8.0", False)}))
+check("setup verify: an old python fails and only the person can act (no repair command)",
+      old_py["python.version"]["status"] == "fail" and old_py["python.version"]["repair"] is None)
+check("setup verify: a missing env file warns with the installer command",
+      by_id(verify([], {}, env_for({"AGENTKIT_ENV": os.path.join(TMP, "nope")})))["envfile.exists"]["repair"] == installer)
+if os.name != "nt":
+    open_env = os.path.join(TMP, "open-env")
+    open(open_env, "w").close()
+    os.chmod(open_env, 0o644)
+    loose_chk = by_id(verify([], {}, env_for({"AGENTKIT_ENV": open_env})))["envfile.mode"]
+    check("setup verify: an open env file fails with chmod 600", loose_chk["status"] == "fail" and loose_chk["repair"] == 'chmod 600 "%s"' % open_env, str(loose_chk))
+missing_cli = by_id(verify(["--cli", "codex,pi"], good_tools, good_env))
+check("setup verify: a wanted CLI that is missing fails with ak install; a present one is ok",
+      missing_cli["cli.pi.installed"]["status"] == "fail" and missing_cli["cli.pi.installed"]["repair"] == "ak install pi"
+      and missing_cli["cli.codex.installed"]["status"] == "ok")
+os.makedirs(os.path.join(TMP, "profiles", "codex", "ok", ), exist_ok=True)
+prof_chk = by_id(verify(["--profile", "claude=@absent", "--profile", "codex=@ok,@2"], good_tools, good_env))
+check("setup verify: a missing profile fails with ak profiles add",
+      prof_chk["profile.claude.absent.exists"]["status"] == "fail" and prof_chk["profile.claude.absent.exists"]["repair"] == "ak profiles add claude @absent")
+check("setup verify: an existing profile without a login warns with the profile's login command",
+      prof_chk["profile.codex.2.exists"]["status"] == "ok" and prof_chk["profile.codex.2.login"]["status"] == "warn"
+      and prof_chk["profile.codex.2.login"]["repair"] == "ak profiles run codex @2 -- codex login", str(prof_chk["profile.codex.2.login"]))
+os.makedirs(os.path.join(TMP, "profiles", "claude", "nologin"), exist_ok=True)
+claude_login = by_id(verify(["--profile", "claude=@nologin"], good_tools, good_env))["profile.claude.nologin.login"]
+check("setup verify: a CLI without a login command falls back to launching the profile", claude_login["repair"] == "ak claude @nologin", str(claude_login))
+keys_chk = by_id(verify(["--keys", "ZAI_CODING_API_KEY,XAI_API_KEY"], good_tools, good_env))
+check("setup verify: a key that is set is ok and one that is not fails, by name only",
+      keys_chk["keys.ZAI_CODING_API_KEY.set"]["status"] == "ok" and keys_chk["keys.XAI_API_KEY.set"]["status"] == "fail"
+      and good_env_file in keys_chk["keys.XAI_API_KEY.set"]["message"])
+post = by_id(verify(["--expect-posture", "ask"], good_tools, good_env))["posture.matches"]
+check("setup verify: a posture mismatch fails with the line to add to the env file",
+      post["status"] == "fail" and post["repair"] == "printf '%%s\\n' 'AGENTKIT_PERMISSIONS=ask' >> \"%s\"" % good_env_file, str(post))
+check("setup verify: a matching posture is ok",
+      by_id(verify(["--expect-posture", "ask"], good_tools, env_for({"AGENTKIT_HOME": good_dir, "AGENTKIT_ENV": good_env_file, "AGENTKIT_PERMISSIONS": "ask"})))["posture.matches"]["status"] == "ok"
+      and by_id(verify(["--expect-posture", "auto"], good_tools, good_env))["posture.matches"]["status"] == "ok")
+rc_home = os.path.join(TMP, "rc-home")
+os.makedirs(rc_home)
+with open(os.path.join(rc_home, ".bashrc"), "w") as handle:
+    handle.write("# >>> agentkit >>>\n# <<< agentkit <<<\n")
+rc_chk = by_id(verify([], good_tools, dict(good_env, HOME=rc_home, USERPROFILE=rc_home)))
+check("setup verify: the rc consistency check applies only to installs made with --no-rc",
+      "aliases.rc" not in by_id(verify([], good_tools, dict(good_env, HOME=rc_home, USERPROFILE=rc_home))))
+open(os.path.join(good_dir, ".no-rc"), "w").close()
+rc_chk = by_id(verify([], good_tools, dict(good_env, HOME=rc_home, USERPROFILE=rc_home)))
+check("setup verify: ... only when the kit was installed with --no-rc",
+      rc_chk["aliases.rc"]["status"] == "warn" and rc_chk["aliases.rc"]["repair"] == "ak alias rc --remove", str(rc_chk.get("aliases.rc")))
+check("setup verify: a clean --no-rc install passes the rc check", by_id(verify([], good_tools, good_env))["aliases.rc"]["status"] == "ok")
+
+# exit codes and arguments
+fh = FakeHost(good_env, **good_tools)
+check("setup verify: exit 0 when no check fails (warnings do not fail) and 1 otherwise",
+      run_main(["verify"], good_env, fh)[0] == 0 and run_main(["verify", "--cli", "pi"], good_env, fh)[0] == 1)
+check("setup verify: --json prints exactly one JSON object", json.loads(run_main(["verify", "--json"], good_env, fh)[1])["schema"] == "setup-verify-v1")
+check("setup verify: the text form prints a fix line for a failing check and a verdict",
+      "fix: ak install pi" in run_main(["verify", "--cli", "pi"], good_env, fh)[1] and "verdict:" in run_main(["verify"], good_env, fh)[1])
+for label, args in (("an unknown CLI", ["verify", "--cli", "nope"]), ("a bad --profile", ["verify", "--profile", "claude"]),
+                    ("a profile without @", ["verify", "--profile", "claude=work"]), ("a key that looks like a value", ["verify", "--keys", "not-a-name"]),
+                    ("a bad posture", ["verify", "--expect-posture", "maybe"]), ("a missing value", ["verify", "--cli"]),
+                    ("an unknown option", ["verify", "--bogus"])):
+    check("setup verify: %s is a usage error (exit 2)" % label, run_main(args, good_env, fh)[0] == 2)
+
+# secrecy and read-only
+blob = json.dumps(verify(["--keys", "ZAI_CODING_API_KEY", "--expect-posture", "ask"], good_tools, good_env)) + run_main(["verify", "--keys", "ZAI_CODING_API_KEY"], good_env, fh)[1]
+check("setup verify: no key or token value appears in any verify output", PLANTED_PROVIDER not in blob and PLANTED_UNRELATED not in blob)
+before = tree(TMP)
+for _ in range(3):
+    verify(["--cli", "pi", "--keys", "XAI_API_KEY", "--expect-posture", "ask"], good_tools, good_env)
+check("setup verify: running it applies no repair and changes nothing", tree(TMP) == before)
+
 # static portability rule
 import re  # noqa: E402
 source = open(os.path.join(ROOT, "lib", "setup.py"), encoding="utf-8").read()

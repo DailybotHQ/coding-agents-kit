@@ -274,6 +274,171 @@ def render_probe(report):
     return "\n".join(out) + "\n"
 
 
+# ---------------------------------------------------------------- verify
+
+KEY_NAME = re.compile(r"^[A-Z][A-Z0-9_]*$")
+RC_FILES = (".bashrc", ".zshrc", ".profile", ".bash_profile")
+
+
+def _split_list(text):
+    return [part.strip() for part in text.split(",") if part.strip()]
+
+
+def parse_verify_args(model, args):
+    opts = {"json": False, "cli": [], "profile": [], "keys": [], "expect_posture": None}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "--json":
+            opts["json"] = True
+        elif arg in ("--cli", "--profile", "--keys", "--expect-posture"):
+            i += 1
+            if i >= len(args):
+                raise AkError("%s needs a value. See: ak setup --help" % arg, EXIT_USAGE)
+            value = args[i]
+            if arg == "--cli":
+                for name in _split_list(value):
+                    if name not in model.clis:
+                        raise AkError("unknown CLI '%s'. CLIs: %s" % (name, " ".join(model.cli_names())), EXIT_USAGE)
+                    opts["cli"].append(name)
+            elif arg == "--profile":
+                cli_name, sep, names = value.partition("=")
+                if not sep or cli_name not in model.clis or not names:
+                    raise AkError("--profile takes CLI=@name[,@name]. CLIs: %s" % " ".join(model.cli_names()), EXIT_USAGE)
+                for item in _split_list(names):
+                    if not item.startswith("@"):
+                        raise AkError("name the profile with @, e.g. --profile %s=@work" % cli_name, EXIT_USAGE)
+                    opts["profile"].append((cli_name, profiles.normalize(item[1:])))
+            elif arg == "--keys":
+                for name in _split_list(value):
+                    if not KEY_NAME.match(name):
+                        raise AkError("--keys takes variable names (upper case letters, digits, _), not values", EXIT_USAGE)
+                    opts["keys"].append(name)
+            else:
+                if value not in ("auto", "ask"):
+                    raise AkError("--expect-posture must be auto or ask", EXIT_USAGE)
+                opts["expect_posture"] = value
+        else:
+            raise AkError("unknown option '%s'. See: ak setup --help" % arg, EXIT_USAGE)
+        i += 1
+    return opts
+
+
+def _installer_command(report, os_name):
+    root = common.KIT_ROOT
+    quiet = report["container"]["detected"] or report["ci"]
+    if os_name == "windows":
+        return '& "%s" -NoPath' % os.path.join(root, "install.ps1") if quiet else '& "%s"' % os.path.join(root, "install.ps1")
+    return 'bash "%s"%s' % (os.path.join(root, "install.sh"), " --no-rc" if quiet else "")
+
+
+def _check(cid, status, message, repair=None):
+    return {"id": cid, "status": status, "message": message, "repair": repair}
+
+
+def _rc_block_files(host):
+    found = []
+    for name in RC_FILES:
+        path = os.path.join(host.home(), name)
+        if ">>> agentkit >>>" in host.read_text(path):
+            found.append(path)
+    return found
+
+
+def verify(model, env, opts, host=None):
+    host = host or Host(env)
+    report = collect(model, env, host)
+    os_name = report["os"]
+    checks = []
+    inst = report["install"]
+    if inst["found"]:
+        checks.append(_check("install.marker", "ok", "the kit is installed at %s" % inst["path"]))
+        if inst["version"] and inst["version"] != common.VERSION:
+            checks.append(_check("install.version", "warn", "installed %s, this code is %s" % (inst["version"], common.VERSION),
+                                 _installer_command(report, os_name)))
+        else:
+            checks.append(_check("install.version", "ok", "installed version %s" % (inst["version"] or "unknown")))
+        if inst["on_path"]:
+            checks.append(_check("path.ak", "ok", "ak is on PATH"))
+        else:
+            bin_dir = os.path.join(inst["path"], "bin")
+            fix = ('$env:Path = "%s;" + $env:Path' % bin_dir) if os_name == "windows" else 'export PATH="%s:$PATH"' % bin_dir
+            checks.append(_check("path.ak", "warn", "ak is not on PATH", fix))
+    else:
+        checks.append(_check("install.marker", "fail", "no kit install was found", _installer_command(report, os_name)))
+    if report["python"]["ok"]:
+        checks.append(_check("python.version", "ok", "python %s" % report["python"]["version"]))
+    else:
+        checks.append(_check("python.version", "fail", "python 3.9 or newer is required (found %s)" % report["python"]["version"]))
+    ef = report["env_file"]
+    if not ef["exists"]:
+        checks.append(_check("envfile.exists", "warn", "the env file %s does not exist" % ef["path"], _installer_command(report, os_name)))
+    else:
+        checks.append(_check("envfile.exists", "ok", "the env file exists"))
+        if ef["mode"] is not None and ef["mode"] not in ("600", "400"):
+            checks.append(_check("envfile.mode", "fail", "the env file is mode %s and holds keys" % ef["mode"], 'chmod 600 "%s"' % ef["path"]))
+        else:
+            checks.append(_check("envfile.mode", "ok", "the env file is private" if ef["mode"] else "file modes do not apply here"))
+    for cli_name in opts["cli"]:
+        if report["clis"][cli_name]["installed"]:
+            checks.append(_check("cli.%s.installed" % cli_name, "ok", "%s is on PATH" % cli_name))
+        else:
+            checks.append(_check("cli.%s.installed" % cli_name, "fail", "%s is not installed" % cli_name, "ak install %s" % cli_name))
+    for cli_name, name in opts["profile"]:
+        label = profiles.label(name)
+        exists = name in report["profiles"].get(cli_name, [])
+        pid = "profile.%s.%s" % (cli_name, name or "default")
+        if name == "":
+            checks.append(_check(pid + ".exists", "ok", "@default is the CLI's own home"))
+        elif exists:
+            checks.append(_check(pid + ".exists", "ok", "%s profile %s exists" % (cli_name, label)))
+        else:
+            checks.append(_check(pid + ".exists", "fail", "%s profile %s does not exist" % (cli_name, label),
+                                 "ak profiles add %s %s" % (cli_name, label)))
+        if exists or name == "":
+            state = profiles.login_state(model, cli_name, name, env)
+            if state is True:
+                checks.append(_check(pid + ".login", "ok", "a login is present for %s %s" % (cli_name, label)))
+            else:
+                command = model.clis[cli_name].get("login", {}).get("command")
+                fix = ("ak profiles run %s %s -- %s" % (cli_name, label, command)) if command else "ak %s %s" % (cli_name, label)
+                checks.append(_check(pid + ".login", "warn", "no login found for %s %s%s" % (cli_name, label, "" if state is False else " (cannot tell from files)"), fix))
+    for key in opts["keys"]:
+        if env.get(key):
+            checks.append(_check("keys.%s.set" % key, "ok", "%s is set" % key))
+        else:
+            checks.append(_check("keys.%s.set" % key, "fail", "%s is not set; add it to %s (the value never goes in a chat)" % (key, ef["path"])))
+    if opts["expect_posture"]:
+        raw = (env.get("AGENTKIT_PERMISSIONS") or "auto").strip().lower()
+        raw = raw if raw in ("ask", "auto") else "invalid"
+        if raw == opts["expect_posture"]:
+            checks.append(_check("posture.matches", "ok", "the posture is %s" % raw))
+        else:
+            line = "AGENTKIT_PERMISSIONS=%s" % opts["expect_posture"]
+            if os_name == "windows":
+                fix = 'Add-Content -Path "%s" -Value "%s"' % (ef["path"], line)
+            else:
+                fix = "printf '%%s\\n' '%s' >> \"%s\"" % (line, ef["path"])
+            checks.append(_check("posture.matches", "fail", "the posture is %s, expected %s" % (raw, opts["expect_posture"]), fix))
+    if inst["found"] and inst["no_rc"]:
+        blocks = _rc_block_files(host)
+        if blocks:
+            checks.append(_check("aliases.rc", "warn", "the kit was installed with --no-rc but %s carries its block" % blocks[0], "ak alias rc --remove"))
+        else:
+            checks.append(_check("aliases.rc", "ok", "no shell rc carries the kit's block, as installed with --no-rc"))
+    return {"schema": VERIFY_SCHEMA, "interface": common.INTERFACE, "ok": not any(c["status"] == "fail" for c in checks), "checks": checks}
+
+
+def render_verify(report):
+    out = []
+    for c in report["checks"]:
+        out.append("%-4s %-34s %s" % (c["status"], c["id"], c["message"]))
+        if c["repair"]:
+            out.append("     fix: %s" % c["repair"])
+    out.append("verdict: %s" % ("ok" if report["ok"] else "problems found"))
+    return "\n".join(out) + "\n"
+
+
 # ------------------------------------------------------------------ main
 
 def main(model, args, env, host=None, stdout=None):
@@ -292,4 +457,9 @@ def main(model, args, env, host=None, stdout=None):
         report = collect(model, env, host)
         stdout.write((json.dumps(report, indent=2, sort_keys=True) + "\n") if as_json else render_probe(report))
         return EXIT_OK
+    if verb == "verify":
+        opts = parse_verify_args(model, rest)
+        report = verify(model, env, opts, host)
+        stdout.write((json.dumps(report, indent=2, sort_keys=True) + "\n") if opts["json"] else render_verify(report))
+        return EXIT_OK if report["ok"] else 1
     raise AkError("unknown setup command '%s'. See: ak setup --help" % verb, EXIT_USAGE)

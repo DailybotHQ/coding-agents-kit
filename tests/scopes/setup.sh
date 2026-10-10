@@ -37,6 +37,29 @@ scope_setup() {
   out="$(ak -- --help)"
   expect_has "setup probe: ak --help lists the command" "${out}" "ak setup probe"
 
+  # verify through the launcher: ordered checks, an exact repair for each, exit 0/1.
+  box_new setup-verify claude
+  doc="${BOX}/verify.json"
+  ak_split -- setup verify --cli codex --profile claude=@work --keys ZAI_CODING_API_KEY --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "setup verify: a setup with unmet wishes exits 1" "${status}" 1
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/setup-verify-v1.json" "${doc}")"
+  expect_eq "setup verify: the launcher's JSON matches docs/schema/setup-verify-v1.json" "${out}" "valid"
+  expect_eq "setup verify: ok is false and each failing wish names its repair" \
+    "$(json_get "${doc}" '[d["ok"], [c["repair"] for c in d["checks"] if c["id"] in ("cli.codex.installed", "profile.claude.work.exists")]]')" \
+    '[false, ["ak install codex", "ak profiles add claude @work"]]'
+  ak -- profiles add claude @work >/dev/null
+  box_env_file "ZAI_CODING_API_KEY=planted-verify-key-0x1"
+  ak_split -- setup verify --profile claude=@work --keys ZAI_CODING_API_KEY; status=$?
+  expect_has "setup verify: the key is reported by name, the profile exists" "$(cat "${BOX}/out")" "ZAI_CODING_API_KEY is set"
+  expect_lacks "setup verify: no key value in the text" "$(cat "${BOX}/out" "${BOX}/err")" "planted-verify-key-0x1"
+  out="$(ak -- setup verify --cli nope)"; status=$?
+  expect_eq "setup verify: an unknown CLI exits 2" "${status}" 2
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  ak_split -- setup verify --cli codex --expect-posture ask >/dev/null
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "setup verify: verify applies no repair (the home is byte-identical)" "${before}" "${after}"
+
   # From an uninstalled clone, the way the skill looks at a machine first: the
   # python core runs by path and writes nothing into HOME.
   box_new setup-clone

@@ -16,7 +16,7 @@
         "additionalProperties": false,
         "required": ["id", "status", "message", "repair"],
         "properties": {
-          "id": { "type": "string", "pattern": "^[a-z0-9_.-]+$" },
+          "id": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+$" },
           "status": { "enum": ["ok", "warn", "fail"] },
           "message": { "type": "string" },
           "repair": { "type": ["string", "null"], "description": "The exact command that repairs this check, or null when only the person can act (for example a login)." }
