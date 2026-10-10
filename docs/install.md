@@ -2,6 +2,9 @@
 
 ## The kit
 
+(An agent can do all of this for you, safely and repeatably, including in containers: see
+[Set up on any machine or container](setup.md).)
+
 macOS, Linux, WSL (and Git Bash):
 
 ```bash

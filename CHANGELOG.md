@@ -33,8 +33,23 @@ Interface stays **1**. `ak usage`.
 - Tests: the `usage` and `usage-providers` scopes, bash-free checks that run
   natively on Windows in CI, and a loopback fake endpoint.
 
+- **`agentkit-setup` skill and `ak setup probe | verify | docker`**: a configurator an agent follows to install,
+  configure, verify, repair and upgrade the kit on macOS, Linux, WSL, Windows and in containers. The skill asks
+  before each system package, shell rc edit, autonomy choice, profile, CLI install, repository write and uninstall,
+  and handles provider keys by name only. The helper is read-only and works from an uninstalled clone: `probe`
+  reports the machine (OS, arch, libc, container/CI/WSL, tools, existing install, env file, profiles, a posture
+  hint), `verify` returns ordered checks each with the exact repair command, and `docker` renders a Dockerfile,
+  compose file, entrypoint or devcontainer snippet that pins a release tag, verifies the tarball's SHA256 before
+  unpacking, runs as a non-root user and keeps keys out of the image. `ak --skill setup` prints the skill. JSON
+  schemas `setup-probe-v1` and `setup-verify-v1` are additive; interface 1 is unchanged.
+- Tests: the `setup` and `setup-skill` scopes, bash-free checks that run natively on Windows in CI, the skill's
+  documented flows executed in sandboxes (with deliberate drifts that must fail), and an opt-in
+  `setup-docker-live` scope plus a `docker recipe builds` CI job.
+
 ### Security
 
+- `ak setup` and the setup skill: read-only helper commands, a recipe renderer that refuses to print an unsafe
+  recipe, tag-and-digest-only install sources and consent gates; see `docs/SECURITY.md`.
 - `ak usage` is the first command that reads login content and queries a
   vendor on your behalf. See `docs/SECURITY.md`, "Quota queries": fixed https
   hosts, no redirect, loopback-only override, no refresh, no write, planted-secret

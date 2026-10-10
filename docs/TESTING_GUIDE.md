@@ -33,6 +33,9 @@ when nothing failed.
 | permission posture (`--ask`, `--auto`, `AGENTKIT_PERMISSIONS`, `box_posture`) | `permissions` |
 | `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
 | `ak run` (`lib/run.py`) | `run` |
+| `ak setup` (`lib/setup.py`, `docs/schema/setup-*.json`, checks in `tests/py/setup_checks.py`) | `setup` (probe, verify, docker on simulated Linux, macOS, Windows, WSL, musl and container hosts), `security` |
+| `skills/agentkit-setup/` (`tests/py/skill_checks.py agentkit-setup`, `tests/py/skill_scenarios.py`) | `setup-skill` (form, marketplace rules, consent gates, and the documented flows run in sandboxes), `skill` |
+| the container recipes (`ak setup docker`) | `setup`; the opt-in `setup-docker-live` builds one with a real Docker (`AGENTKIT_TEST_LIVE=1`) |
 | `ak usage` (`lib/usage.py`, `docs/schema/usage-v1.json`, the usage tables of `providers.toml`, checks in `tests/py/usage_checks.py`) | `usage` (pipeline, rendering, the launcher), `usage-providers` (one adapter at a time, the end-to-end layout; `tests/py/usage_provider_checks.py`), `kinds` (the tables), `security` (secrecy, read-only, loopback-only) |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |

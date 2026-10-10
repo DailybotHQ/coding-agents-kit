@@ -25,6 +25,9 @@ grammar over all of them:
   disposable or sandboxed environments: on a host, opt out.
 - **Interface 1 for other tools** — `ak run` (headless, one JSON result),
   `ak env` (a profile's environment), `ak doctor --json`.
+- **Set it up with an agent** — the `agentkit-setup` skill and the read-only `ak setup probe | verify | docker`
+  install, configure, verify and repair the kit on any host or container (pinned tag, verified tarball, keys by
+  name only, consent before every change).
 - **Quota of every account** — `ak usage` lists the 5-hour and weekly windows
   of each Claude, Codex and Z.AI account in one table (`--json` for tools),
   read-only, with `n/d` rows where no quota can be read.
@@ -42,6 +45,9 @@ git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit && ./c
 Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 `./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
 [docs/install.md](docs/install.md).
+
+Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.3.0 --skill agentkit-setup`, then ask it
+to set the kit up on this machine or to write a container recipe ([setup](docs/setup.md)).
 
 ## Quickstart
 
@@ -83,6 +89,7 @@ agent itself.
 - [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
 - [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` and `providers` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
+- [Set up on any machine or container](docs/setup.md) — `ak setup`, the `agentkit-setup` skill, container recipes
 - [`ak usage`](docs/usage.md) — quota per account, `--json` ([schema](docs/schema/usage-v1.json))
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)
