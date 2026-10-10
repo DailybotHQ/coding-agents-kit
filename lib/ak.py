@@ -5,6 +5,7 @@
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
     ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+    ak setup probe [--json]
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
@@ -26,6 +27,7 @@ USAGE = """usage:
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
   ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+  ak setup probe [--json]
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
@@ -91,6 +93,9 @@ def main(argv):
     if first == "usage":
         import usage
         return usage.main(model, rest, env)
+    if first == "setup":
+        import setup
+        return setup.main(model, rest, env)
     if first == "profiles":
         import profiles
         return profiles.main(model, rest, env)

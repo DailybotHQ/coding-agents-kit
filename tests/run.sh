@@ -18,8 +18,8 @@ FAKES="${TESTS}/fakes"
 export FAKES  # read by the scopes in tests/scopes/
 
 # Order matters only for readability of the report.
-ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor usage usage-providers run install aliases skill hooks security contract hygiene oss"
-KNOWN_SCOPES="${ALL_SCOPES} live harness-selftest"
+ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor usage usage-providers setup setup-skill run install aliases skill hooks security contract hygiene oss"
+KNOWN_SCOPES="${ALL_SCOPES} live setup-docker-live harness-selftest"
 
 PASSES=0
 FAILS=0
