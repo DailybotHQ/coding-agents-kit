@@ -273,8 +273,10 @@ def enumerate_rows(model, env):
             if table is None:
                 if (cli_name, label) in covered:
                     continue
+                example = next((k for k in _kinds_of_cli(model, cli_name) if k != cli_name), None)
+                hint = "; its usage shows up under the provider key of a kind such as %s" % example if example else ""
                 rows.append(Row(cli_name, label, [cli_name], None, "none",
-                                unsupported="%s has no usage source of its own; usage follows the provider behind the kind" % cli_name))
+                                unsupported="%s has no usage source of its own%s" % (cli_name, hint)))
             elif "unsupported" in table:
                 rows.append(Row(cli_name, label, kind_names, table, "none", unsupported=table["unsupported"]))
             else:

@@ -422,6 +422,43 @@ az = rows_of(["azure"], env_for({"AZURE_OPENAI_API_KEY": PLANTED_AZURE}))[1]
 check("usage xai: an Azure key is an n/d row with the portal pointer, never fetched",
       len(az) == 1 and az[0]["status"] == "unsupported" and "Azure portal" in az[0]["reason"] and not server.requests, str(az))
 
+
+# ======================================================================= nd
+
+shutil_rm(PROFILES, ignore_errors=True)
+os.makedirs(PROFILES)
+server.requests[:] = []
+for cli_name, name in (("cursor", "work"), ("opencode", "2"), ("pi", "2"), ("cline", "solo"), ("opencode", "solo")):
+    os.makedirs(os.path.join(PROFILES, cli_name, name))
+INSTALLED.update(["cursor", "opencode", "pi", "cline"])
+nd_env = env_for({"ZAI_CODING_API_KEY_2": "PLANTED-ZAI-0015", "XAI_API_KEY_2": "PLANTED-XAI-0016"})
+code, rows, _ = rows_of([], nd_env)
+got = {(r["cli"], r["profile"]): r for r in rows}
+check("usage nd: Cursor is n/d with the web-session reason, for @default and a profile",
+      all(got[("cursor", p)]["status"] == "unsupported" and "web session" in got[("cursor", p)]["reason"] for p in ("@default", "@work")), str(sorted(got)))
+check("usage nd: a harness profile with a routed provider key reports through the provider, not twice",
+      ("opencode", "@2") not in got and ("pi", "@2") not in got and ("zai", "@2") in got and ("xai", "@2") in got, str(sorted(got)))
+check("usage nd: ... and the provider row lists the harness kinds that share it",
+      "opencode-glm" in got[("zai", "@2")]["kinds"] and "pi-glm" in got[("zai", "@2")]["kinds"] and "pi-xai" in got[("xai", "@2")]["kinds"])
+check("usage nd: a harness profile without any routed key is n/d with a pointer",
+      got[("cline", "@solo")]["status"] == "unsupported" and "no usage source of its own" in got[("cline", "@solo")]["reason"]
+      and "cline-azure" in got[("cline", "@solo")]["reason"], str(got[("cline", "@solo")]))
+check("usage nd: an installed harness @default is listed once, as n/d",
+      got[("opencode", "@default")]["status"] == "unsupported" and got[("pi", "@default")]["status"] == "unsupported")
+check("usage nd: a CLI that is not installed and has no profile is absent",
+      all(r["cli"] not in ("claude", "codex", "grok") for r in rows), str(sorted(got)))
+check("usage nd: a live row next to n/d rows still exits 0, and only it made a request",
+      code == 0 and {r["path"] for r in server.requests} == {"/zai"}, "%s %s" % (code, {r["path"] for r in server.requests}))
+server.requests[:] = []
+code2, rows2, _ = rows_of(["cursor"], env_for())
+check("usage nd: only n/d rows exit 0 and nothing was requested",
+      code2 == 0 and rows2 and all(r["status"] == "unsupported" for r in rows2) and not server.requests, str(code2))
+check("usage nd: every n/d row has a one-line reason and no error",
+      all(r["reason"] and "\n" not in r["reason"] and r["error"] is None for r in rows if r["status"] == "unsupported"))
+text = run([], nd_env)[1]
+check("usage nd: the table marks them n/d", text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]))
+INSTALLED.clear()
+
 server.stop()
 if FAILS:
     sys.exit(1)
