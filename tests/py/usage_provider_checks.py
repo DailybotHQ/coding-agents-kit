@@ -491,7 +491,8 @@ for (cli_name, name), (five, week) in LAYOUT.items():
                                                  "secondary_window": {"used_percent": week, "reset_at": 4071340800}}}}
 os.makedirs(os.path.join(PROFILES, "cursor", "default_unused"), exist_ok=True)
 shutil_rm(os.path.join(PROFILES, "cursor"), ignore_errors=True)
-zkeys = {"ZAI_CODING_API_KEY": "planted-zai-base-0x1", "ZAI_CODING_API_KEY_2": "planted-zai-two-0x1"}
+ZBASE, ZTWO = "planted-zai-base-0x1", "planted-zai-two-0x1"
+zkeys = {"ZAI_CODING_API_KEY": ZBASE, "ZAI_CODING_API_KEY_2": ZTWO}
 by_zai = {zkeys["ZAI_CODING_API_KEY"]: {"json": {"data": {"planName": "lite", "limits": [{"type": "TOKENS_LIMIT", "percentage": 48, "nextResetTime": 4070908800000}]}}},
           zkeys["ZAI_CODING_API_KEY_2"]: {"json": {"data": {"planName": "pro", "limits": [{"type": "TOKENS_LIMIT", "percentage": 77, "nextResetTime": 4070908800000}]}}}}
 
