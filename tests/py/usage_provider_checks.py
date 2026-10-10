@@ -374,6 +374,27 @@ check("usage zai: no key value reaches any output", key_default not in blob and 
 files = "".join(open(p, "rb").read().decode("latin-1") for p, _h, _m in snapshot(TMP))
 check("usage zai: no key value was written anywhere", key_default not in files and key_two not in files)
 
+
+# ==================================================================== grok
+
+INSTALLED.clear()
+INSTALLED.add("grok")
+write(os.path.join(PROFILES, "grok", "work", "auth.json"), json.dumps({"session": "PLANTED-GROK-SESSION-01"}))
+server.requests[:] = []
+before = snapshot(TMP)
+code, rows, _ = rows_of(["grok"])
+check("usage grok: @default and every profile get a row",
+      [(r["cli"], r["profile"]) for r in rows] == [("grok", "@default"), ("grok", "@work")], str(rows))
+check("usage grok: the recorded decision is n/d with its reason (per-session usage only)",
+      all(r["status"] == "unsupported" and "per session" in r["reason"] and r["windows"] == [] and r["error"] is None for r in rows), str(rows))
+check("usage grok: an n/d row is not a problem (exit 0)", code == 0, str(code))
+check("usage grok: no request is made and no credential is read for an n/d source", not server.requests)
+text = run(["grok"])[1]
+check("usage grok: the table shows n/d and the reason", "n/d" in text and "per session" in text)
+check("usage grok: the profile directory is unchanged", before == snapshot(TMP))
+check("usage grok: nothing from the profile's login reaches the output", "PLANTED-GROK-SESSION-01" not in text + run(["--json"])[1])
+INSTALLED.clear()
+
 server.stop()
 if FAILS:
     sys.exit(1)
