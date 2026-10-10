@@ -55,6 +55,17 @@ env = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "
 definitive = true
 note = "on macOS the token itself lives in the Keychain, one entry per profile directory"
 
+# `ak usage` source (lib/usage.py). The endpoint is vendor-internal and
+# unofficial; {token} is resolved only into the request header.
+[clis.claude.usage]
+adapter = "anthropic-oauth"
+url = "https://api.anthropic.com/api/oauth/usage"
+headers = { authorization = "Bearer {token}", anthropic-beta = "oauth-2025-04-20", accept = "application/json" }
+credential = "file"
+files = ["home:.credentials.json"]
+keychain = "Claude Code-credentials"
+timeout_s = 10
+
 [clis.claude.install]
 # Native binary. sha256: the vendor's release manifest
 # (downloads.claude.ai/claude-code-releases/2.1.295/manifest.json).
@@ -98,6 +109,14 @@ command = "codex login"
 files = ["home:auth.json"]
 env = ["CODEX_API_KEY", "OPENAI_API_KEY"]
 definitive = true
+
+[clis.codex.usage]
+adapter = "chatgpt-wham"
+url = "https://chatgpt.com/backend-api/wham/usage"
+headers = { authorization = "Bearer {token}", accept = "application/json" }
+credential = "file"
+files = ["home:auth.json"]
+timeout_s = 10
 
 [clis.codex.install]
 # integrity: the npm registry's dist.integrity for this version.
@@ -143,6 +162,9 @@ files = ["home:auth.json"]
 env = ["CURSOR_API_KEY"]
 definitive = false
 note = "the default home on macOS keeps the login in the Keychain; profiles use the file store"
+
+[clis.cursor.usage]
+unsupported = "usage is only available through the Cursor web session; not read by ak"
 
 [clis.cursor.install]
 # The versioned package the vendor's installer downloads. The vendor
@@ -309,6 +331,9 @@ files = ["home:auth.json"]
 env = ["XAI_API_KEY"]
 definitive = true
 
+[clis.grok.usage]
+unsupported = "grok reports usage per session only (grok usage <session>); no account quota is readable"
+
 [clis.grok.install]
 # The versioned binary the vendor's installer downloads. The vendor
 # publishes no checksum: the sha256 values were recorded when this pin was
@@ -334,6 +359,13 @@ key = "ZAI_CODING_API_KEY"
 companions = ["ZAI_CODING_BASE_URL", "ZAI_CODEX_BASE_URL", "ZAI_ANTHROPIC_BASE_URL"]
 require = []
 
+[providers.zai.usage]
+adapter = "zai-quota"
+url = "https://api.z.ai/api/monitor/usage/quota/limit"
+headers = { authorization = "Bearer {token}", accept = "application/json" }
+credential = "env"
+timeout_s = 10
+
 [providers.zai.vars]
 anthropic_base = "{ZAI_ANTHROPIC_BASE_URL:-https://api.z.ai/api/anthropic}"
 openai_base = "{ZAI_CODING_BASE_URL:-https://api.z.ai/api/coding/paas/v4}"
@@ -349,6 +381,9 @@ companions = ["AZURE_OPENAI_RESOURCE", "AZURE_OPENAI_BASE_URL"]
 # Deployment names are yours, so there is no default model to guess.
 require = ["AZURE_OPENAI_RESOURCE|AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_MODEL_DAILY"]
 
+[providers.azure.usage]
+unsupported = "Azure OpenAI exposes no quota to read; check the Azure portal"
+
 [providers.azure.vars]
 base = "{AZURE_OPENAI_BASE_URL:-https://{AZURE_OPENAI_RESOURCE}.services.ai.azure.com/openai/v1}"
 daily = "{AZURE_OPENAI_MODEL_DAILY}"
@@ -360,6 +395,9 @@ name = "xAI Grok"
 key = "XAI_API_KEY"
 companions = ["XAI_BASE_URL"]
 require = []
+
+[providers.xai.usage]
+unsupported = "reading an xAI balance needs a separate management key, which ak never asks for"
 
 [providers.xai.vars]
 base = "{XAI_BASE_URL:-https://api.x.ai/v1}"

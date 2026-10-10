@@ -291,3 +291,70 @@ check("writers target each CLI's own default home",
 pdir = os.path.join(SCRATCH, "profile-pi")
 pctx = kinds.Context(model.kind("pi-xai"), env, home, profile_dir=pdir, profile_label="@work")
 check("a profile's writer targets the profile", writers.apply(model.kind("pi-xai"), pctx) == os.path.join(pdir, "models.json"))
+
+# --- usage sources (providers.toml [clis.*.usage] / [providers.*.usage]) ---
+import copy  # noqa: E402
+
+LIVE = {"claude": "anthropic-oauth", "codex": "chatgpt-wham"}
+for cli_name, adapter in LIVE.items():
+    table = model.cli_usage(cli_name)
+    check("kinds usage: %s has a live table" % cli_name,
+          table is not None and table["adapter"] == adapter and table["url"].startswith("https://"), str(table))
+check("kinds usage: zai provider reads its key from the environment",
+      model.provider_usage("zai")["adapter"] == "zai-quota" and model.provider_usage("zai")["credential"] == "env")
+for cli_name in ("cursor", "grok"):
+    check("kinds usage: %s is an unsupported table with a reason" % cli_name,
+          bool(model.cli_usage(cli_name).get("unsupported")))
+for prov in ("azure", "xai"):
+    check("kinds usage: provider %s is an unsupported table with a reason" % prov,
+          bool(model.provider_usage(prov).get("unsupported")))
+check("kinds usage: a harness CLI without a table has none", model.cli_usage("opencode") is None)
+
+ROOTS = model.clis["claude"]["roots"]
+GOOD = copy.deepcopy(model.cli_usage("claude"))
+check("kinds usage: the shipped claude table has no problems", kinds.usage_problems(GOOD, roots=ROOTS) == [],
+      str(kinds.usage_problems(GOOD, roots=ROOTS)))
+
+
+def broken(mutate, provider=False):
+    table = copy.deepcopy(model.provider_usage("zai") if provider else GOOD)
+    mutate(table)
+    return "; ".join(kinds.usage_problems(table, roots=None if provider else ROOTS, provider=provider))
+
+
+CASES = [
+    ("unknown key", lambda t: t.update(bogus=1), "unknown key bogus"),
+    ("non-https url", lambda t: t.update(url="http://api.example.com/x"), "plain https:// URL"),
+    ("url with a template", lambda t: t.update(url="https://{host}/x"), "plain https:// URL"),
+    ("unknown adapter", lambda t: t.update(adapter="nope"), "adapter must be one of"),
+    ("unknown credential kind", lambda t: t.update(credential="cookie"), "credential must be one of"),
+    ("{token} outside headers is not a header", lambda t: t.update(headers={"x-y": "no token here"}), "must carry {token}"),
+    ("another template in a header", lambda t: t.update(headers={"authorization": "Bearer {token}", "x": "{key}"}), "only {token} may be used"),
+    ("bad header name", lambda t: t.update(headers={"bad name": "Bearer {token}"}), "not a plain token"),
+    ("file credential without files", lambda t: t.pop("files"), "needs files"),
+    ("files naming an unknown root", lambda t: t.update(files=["nowhere:x.json"]), "unknown root"),
+    ("timeout out of range", lambda t: t.update(timeout_s=99), "timeout_s must be an integer 1-60"),
+    ("empty keychain name", lambda t: t.update(keychain=" "), "keychain must be"),
+    ("unsupported mixed with an adapter", lambda t: t.update(unsupported="because"), "unsupported excludes"),
+]
+for label, mutate, expect in CASES:
+    msg = broken(mutate)
+    check("kinds usage rejects: %s" % label, expect in msg, msg or "accepted")
+check("kinds usage rejects: an empty unsupported reason", "non-empty one-line reason" in "; ".join(kinds.usage_problems({"unsupported": " "})))
+check("kinds usage rejects: a multi-line unsupported reason", "non-empty one-line reason" in "; ".join(kinds.usage_problems({"unsupported": "a\nb"})))
+check("kinds usage accepts: an unsupported table with a note", kinds.usage_problems({"unsupported": "why", "note": "n"}) == [])
+check("kinds usage rejects: a provider table with files",
+      "has no files" in broken(lambda t: t.update(credential="file", files=["home:x"]), provider=True))
+check("kinds usage rejects: a provider table with a file credential kind",
+      "environment" in broken(lambda t: t.update(credential="keychain"), provider=True))
+check("kinds usage rejects: files with an env credential", "files only goes with" in broken(lambda t: t.update(credential="env")))
+
+# end to end: a broken table in a real model is refused by the loader with its place named
+data = copy.deepcopy(model.data)
+data["clis"]["claude"]["usage"]["url"] = "http://insecure.example"
+msg = raises(lambda: kinds.Model(data, "providers.toml").validate(), kinds.KindsError)
+check("kinds usage: the loader names clis.claude.usage", msg is not None and "clis.claude.usage" in msg, str(msg))
+data = copy.deepcopy(model.data)
+data["providers"]["zai"]["usage"]["adapter"] = "mystery"
+msg = raises(lambda: kinds.Model(data, "providers.toml").validate(), kinds.KindsError)
+check("kinds usage: the loader names providers.zai.usage", msg is not None and "providers.zai.usage" in msg, str(msg))
