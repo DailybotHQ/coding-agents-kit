@@ -317,6 +317,63 @@ check("usage codex: no access, refresh or id token reaches any output",
 check("usage codex: logins are byte- and mtime-identical after runs (no refresh, no write)", before == snapshot(TMP))
 check("usage codex: no request ever targeted a refresh path", all("oauth" not in r["path"] and "token" not in r["path"] for r in server.requests))
 
+
+# ===================================================================== zai
+
+ZAI_OK = {"success": True, "data": {"planName": "GLM Coding Lite", "limits": [
+    {"type": "TOKENS_LIMIT", "unit": 3, "number": 5, "percentage": 48, "nextResetTime": 1790004800000},
+    {"type": "TOKENS_LIMIT", "unit": 6, "number": 1, "percentage": 12, "nextResetTime": 1790400000000},
+    {"type": "TIME_LIMIT", "unit": 5, "number": 1, "usage": 1000, "currentValue": 250, "remaining": 750,
+     "nextResetTime": 1792000000000, "usageDetails": [{"modelCode": "search-prime", "usage": 3}]}]}}
+shutil_rm(os.path.join(HOME, ".codex"), ignore_errors=True)
+INSTALLED.clear()
+key_default, key_two = PLANTED_PROVIDER, PLANTED_PROVIDER + "-2"
+zenv = env_for({"ZAI_CODING_API_KEY": key_default, "ZAI_CODING_API_KEY_2": key_two})
+server.set_routes({"/zai": {"json": ZAI_OK}})
+server.requests[:] = []
+code, rows, _ = rows_of(["zai"], zenv)
+sent = [r["auth"] for r in server.requests if r["path"] == "/zai"]
+check("usage zai: one row per key, the four glm kinds collapsed into each",
+      [(r["cli"], r["profile"]) for r in rows] == [("zai", "@default"), ("zai", "@2")]
+      and rows[0]["kinds"] == ["claude-glm", "codex-glm", "opencode-glm", "pi-glm"], str(rows))
+check("usage zai: every profile used only its own key (hashed in the endpoint's log)",
+      sorted(sent) == sorted([hashlib.sha256(("Bearer " + k).encode()).hexdigest()[:12] for k in (key_default, key_two)]))
+w = rows[0]["windows"]
+check("usage zai: each limit entry becomes a window with a unique id", [x["id"] for x in w] == ["tokens", "tokens-2", "mcp"], str(w))
+check("usage zai: percentage and the computed fallback are mapped", [x["used_pct"] for x in w] == [48, 12, 25], str(w))
+check("usage zai: epoch-millisecond resets become ISO UTC", w[0]["resets_at"] == usage.iso_utc(1790004800), str(w[0]))
+check("usage zai: the plan name is reported", rows[0]["plan"] == "GLM Coding Lite")
+server.set_routes({"/zai": {"json": {"data": {"limits": [{"type": "TOKENS_LIMIT", "percentage": 250}]}}}})
+check("usage zai: percentages are clamped to 0-100", rows_of(["zai", "@default"], zenv)[1][0]["windows"][0]["used_pct"] == 100)
+server.set_routes({"/zai": {"json": {"data": {"limits": []}}}})
+r = rows_of(["zai", "@default"], zenv)[1][0]
+check("usage zai: an empty limits list is unsupported (reason), not 0 %",
+      r["status"] == "unsupported" and "no limits" in r["reason"] and r["windows"] == [], str(r))
+server.set_routes({"/zai": {"json": {"data": {"limits": [{"type": "TOKENS_LIMIT"}]}}}})
+check("usage zai: limits that cannot be read are unsupported, not zero",
+      rows_of(["zai", "@default"], zenv)[1][0]["status"] == "unsupported")
+server.set_routes({"/zai": {"json": {"nothing": 1}}})
+check("usage zai: a response without data.limits is an unexpected shape", rows_of(["zai", "@default"], zenv)[1][0]["error"] == "unexpected response shape")
+server.set_routes({"/zai": {"status": 401, "body": "{}"}})
+check("usage zai: a rejected key is reported without the key", rows_of(["zai", "@2"], zenv)[1][0]["status"] == "no_scope")
+server.set_routes({"/zai": {"json": ZAI_OK}})
+os.makedirs(os.path.join(PROFILES, "claude", "work"), exist_ok=True)
+code, rows, err = rows_of(["claude-glm", "@work"], zenv)
+check("usage zai: a profile without its own key has no row and never borrows the default key",
+      rows == [] and code == 3 and "ZAI_CODING_API_KEY_WORK is not set" in err, "%s %s" % (code, err))
+check("usage zai: a key-suffix with dashes maps to the profile name",
+      [r["profile"] for r in rows_of(["zai"], env_for({"ZAI_CODING_API_KEY_CLIENT_X": key_default}))[1]] == ["@client_x"])
+os.makedirs(os.path.join(PROFILES, "claude", "client-x"), exist_ok=True)
+check("usage zai: ... and to an existing profile directory when there is one",
+      [r["profile"] for r in rows_of(["zai"], env_for({"ZAI_CODING_API_KEY_CLIENT_X": key_default}))[1]] == ["@client-x"])
+blob = ""
+for args in ([], ["--json"], ["zai"], ["claude-glm"]):
+    c, o, e = run(args, zenv)
+    blob += o + e
+check("usage zai: no key value reaches any output", key_default not in blob and key_two not in blob)
+files = "".join(open(p, "rb").read().decode("latin-1") for p, _h, _m in snapshot(TMP))
+check("usage zai: no key value was written anywhere", key_default not in files and key_two not in files)
+
 server.stop()
 if FAILS:
     sys.exit(1)

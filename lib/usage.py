@@ -113,6 +113,11 @@ class ShapeError(Exception):
     """The response did not have the documented shape."""
 
 
+class NoQuota(Exception):
+    """The response is well formed but reports no limit to show; the message
+    is the one-line reason of the resulting `unsupported` row."""
+
+
 class Adapter(object):
     """Parser of one source. Subclasses set `id` and implement the two hooks;
     transport, timeouts and secrecy belong to the pipeline."""
@@ -469,6 +474,8 @@ def evaluate(row, env, timeout, now):
     try:
         doc = json.loads(body.decode("utf-8-sig"))
         plan, windows = adapter.parse(doc)
+    except NoQuota as exc:
+        return _result(row, "unsupported", reason=str(exc))
     except (ValueError, ShapeError) as exc:
         detail = " (%s)" % exc.__class__.__name__ if env.get("AGENTKIT_DEBUG") == "1" else ""
         return _result(row, "error", error="unexpected response shape" + detail)
@@ -673,6 +680,61 @@ class ChatGPTWham(Adapter):
 register(ChatGPTWham())
 
 
+class ZaiQuota(Adapter):
+    """Z.AI GLM coding plan: GET /api/monitor/usage/quota/limit with the
+    profile's API key (credential = env, resolved by the pipeline). Each
+    limit entry is a window of its own: TOKENS_LIMIT and CREDIT_LIMIT are the
+    coding-plan windows, TIME_LIMIT the MCP window. percentage is 0..100
+    (assumption A5); nextResetTime is epoch milliseconds. An empty or
+    unrecognised list means nothing to show, never 0 %."""
+
+    id = "zai-quota"
+    TYPES = {"TOKENS_LIMIT": ("tokens", "Tokens"), "CREDIT_LIMIT": ("credits", "Credits"), "TIME_LIMIT": ("mcp", "MCP")}
+    PLAN_KEYS = ("planName", "plan", "plan_type", "packageName", "level")
+
+    def credential_from_file(self, doc):
+        return Failure("error", "this source reads an API key from the environment")
+
+    @staticmethod
+    def _percent(entry):
+        value = entry.get("percentage")
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            return value
+        total = entry.get("usage")
+        if isinstance(total, (int, float)) and not isinstance(total, bool) and total > 0:
+            current, remaining = entry.get("currentValue"), entry.get("remaining")
+            if isinstance(current, (int, float)) and not isinstance(current, bool):
+                return current * 100.0 / total
+            if isinstance(remaining, (int, float)) and not isinstance(remaining, bool):
+                return (total - remaining) * 100.0 / total
+        return None
+
+    def parse(self, doc):
+        data = doc.get("data") if isinstance(doc, dict) else None
+        if not isinstance(data, dict) or not isinstance(data.get("limits", []), list):
+            raise ShapeError("no data.limits")
+        plan = next((data[k] for k in self.PLAN_KEYS if isinstance(data.get(k), str) and data[k]), None)
+        windows, seen = [], {}
+        for entry in data.get("limits", []):
+            if not isinstance(entry, dict):
+                raise ShapeError("limit is not an object")
+            pct = self._percent(entry)
+            if pct is None:
+                continue
+            kind = entry.get("type")
+            wid, label = self.TYPES.get(kind, (re.sub(r"[^a-z0-9]+", "-", str(kind).lower()).strip("-") or "limit", str(kind)))
+            seen[wid] = seen.get(wid, 0) + 1
+            if seen[wid] > 1:
+                wid, label = "%s-%d" % (wid, seen[wid]), "%s (%d)" % (label, seen[wid])
+            windows.append(window(wid, label, pct, parse_time(entry.get("nextResetTime")), None))
+        if not windows:
+            raise NoQuota("the plan reports no limits")
+        return plan, windows
+
+
+register(ZaiQuota())
+
+
 # ------------------------------------------------------------- rendering
 
 def _relative(iso, now):
@@ -779,7 +841,13 @@ def main(model, args, env, now=None, stdout=None, platform=None):
     platform = platform or Platform.current(env, stdout)
     rows = filter_rows(model, enumerate_rows(model, env), opts["target"], opts["profile"])
     if not rows:
-        common.warn("nothing to report: no profile or login matches. Try: ak profiles")
+        hint = "no profile or login matches. Try: ak profiles"
+        provider = model.kinds.get(opts["target"] or "", {}).get("provider")
+        if provider and model.provider_usage(provider) and opts["profile"]:
+            base = model.providers[provider]["key"]
+            suffix = "" if opts["profile"] == "@default" else "_" + profiles.suffix(opts["profile"][1:])
+            hint = "%s%s is not set, so there is no %s account for %s" % (base, suffix, provider, opts["profile"])
+        common.warn("nothing to report: " + hint)
         if opts["json"]:
             stdout.write(render_json([], now))
         return EXIT_NOTHING
