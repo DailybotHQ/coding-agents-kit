@@ -20,6 +20,7 @@ import json
 import os
 import re
 import socket
+import subprocess
 import sys
 import threading
 import urllib.error
@@ -393,10 +394,41 @@ def credential_of(row, env, adapter):
     return adapter.credential_from_file(doc)
 
 
+def os_name():
+    """Indirection so tests can simulate another OS."""
+    return common.os_name()
+
+
 def read_keychain(row, env):
-    """macOS Keychain fallback for the default home (implemented with the
-    Claude adapter). Returns parsed JSON, None, or Failure."""
-    return None
+    """macOS Keychain fallback, only for a spec that names a service and only
+    for the CLI's default home (the per-profile entry name is not verified,
+    so a profile is reported honestly instead of guessed). Returns parsed
+    JSON, None (nothing to read here), or Failure. The secret is parsed and
+    dropped; it is never printed or logged."""
+    service = (row.spec or {}).get("keychain")
+    if not service or os_name() != "macos":
+        return None
+    if row.profile != "@default":
+        return Failure("no_login", "the login of this profile is in the macOS Keychain; ak cannot read per-profile entries")
+    security = common.which("security", env)
+    if not security:
+        return None
+    clean = {k: v for k, v in env.items() if not common.secret_like(k)}
+    try:
+        proc = subprocess.run([security, "find-generic-password", "-s", service, "-w"], stdout=subprocess.PIPE,
+                              stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10, env=clean)
+    except subprocess.TimeoutExpired:
+        return Failure("no_login", "the macOS Keychain did not answer; unlock it and retry")
+    except OSError:
+        return None
+    if proc.returncode == 44:       # errSecItemNotFound
+        return None
+    if proc.returncode != 0:
+        return Failure("no_login", "macOS Keychain access was denied or is unavailable")
+    try:
+        return json.loads(proc.stdout.decode("utf-8-sig"))
+    except ValueError:
+        return Failure("error", "the Keychain item is not valid JSON")
 
 
 def evaluate(row, env, timeout, now):
@@ -494,6 +526,64 @@ def fetch_all(rows, env, timeout, now):
         if results[index] is None:
             results[index] = _result(row, "error", error="timed out after %ds" % request_timeout(row, timeout))
     return results
+
+
+# --------------------------------------------------------------- adapters
+
+def _number(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ShapeError("not a number")
+    return value
+
+
+def _epoch_seconds(value):
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    return value / 1000.0 if value > 1e11 else float(value)
+
+
+class AnthropicOAuth(Adapter):
+    """Claude Code subscription: GET /api/oauth/usage with the login's
+    access token. Windows are the provider's own (5-hour, weekly, per-model
+    weekly). Assumption A1 (to confirm on real accounts): utilization is a
+    percentage 0..100."""
+
+    id = "anthropic-oauth"
+    required_scope = "user:profile"
+    WINDOWS = (("five_hour", "5h", "5-hour", 18000),
+               ("seven_day", "7d", "7-day", 604800),
+               ("seven_day_opus", "7d-opus", "7-day Opus", 604800),
+               ("seven_day_sonnet", "7d-sonnet", "7-day Sonnet", 604800))
+
+    def credential_from_file(self, doc):
+        oauth = doc.get("claudeAiOauth") if isinstance(doc, dict) and isinstance(doc.get("claudeAiOauth"), dict) else doc
+        token = oauth.get("accessToken") if isinstance(oauth, dict) else None
+        if not isinstance(token, str) or not token:
+            return Failure("no_login", "the login file holds no subscription login (API-key logins have no quota to read)")
+        scopes = oauth.get("scopes")
+        plan = oauth.get("subscriptionType")
+        return Credential(token, _epoch_seconds(oauth.get("expiresAt")),
+                          scopes if isinstance(scopes, list) and all(isinstance(x, str) for x in scopes) else None,
+                          plan if isinstance(plan, str) and plan else None)
+
+    def parse(self, doc):
+        if not isinstance(doc, dict):
+            raise ShapeError("not an object")
+        windows = []
+        for key, wid, label, seconds in self.WINDOWS:
+            entry = doc.get(key)
+            if entry is None:
+                continue
+            if not isinstance(entry, dict):
+                raise ShapeError("window is not an object")
+            used = _number(entry.get("utilization"))
+            windows.append(window(wid, label, used, parse_time(entry.get("resets_at")), seconds))
+        if not windows:
+            raise ShapeError("no known window")
+        return None, windows
+
+
+register(AnthropicOAuth())
 
 
 # ------------------------------------------------------------- rendering
