@@ -23,6 +23,7 @@ import os
 import platform
 import re
 import stat
+import subprocess
 import sys
 
 import common
@@ -95,7 +96,15 @@ class Host(object):
         return common.which(name, self.env)
 
     def version_of(self, path):
-        out = common._probe([path, "--version"], timeout=5).strip().splitlines()
+        """First line of `<tool> --version`. The child gets the environment
+        without any *_API_KEY / *_TOKEN variable, so no key ever reaches it."""
+        clean = {k: v for k, v in self.env.items() if not common.secret_like(k)}
+        try:
+            proc = subprocess.run([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                  stdin=subprocess.DEVNULL, timeout=5, env=clean)
+        except (OSError, subprocess.SubprocessError):
+            return None
+        out = proc.stdout.decode("utf-8", "replace").strip().splitlines()
         return out[0].strip()[:80] if out else None
 
     def home(self):

@@ -32,6 +32,7 @@ public issue.
 | Vendor installers | a compromised npm dependency reading your keys | `ak install` starts installers and npm with every `*_API_KEY` / `*_TOKEN` variable removed from their environment. |
 | Herdr hooks | writing into the CLI's own home | `ak profiles hooks` reads the real home and writes only inside the profile (checked path by path); it merges only Herdr's own entries and refuses files it cannot parse. |
 | Logins read by `ak usage` | a token printed, logged, written, refreshed, sent to the wrong host or used for the wrong account | `ak usage` reads a profile's login file (or the macOS Keychain item of the default home) into memory, uses it in one `Authorization` header for one request to the host written in `providers.toml`, and drops it. It never refreshes a token (a rotated refresh token can sign the CLI out), never reads a refresh token beyond parsing, never prints a token (messages are built from status codes and exception class names, not from requests), never writes under a profile or the env file, and reports an expired login without making a request. Each row uses only its own profile's login or key: no fallback to the default home's. Requests are `https` to the fixed hosts below; the only override (`AGENTKIT_USAGE_URL_<ADAPTER>`, for tests) must be a loopback address, no redirect is followed, the body is capped at 1 MiB, and at most 8 requests run at once. The `security` test scope plants tokens, runs every failure mode and searches every output and file. |
+| Agent-driven setup (`ak setup`, the `agentkit-setup` skill) | an agent installing or changing a machine or container beyond what the person agreed to; a tampered or floating install source; a key printed, baked into an image or sent to a child process; a recipe that runs as root | `ak setup probe`, `verify` and `docker` are read-only: they observe or render to stdout and write nothing except an explicit `--out FILE`, created once and never overwriting; `verify` never applies a repair. They print provider keys by **name** only, run their one child process (`<tool> --version`, an allow-list that excludes every coding-agent CLI) without any `*_API_KEY`/`*_TOKEN` variable, and work from an uninstalled clone. A container recipe is rendered only for a release **tag** (never a branch or `latest`) together with the SHA256 of that release's tarball, which is verified before the archive is unpacked; it installs as a non-root user with `--no-rc`, keeps keys out of `ARG`/`ENV`, and the renderer refuses to print a recipe that breaks those rules. The skill asks before each system package, shell rc edit, autonomy choice, profile, CLI install, repository write and uninstall, never types an autonomy flag, and never asks for or echoes a key value. The `security`, `setup` and `setup-skill` scopes plant secrets and check outputs, files, recipes and the skill text; the skill's documented flows are executed in sandboxes. |
 | Agent output | instructions smuggled through another agent's answer | `ak run` returns the agent's text as data (`result_text`); the bundled skill tells agents to treat it as a claim to verify, never as instructions. |
 
 ## Documented exceptions and limits
@@ -60,6 +61,12 @@ public issue.
   account and holds no token. **`ak usage` is the exception:** it opens the
   login file (`.credentials.json`, `auth.json`) of each profile to use its
   token, as described in *Quota queries*.
+- **The setup skill is guidance a model follows, not a sandbox.** What holds
+  without trusting the model is the helper's design (read-only, names-only,
+  verified recipes) and the person's answers at each consent gate; an agent
+  that ignores the skill can still run the installer by hand. The skill's
+  flows are tested as executable documentation, so its words cannot silently
+  drift from the commands.
 - **The usage endpoints are vendor-internal and unofficial.** They can change
   or disappear without notice; `ak usage` then reports `error: unexpected
   response shape` for that row. Using them is your account's own token against
@@ -89,7 +96,8 @@ without you asking for an install; it has no side effects and no cache.
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
-`ak usage` writes nothing at all.
+`ak usage` writes nothing at all. Neither do `ak setup probe`, `verify` and
+`docker` (stdout only); `docker --out FILE` creates one new file, mode 644.
 
 Nothing else: no telemetry, and no network access except `ak install`
 fetching a vendor installer you asked for and `ak usage` querying the usage
@@ -98,7 +106,7 @@ endpoint of an account you run (the hosts above, one request per row).
 ## Checks
 
 `bash tests/run.sh security` (planted secrets, file modes, env-file
-refusal, `ak usage` secrecy/read-only/loopback-only rules, static rules),
-plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers` and `lint`
+refusal, `ak usage` and `ak setup` secrecy/read-only rules, recipe safety, static rules),
+plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `setup`, `setup-skill` and `lint`
 (secret-shaped strings, private references, shellcheck). The suite runs in a
 sandbox HOME with fake CLIs and never touches the network.

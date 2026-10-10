@@ -202,6 +202,7 @@ for c in kinds.load().clis.values():
   expect_eq "writers: a profile's planted config symlink is refused (nothing written outside)" "${status}:$(grep -c '^model = "x"$' "${BOX}/outside.toml")" "3:1"
 
   security_usage
+  security_setup
 }
 
 # `ak usage` reads credential content and talks to vendor endpoints: the first
@@ -267,5 +268,62 @@ security_usage() {
   check "security usage: no refresh endpoint or grant type appears in lib/usage.py or providers.toml" \
     bash -c '! grep -Eqi "refresh_token *[:=]|grant_type|/oauth/token|/token\b" "$1" "$2"' _ "${ROOT}/lib/usage.py" "${ROOT}/providers.toml"
   usage_server_stop
+}
+
+# `ak setup` (the helper behind the agentkit-setup skill) observes and renders;
+# it must never print a key, write anything but an explicit --out, apply a
+# repair, or render a recipe that breaks the container rules. The skill's
+# promises (consent gates, pinned sources) are checked as text.
+security_setup() {
+  local out digest="8c163a81fa31151cd577797f07cfbe3e61dad49ff691de0b6d5de0975f1cc8ca" before after f gate status
+  box_new security-setup
+  sec_env_file
+  : > "${BOX}/setup-output"
+  before="$(find "${BOX}" -type f ! -name setup-output ! -name out ! -name err | sort | xargs -r cksum)"
+  for f in "setup probe" "setup probe --json" "setup verify --keys ZAI_CODING_API_KEY,XAI_API_KEY --cli claude --expect-posture ask" \
+      "setup verify --json --keys AZURE_OPENAI_API_KEY" "setup docker --ref v0.3.0 --sha256 ${digest} --cli claude,codex" \
+      "setup docker --ref v0.3.0 --sha256 ${digest} --format compose" "setup docker --ref v0.3.0 --sha256 ${digest} --format entrypoint" \
+      "setup docker --ref v0.3.0 --sha256 ${digest} --format devcontainer" "setup docker --ref main --sha256 ${digest}" "setup docker --ref v0.3.0 --sha256 ${digest} --base alpine"; do
+    # shellcheck disable=SC2086
+    ak_split GITHUB_TOKEN=sec-unrelated-token-7Q7 -- ${f}
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/setup-output"
+  done
+  expect_eq "security setup: no key or token value in any probe, verify or recipe output" "$(leaked "${BOX}/setup-output")" ""
+  after="$(find "${BOX}" -type f ! -name setup-output ! -name out ! -name err | sort | xargs -r cksum)"
+  expect_eq "security setup: probe, verify and docker write nothing and apply no repair" "${before}" "${after}"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"; status=$?
+  expect_eq "security setup: --out writes a new file once and never overwrites" "${status}:$(grep -c 'FROM ' "${BOX}/work/Dockerfile")" "2:1"
+  expect_eq "security setup: the recipe on disk carries no secret value" "$(leaked "${BOX}/work/Dockerfile")" ""
+
+  # The recipe rules hold for every format (the renderer also refuses to print a recipe that breaks them).
+  for f in dockerfile compose entrypoint devcontainer; do
+    check "security setup: the ${f} recipe passes the container safety rules" \
+      "${AK_PY}" -c 'import sys; sys.path.insert(0, sys.argv[1]); import kinds, setup
+model = kinds.load()
+opts = setup.parse_docker_args(model, ["--ref", "v0.3.0", "--sha256", sys.argv[2], "--format", sys.argv[3], "--cli", "claude,codex"])
+sys.exit(1 if setup.recipe_problems(setup.render_docker(model, opts), sys.argv[3]) else 0)' "${ROOT}/lib" "${digest}" "${f}"
+  done
+  out="$(ak -- setup docker --ref latest --sha256 "${digest}")"; status=$?
+  expect_eq "security setup: latest is refused as a ref (exit 2)" "${status}" 2
+  out="$(ak -- setup docker --ref v0.3.0)"; status=$?
+  expect_eq "security setup: a missing digest is refused, never invented (exit 2)" "${status}" 2
+
+  # Static rules over the helper and the skill.
+  check "security setup: lib/setup.py opens no file for writing except through the no-overwrite --out (one O_EXCL create)" \
+    bash -c '! grep -Eq "(^|[^a-z_.])open\([^)]*[\"\x27](w|a|r\+)b?[\"\x27]" "$1" && [ "$(grep -c "os\.open(" "$1")" -eq 1 ] && grep -q "O_EXCL" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: its only subprocess is the version probe; no shell, no package manager call, no rc edit" \
+    bash -c '[ "$(grep -c "subprocess\.run(" "$1")" -eq 1 ] && ! grep -Eq "shell *= *True|os\.system|os\.popen|os\.exec|\[[\"\x27](apt-get|brew|winget|apk|npm|pip)[\"\x27]" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: lib/setup.py spells no autonomy flag" \
+    bash -c '! grep -Eq -- "--dangerously|--yolo|--always-approve|bypass-approvals" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: its child processes run without key or token variables" \
+    bash -c 'grep -q "secret_like" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: no skill, reference or helper text fetches into a shell or names a branch or latest as a source" \
+    bash -c '! grep -rEq "(curl|wget)[^|\n]*\|[[:space:]]*(ba|z)?sh([[:space:]]|$)|--branch (main|master|latest)|releases/latest" "$1" "$2"' _ "${ROOT}/skills/agentkit-setup" "${ROOT}/lib/setup.py"
+  for gate in "system package" "shell rc" "posture" "profile" "CLI install" "repository write" "uninstall"; do
+    check "security setup: the skill names the consent gate [GATE: ${gate}]" grep -q "\[GATE: ${gate}\]" "${ROOT}/skills/agentkit-setup/SKILL.md"
+  done
+  check "security setup: the skill forbids typing an autonomy flag or removing the opt-out" \
+    grep -q "type an autonomy flag or remove the user's opt-out" "${ROOT}/skills/agentkit-setup/SKILL.md"
 }
 

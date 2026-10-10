@@ -469,6 +469,21 @@ check("setup docker: --out never overwrites an existing file (exit 2, content ke
 check("setup docker: a directory that cannot be written is a usage error, not a crash",
       docker(["--out", os.path.join(TMP, "no-such-dir", "x")])[0] == 2)
 
+# the version probe's child never receives a key or token variable
+if os.name != "nt":
+    env_bin = os.path.join(TMP, "envbin")
+    os.makedirs(env_bin)
+    env_marker = os.path.join(TMP, "env-seen")
+    script = os.path.join(env_bin, "git")
+    with open(script, "w") as handle:
+        handle.write("#!/bin/sh\nprintf '%%s|%%s|%%s' \"${ZAI_CODING_API_KEY:-unset}\" \"${GITHUB_TOKEN:-unset}\" \"${HARMLESS:-unset}\" > '%s'\necho git 1.0\n" % env_marker)
+    os.chmod(script, 0o755)
+    child_env = env_for({"PATH": env_bin + os.pathsep + os.environ.get("PATH", ""), "HARMLESS": "visible"})
+    setup.collect(MODEL, child_env)
+    seen = open(env_marker).read() if os.path.exists(env_marker) else "never ran"
+    check("setup probe: a tool run for its version never sees a key or token variable (other variables pass)",
+          seen == "unset|unset|visible", seen)
+
 # static portability rule
 import re  # noqa: E402
 source = open(os.path.join(ROOT, "lib", "setup.py"), encoding="utf-8").read()
