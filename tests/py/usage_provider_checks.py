@@ -395,6 +395,33 @@ check("usage grok: the profile directory is unchanged", before == snapshot(TMP))
 check("usage grok: nothing from the profile's login reaches the output", "PLANTED-GROK-SESSION-01" not in text + run(["--json"])[1])
 INSTALLED.clear()
 
+
+# ===================================================================== xai
+
+XAI_KEY, XAI_KEY2, XAI_MGMT = "PLANTED-XAI-0011", "PLANTED-XAI-0012", "PLANTED-XAI-MANAGEMENT-0013"
+xenv = env_for({"XAI_API_KEY": XAI_KEY, "XAI_API_KEY_2": XAI_KEY2, "XAI_MANAGEMENT_KEY": XAI_MGMT})
+server.requests[:] = []
+before = snapshot(TMP)
+code, rows, _ = rows_of(["xai"], xenv)
+check("usage xai: one row per key, all xai kinds collapsed into each",
+      [(r["cli"], r["profile"]) for r in rows] == [("xai", "@default"), ("xai", "@2")]
+      and rows[0]["kinds"] == ["cline-xai", "codex-xai", "grok", "opencode-xai", "pi-xai"], str(rows))
+check("usage xai: the recorded decision is n/d (a balance needs a management key ak never asks for)",
+      all(r["status"] == "unsupported" and "management key" in r["reason"] and r["source"] == "none" for r in rows), str(rows))
+check("usage xai: n/d is not a problem (exit 0)", code == 0)
+check("usage xai: no request is made with an inference key", not server.requests)
+text = run(["--json"], xenv)[1] + run([], xenv)[1]
+check("usage xai: no second credential is read or shown (a management key in the environment is ignored)",
+      XAI_MGMT not in text and "XAI_MANAGEMENT_KEY" not in text)
+check("usage xai: no key value reaches any output", XAI_KEY not in text and XAI_KEY2 not in text)
+check("usage xai: a kind filter selects the xai rows", [r["cli"] for r in rows_of(["codex-xai"], xenv)[1]] == ["xai", "xai"])
+check("usage xai: nothing was written", before == snapshot(TMP))
+PLANTED_AZURE = "PLANTED-AZURE-0014"
+server.requests[:] = []
+az = rows_of(["azure"], env_for({"AZURE_OPENAI_API_KEY": PLANTED_AZURE}))[1]
+check("usage xai: an Azure key is an n/d row with the portal pointer, never fetched",
+      len(az) == 1 and az[0]["status"] == "unsupported" and "Azure portal" in az[0]["reason"] and not server.requests, str(az))
+
 server.stop()
 if FAILS:
     sys.exit(1)
