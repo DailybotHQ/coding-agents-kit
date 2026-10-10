@@ -164,4 +164,46 @@ scope_install() {
   box_env_file '# comment' 'export ZAI_CODING_API_KEY="planted-quoted-0x1"' "XAI_API_KEY='planted-single'" 'IGNORED LINE'
   out="$(box_run FAKE_SHOW_SECRETS=1 -- "${AK_PY}" "${ROOT}/lib/ak.py" claude-glm)"
   expect_line "the python loader reads KEY=value lines (export, quotes)" "${out}" "ANTHROPIC_AUTH_TOKEN=planted-quoted-0x1"
+
+  install_setup_contract
+}
+
+# The behaviour the agentkit-setup skill relies on (survey G5-G7, "no installer
+# change needed"): no prompt, deterministic exits, idempotence, refusal of an
+# unmarked target, nothing outside the target and the env file touched, and an
+# install straight from an extracted release tarball.
+install_setup_contract() {
+  local out status dest tar_root stray
+  box_new install-setup
+  dest="${BOX}/home/.local/share/agentkit"
+  out="$(box_run AGENTKIT_ASSUME_TTY=0 -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
+  expect_eq "install setup: --no-rc with no TTY and stdin closed never prompts (exit 0)" "${status}" 0
+  expect_has "install setup: ... and says no shell rc was touched" "${out}" "no shell rc touched (--no-rc)"
+  expect_eq "install setup: the rc files stay absent" "$(ls -A "${BOX}/home" | grep -c '^\.\(bashrc\|zshrc\|profile\|bash_profile\)$')" 0
+  expect_eq "install setup: the install is marked as made with --no-rc" "$([[ -f "${dest}/.no-rc" ]] && echo yes)" yes
+  out="$(box_run -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
+  expect_eq "install setup: a second run is idempotent (exit 0)" "${status}" 0
+  expect_has "install setup: ... and keeps the env file" "${out}" "kept "
+  printf 'KEEP=1\n' >> "${BOX}/home/.config/agentkit/env"
+  box_run -- bash "${ROOT}/install.sh" --no-rc >/dev/null
+  expect_eq "install setup: a rerun never overwrites the env file" "$(grep -c '^KEEP=1$' "${BOX}/home/.config/agentkit/env")" 1
+  stray="${BOX}/stray"
+  mkdir -p "${stray}"; : > "${stray}/keepme"
+  out="$(box_run AGENTKIT_HOME="${stray}" -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
+  expect_eq "install setup: an unmarked non-empty target is refused (exit 1) and left alone" "${status}:$(ls "${stray}")" "1:keepme"
+  expect_has "install setup: ... with a message an agent can act on" "${out}" "is not a coding-agents-kit install"
+  out="$(box_run -- bash "${ROOT}/install.sh" --uninstall)"; status=$?
+  expect_eq "install setup: uninstall exits 0 and keeps the env file and profiles" \
+    "${status}:$([[ -f "${BOX}/home/.config/agentkit/env" ]] && echo env):$([[ ! -e "${dest}/bin" ]] && echo removed)" "0:env:removed"
+
+  # From an extracted release tarball (layout of scripts/release.sh): install.sh runs unchanged.
+  box_new install-setup-tarball
+  tar_root="${BOX}/work/coding-agents-kit-v0.0.0"
+  mkdir -p "${tar_root}"
+  ( cd "${ROOT}" && tar -cf - bin lib providers.toml skills docs LICENSE README.md CREDITS.md CHANGELOG.md install.sh ) | ( cd "${tar_root}" && tar -xf - )
+  out="$(box_run -- bash "${tar_root}/install.sh" --no-rc)"; status=$?
+  expect_eq "install setup: install.sh runs from an extracted release tarball layout" "${status}" 0
+  expect_eq "install setup: ... and the installed kit works" "$(box_run -- "${BOX}/home/.local/share/agentkit/bin/ak" --version)" "agentkit 0.3.0 (interface 1)"
+  expect_eq "install setup: the helper runs from the extracted tarball without installing" \
+    "$(box_run -- "${AK_PY}" "${tar_root}/lib/ak.py" setup probe --json | "${AK_PY}" -c 'import json,sys; print(json.load(sys.stdin)["schema"])')" "setup-probe-v1"
 }
