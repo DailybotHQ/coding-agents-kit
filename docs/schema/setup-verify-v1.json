@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.4.0/docs/schema/setup-verify-v1.json",
+  "title": "ak setup verify --json (setup-verify-v1)",
+  "description": "A closed list of named checks about a kit setup, each with a verdict and the one command that repairs it. Read-only: verify never applies a repair. Never contains a secret value. Consumers check `schema` and `interface` first.",
+  "type": "object",
+  "required": ["schema", "interface", "ok", "checks"],
+  "properties": {
+    "schema": { "const": "setup-verify-v1" },
+    "interface": { "const": 1 },
+    "ok": { "type": "boolean", "description": "true when no check is `fail` (a `warn` never fails)." },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "status", "message", "repair"],
+        "properties": {
+          "id": { "type": "string", "pattern": "^[a-z0-9_.-]+$" },
+          "status": { "enum": ["ok", "warn", "fail"] },
+          "message": { "type": "string" },
+          "repair": { "type": ["string", "null"], "description": "The exact command that repairs this check, or null when only the person can act (for example a login)." }
+        }
+      }
+    }
+  }
+}
