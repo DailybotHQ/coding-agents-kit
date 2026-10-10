@@ -30,8 +30,8 @@ from common import AkError  # noqa: E402
 from fake_usage_server import FakeUsageServer  # noqa: E402
 
 FAILS = []
-TOKEN = "PLANTED-TOKEN-7f3a9c0001"
-KEY = "PLANTED-KEY-7f3a9c0002"
+PLANTED_LOGIN = "PLANTED-TOKEN-7f3a9c0001"
+PLANTED_PROVIDER = "PLANTED-KEY-7f3a9c0002"
 NOW = 1790000000.0
 
 
@@ -104,7 +104,7 @@ def write(path, text):
         handle.write(text)
 
 
-def login(path, token=TOKEN, **extra):
+def login(path, token=PLANTED_LOGIN, **extra):
     doc = {"token": token}
     doc.update(extra)
     write(path, json.dumps(doc))
@@ -167,7 +167,7 @@ login(os.path.join(PROFILES, "claude", "work", ".credentials.json"))
 login(os.path.join(PROFILES, "claude", "2", ".credentials.json"))
 login(os.path.join(PROFILES, "codex", "work", "auth.json"))
 os.makedirs(os.path.join(PROFILES, "cursor", "work"))
-ENV = env_for({"ZAI_CODING_API_KEY": KEY, "ZAI_CODING_API_KEY_2": KEY + "-2"})
+ENV = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "ZAI_CODING_API_KEY_2": PLANTED_PROVIDER + "-2"})
 
 code, rows = rows_of([], ENV)
 order = [(r["cli"], r["profile"]) for r in rows]
@@ -276,14 +276,125 @@ for args in ([], ["--json"], ["claude"], ["codex", "@work"], ["nope"], ["--timeo
     code, out, err = run(args, ENV)
     everything += out + err
 check("usage core: no token or key value reaches any output or message",
-      TOKEN not in everything and KEY not in everything, "a planted value leaked")
+      PLANTED_LOGIN not in everything and PLANTED_PROVIDER not in everything, "a planted value leaked")
 sent = [r["auth"] for r in server.requests if r["auth"]]
 check("usage core: the credential reached the endpoint (as a bearer, hashed in the log)",
-      hashlib.sha256(("Bearer " + TOKEN).encode()).hexdigest()[:12] in sent)
+      hashlib.sha256(("Bearer " + PLANTED_LOGIN).encode()).hexdigest()[:12] in sent)
 state = tree_state(TMP)
 run([], ENV)
 run(["--json"], ENV)
 check("usage core: a run changes nothing under the home or the profiles", [s for s in tree_state(TMP) if s[0] != doc_path] == [s for s in state if s[0] != doc_path])
+
+
+# ------------------------------------------------------------- resilience
+
+import time  # noqa: E402
+
+
+class FakeBoom(FakeOAuth):
+    id = "fake-boom"
+
+    def parse(self, doc):
+        raise RuntimeError("parser bug")
+
+
+class FakeScoped(FakeOAuth):
+    id = "fake-scoped"
+    required_scope = "user:profile"
+
+
+usage.register(FakeBoom())
+usage.register(FakeScoped())
+leak_probe = ""
+
+
+def codex_row(routes, extra_args=None, adapter=None, env_extra=None, model=None):
+    server.set_routes(routes)
+    return rows_of(["codex", "@default"] + (extra_args or []), env_for(env_extra))
+
+
+GOOD = {"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}}
+ENV_CODEX = {"AGENTKIT_USAGE_URL_FAKE_OAUTH": server.base + "/codex"}
+MODES = [
+    ("a 500 is HTTP 500", {"/codex": {"status": 500, "body": "boom"}}, "error", "HTTP 500"),
+    ("a 429 is rate_limited", {"/codex": {"status": 429, "body": "{}"}}, "rate_limited", "rate limited"),
+    ("a 401 is no_scope with guidance", {"/codex": {"status": 401, "body": "{}"}}, "no_scope", "HTTP 401"),
+    ("a 403 is no_scope with guidance", {"/codex": {"status": 403, "body": "{}"}}, "no_scope", "HTTP 403"),
+    ("a redirect is never followed", {"/codex": {"redirect": "/other"}, "/other": {"json": WINDOWS_OK}}, "error", "unexpected redirect"),
+    ("an oversized body is refused", {"/codex": {"size": 2 * 1024 * 1024}}, "error", "response too large"),
+    ("truncated JSON is an unexpected shape", {"/codex": {"body": "{\"plan\": "}}, "error", "unexpected response shape"),
+    ("an empty body is an unexpected shape", {"/codex": {"body": ""}}, "error", "unexpected response shape"),
+    ("a wrong shape is an unexpected shape", {"/codex": {"json": {"windows": "nope"}}}, "error", "unexpected response shape"),
+    ("a missing path (404) is HTTP 404", {}, "error", "HTTP 404"),
+]
+for label, routes, want_status, want_text in MODES:
+    server.requests[:] = []
+    _, rows = codex_row(routes, env_extra=ENV_CODEX)
+    row = rows[0]
+    leak_probe += json.dumps(row)
+    check("usage resilience: %s" % label, row["status"] == want_status and want_text in (row["error"] or ""), str(row))
+check("usage resilience: a redirect target is never requested", "/other" not in [r["path"] for r in server.requests])
+
+# slow endpoint: the per-request timeout bounds the wait
+server.requests[:] = []
+started = time.time()
+_, rows = codex_row({"/codex": {"json": WINDOWS_OK, "delay": 3}}, ["--timeout", "1"], env_extra=ENV_CODEX)
+elapsed = time.time() - started
+check("usage resilience: a slow endpoint times out at --timeout", rows[0]["error"] == "timed out after 1s" and elapsed < 2.8,
+      "%s %.1f" % (rows[0], elapsed))
+
+# a parser bug costs one row, not the run
+boom = copy.deepcopy(MODEL.data)
+boom["clis"]["codex"]["usage"]["adapter"] = "fake-boom"
+boom_model = kinds.Model(boom, "providers.toml")
+server.set_routes(GOOD)
+code, out, _ = run(["--json"], env_for({"AGENTKIT_USAGE_URL_FAKE_BOOM": server.base + "/codex"}), model=boom_model)
+rows = json.loads(out)["rows"]
+codex_default = [r for r in rows if r["cli"] == "codex" and r["profile"] == "@default"][0]
+claude_default = [r for r in rows if r["cli"] == "claude" and r["profile"] == "@default"][0]
+check("usage resilience: an unexpected parser exception becomes an error row", codex_default["error"] == "internal error (RuntimeError)", str(codex_default))
+check("usage resilience: the other rows are unaffected", claude_default["status"] == "ok" and code == 1)
+
+# scopes known before any request
+scoped = copy.deepcopy(MODEL.data)
+scoped["clis"]["codex"]["usage"]["adapter"] = "fake-scoped"
+login(os.path.join(HOME, ".codex", "auth.json"), exp=NOW + 3600, scopes=["user:inference"])
+server.requests[:] = []
+_, out, _ = run(["--json", "codex", "@default"], env_for({"AGENTKIT_USAGE_URL_FAKE_SCOPED": server.base + "/codex"}), model=kinds.Model(scoped, "providers.toml"))
+row = json.loads(out)["rows"][0]
+check("usage resilience: a login lacking the needed scope is no_scope without a request",
+      row["status"] == "no_scope" and "user:profile" in row["error"] and not server.requests, str(row))
+login(os.path.join(HOME, ".codex", "auth.json"), exp=NOW + 3600)
+
+# healthy rows still print when another fails
+server.set_routes({"/claude": {"status": 500, "body": "x"}, "/zai": {"json": ZAI_OK}})
+code2, text2, _ = run([], ENV)
+check("usage resilience: the table still prints healthy rows next to failing ones",
+      "tokens" in text2 and "48%" in text2 and "HTTP 500" in text2 and code2 == 1, text2[:400])
+leak_probe += text2
+
+# parallel: ten logins against a 1 s endpoint finish far sooner than ten seconds
+for i in range(1, 9):
+    login(os.path.join(PROFILES, "claude", "r%d" % i, ".credentials.json"))
+server.set_routes({"/claude": {"json": WINDOWS_OK, "delay": 1}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+server.requests[:] = []
+started = time.time()
+code, rows = rows_of(["claude"], ENV)
+elapsed = time.time() - started
+served = len([r for r in server.requests if r["path"] == "/claude"])
+check("usage resilience: ten slow rows run in parallel", served >= 10 and elapsed < 4.5, "%d requests in %.1fs" % (served, elapsed))
+check("usage resilience: results keep the documented row order", [r["profile"] for r in rows] ==
+      ["@default", "@2"] + ["@r%d" % i for i in range(1, 9)] + ["@work"], str([r["profile"] for r in rows]))
+server.set_routes(GOOD)
+import shutil  # noqa: E402
+for i in range(1, 9):
+    shutil.rmtree(os.path.join(PROFILES, "claude", "r%d" % i))
+
+# exit-code matrix
+check("usage resilience: exit codes - ok 0, problem 1, usage 2, nothing 3",
+      run(["cursor"], ENV)[0] == 0 and run(["claude", "@2"], ENV)[0] == 1 and run(["--bogus"], ENV)[0] == 2
+      and run(["claude", "@nowhere"], ENV)[0] == 3)
+check("usage resilience: no failure message carries a token", PLANTED_LOGIN not in leak_probe and PLANTED_PROVIDER not in leak_probe)
 
 server.stop()
 if FAILS:

@@ -19,7 +19,9 @@ import datetime
 import json
 import os
 import re
+import socket
 import sys
+import threading
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -39,6 +41,7 @@ PROBLEM_STATUSES = ("expired", "no_login", "no_scope", "rate_limited", "error")
 DEFAULT_TIMEOUT = 10
 MAX_TIMEOUT = 60
 MAX_BODY = 1 << 20    # 1 MiB
+MAX_WORKERS = 8
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
 
 USAGE = """usage: ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
@@ -114,6 +117,7 @@ class Adapter(object):
     transport, timeouts and secrecy belong to the pipeline."""
 
     id = None
+    required_scope = None     # a scope the endpoint needs, when the login file lists scopes
 
     def credential_from_file(self, doc):
         """doc: the parsed login file. -> Credential or Failure."""
@@ -325,8 +329,15 @@ def resolve_url(row, env):
     return table_url
 
 
+def _timed_out(exc):
+    if isinstance(exc, socket.timeout):
+        return True
+    return isinstance(exc, urllib.error.URLError) and isinstance(getattr(exc, "reason", None), socket.timeout)
+
+
 def http_get(url, headers, timeout):
-    """One GET: no redirect followed, body capped. -> (status, bytes)."""
+    """One GET: no redirect followed, body capped. -> (status, bytes).
+    A failure carries a message built from the exception class only."""
     request = urllib.request.Request(url, headers=headers, method="GET")
     opener = urllib.request.build_opener(_NoRedirect)
     try:
@@ -338,6 +349,8 @@ def http_get(url, headers, timeout):
         except Exception:
             return exc.code, b""
     except Exception as exc:
+        if _timed_out(exc):
+            raise HttpFailure("timed out after %ds" % timeout)
         raise HttpFailure("network error (%s)" % exc.__class__.__name__)
 
 
@@ -398,25 +411,89 @@ def evaluate(row, env, timeout, now):
         return _result(row, cred.status, error=cred.message)
     if cred.expires_at is not None and cred.expires_at <= now:
         return _result(row, "expired", error="the login has expired; open this profile once to renew it")
+    if adapter.required_scope and cred.scopes is not None and adapter.required_scope not in cred.scopes:
+        return _result(row, "no_scope", error="the login lacks the %s permission; sign in again with a full login"
+                       % adapter.required_scope)
     url = resolve_url(row, env)
     headers = {k: v.replace("{token}", cred.token) for k, v in row.spec["headers"].items()}
     headers.setdefault("user-agent", "agentkit/%s" % common.VERSION)
+    seconds = request_timeout(row, timeout)
     try:
-        status, body = http_get(url, headers, min(int(row.spec.get("timeout_s", DEFAULT_TIMEOUT)), MAX_TIMEOUT))
+        status, body = http_get(url, headers, seconds)
     except HttpFailure as exc:
         return _result(row, "error", error=str(exc))
+    if status in (301, 302, 303, 307, 308):
+        return _result(row, "error", error="unexpected redirect")
+    if status in (401, 403):
+        return _result(row, "no_scope", error="the login was rejected (HTTP %d); sign in again with a full login" % status)
+    if status == 429:
+        return _result(row, "rate_limited", error="rate limited (HTTP 429); try again later")
     if status != 200:
         return _result(row, "error", error="HTTP %d" % status)
+    if len(body) > MAX_BODY:
+        return _result(row, "error", error="response too large")
     try:
         doc = json.loads(body.decode("utf-8-sig"))
         plan, windows = adapter.parse(doc)
-    except (ValueError, ShapeError):
-        return _result(row, "error", error="unexpected response shape")
+    except (ValueError, ShapeError) as exc:
+        detail = " (%s)" % exc.__class__.__name__ if env.get("AGENTKIT_DEBUG") == "1" else ""
+        return _result(row, "error", error="unexpected response shape" + detail)
     return _result(row, "ok", plan=plan or cred.plan, windows=windows)
 
 
+def request_timeout(row, override):
+    if override:
+        return min(int(override), MAX_TIMEOUT)
+    table = row.spec.get("timeout_s", DEFAULT_TIMEOUT) if row.spec else DEFAULT_TIMEOUT
+    return min(int(table), MAX_TIMEOUT)
+
+
+def _safe_evaluate(row, env, timeout, now):
+    try:
+        return evaluate(row, env, timeout, now)
+    except AkError:
+        raise
+    except Exception as exc:
+        return _result(row, "error", error="internal error (%s)" % exc.__class__.__name__)
+
+
 def fetch_all(rows, env, timeout, now):
-    return [evaluate(row, env, timeout, now) for row in rows]
+    """Evaluate every row concurrently (at most MAX_WORKERS in flight) and
+    return the results in row order. One row's failure never affects another.
+    Workers are daemon threads and an overall deadline bounds the wait, so a
+    stuck socket cannot hold the process."""
+    results = [None] * len(rows)
+    refusal = []
+    cursor = [0]
+    lock = threading.Lock()
+
+    def worker():
+        while True:
+            with lock:
+                if cursor[0] >= len(rows):
+                    return
+                index = cursor[0]
+                cursor[0] += 1
+            try:
+                results[index] = _safe_evaluate(rows[index], env, timeout, now)
+            except AkError as exc:
+                refusal.append(exc)
+                results[index] = _result(rows[index], "error", error="refused")
+
+    threads = [threading.Thread(target=worker, daemon=True) for _ in range(min(MAX_WORKERS, len(rows)))]
+    for thread in threads:
+        thread.start()
+    longest = max([request_timeout(r, timeout) for r in rows] or [DEFAULT_TIMEOUT])
+    import time
+    deadline = time.time() + longest + 5
+    for thread in threads:
+        thread.join(max(0.0, deadline - time.time()))
+    if refusal:
+        raise refusal[0]
+    for index, row in enumerate(rows):
+        if results[index] is None:
+            results[index] = _result(row, "error", error="timed out after %ds" % request_timeout(row, timeout))
+    return results
 
 
 # ------------------------------------------------------------- rendering
@@ -529,7 +606,7 @@ def main(model, args, env, now=None, stdout=None, platform=None):
         if opts["json"]:
             stdout.write(render_json([], now))
         return EXIT_NOTHING
-    results = fetch_all(rows, env, opts["timeout"] or DEFAULT_TIMEOUT, now)
+    results = fetch_all(rows, env, opts["timeout"], now)
     if opts["json"]:
         stdout.write(render_json(results, now))
     else:
