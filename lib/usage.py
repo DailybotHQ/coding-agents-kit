@@ -1,0 +1,542 @@
+"""`ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]`
+— the quota and usage of every account the kit can see, one row per
+credential identity.
+
+The sources are data (`[clis.<cli>.usage]` / `[providers.<id>.usage]` in
+providers.toml); only the parsing of a response is code (an Adapter). The
+endpoints are vendor-internal and unofficial: a changed shape is reported as
+an `error` row, never a crash.
+
+Secret discipline: a token lives in memory and in one request header. It is
+never in a message, a log, the table, `--json` or a file. Nothing is
+refreshed and nothing is written under a profile or the env file.
+
+Portable on purpose (Linux, macOS, Windows): os.path, urllib, threads and
+subprocess only; the few OS decisions sit in `Platform`.
+"""
+
+import datetime
+import json
+import os
+import re
+import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+
+import common
+import kinds
+import profiles
+from common import AkError, EXIT_OK, EXIT_USAGE
+
+SCHEMA = "usage-v1"
+EXIT_PROBLEM = 1      # at least one row is not ok / unsupported
+EXIT_NOTHING = 3      # nothing to report for the requested filter
+
+STATUSES = ("ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error")
+PROBLEM_STATUSES = ("expired", "no_login", "no_scope", "rate_limited", "error")
+
+DEFAULT_TIMEOUT = 10
+MAX_TIMEOUT = 60
+MAX_BODY = 1 << 20    # 1 MiB
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
+
+USAGE = """usage: ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+Quota and usage of each account the kit can see (read-only; no token is printed,
+refreshed or written). The sources are vendor-internal and unofficial.
+"""
+
+
+# ------------------------------------------------------------- platform
+
+class Platform(object):
+    """The few OS decisions of the command, injectable so tests can simulate
+    Linux, macOS and Windows on any host."""
+
+    def __init__(self, name=None, is_tty=False, encoding="utf-8", env=None):
+        self.name = name or common.os_name()
+        self.is_tty = is_tty
+        self.encoding = (encoding or "ascii").lower()
+        self.env = env if env is not None else {}
+
+    @classmethod
+    def current(cls, env, stream=None):
+        stream = stream or sys.stdout
+        try:
+            tty = bool(stream.isatty())
+        except (AttributeError, ValueError):
+            tty = False
+        return cls(common.os_name(), tty, getattr(stream, "encoding", None) or "ascii", env)
+
+    def utf8_stdout(self):
+        return "utf" in self.encoding
+
+    def supports_color(self, no_color_flag=False):
+        if no_color_flag or not self.is_tty or self.env.get("NO_COLOR") or self.env.get("TERM") == "dumb":
+            return False
+        if self.name == "windows":
+            return bool(self.env.get("WT_SESSION") or self.env.get("ANSICON") or self.env.get("TERM_PROGRAM")
+                        or self.env.get("TERM"))
+        return True
+
+
+# ---------------------------------------------------- credentials/adapters
+
+class Credential(object):
+    """A bearer token and what is known about it. Never printed."""
+
+    def __init__(self, token, expires_at=None, scopes=None, plan=None):
+        self.token = token
+        self.expires_at = expires_at      # epoch seconds, or None when unknown
+        self.scopes = scopes              # list of scope names, or None when unknown
+        self.plan = plan
+
+    def __repr__(self):
+        return "<Credential>"
+
+
+class Failure(object):
+    """A row-level outcome that stops the pipeline: a status and a one-line
+    message that never contains a secret."""
+
+    def __init__(self, status, message):
+        assert status in STATUSES and status not in ("ok", "unsupported")
+        self.status = status
+        self.message = message
+
+
+class ShapeError(Exception):
+    """The response did not have the documented shape."""
+
+
+class Adapter(object):
+    """Parser of one source. Subclasses set `id` and implement the two hooks;
+    transport, timeouts and secrecy belong to the pipeline."""
+
+    id = None
+
+    def credential_from_file(self, doc):
+        """doc: the parsed login file. -> Credential or Failure."""
+        raise NotImplementedError
+
+    def parse(self, doc):
+        """doc: the parsed response. -> (plan or None, [window dict])."""
+        raise ShapeError("no parser")
+
+
+ADAPTERS = {}
+
+
+def register(adapter):
+    ADAPTERS[adapter.id] = adapter
+    return adapter
+
+
+def window(wid, label, used_pct, resets_at, window_seconds):
+    """One window of a row (usage-v1). used_pct is clamped to 0..100."""
+    if used_pct is not None:
+        used_pct = max(0.0, min(100.0, float(used_pct)))
+        used_pct = int(used_pct) if used_pct == int(used_pct) else round(used_pct, 1)
+    return {"id": wid, "label": label, "used_pct": used_pct, "resets_at": resets_at,
+            "window_seconds": window_seconds}
+
+
+def iso_utc(epoch_seconds):
+    return datetime.datetime.fromtimestamp(int(epoch_seconds), datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def parse_time(value):
+    """An ISO-8601 string, or epoch seconds/milliseconds, -> ISO UTC string
+    (or None when it is not a time)."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        seconds = value / 1000.0 if value > 1e11 else float(value)
+        return iso_utc(seconds)
+    if isinstance(value, str):
+        text = value.strip()
+        if re.fullmatch(r"\d{9,13}(\.\d+)?", text):
+            return parse_time(float(text))
+        match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})?", text)
+        if not match:
+            return None
+        y, mo, d, h, mi, s = [int(x) for x in match.groups()[:6]]
+        stamp = datetime.datetime(y, mo, d, h, mi, s)
+        tz = match.group(8)
+        if tz and tz != "Z":
+            sign = 1 if tz[0] == "+" else -1
+            digits = tz[1:].replace(":", "")
+            stamp -= sign * datetime.timedelta(hours=int(digits[:2]), minutes=int(digits[2:]))
+        return stamp.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return None
+
+
+def epoch_of(iso):
+    stamp = datetime.datetime.strptime(iso, "%Y-%m-%dT%H:%M:%SZ")
+    return (stamp - datetime.datetime(1970, 1, 1)).total_seconds()
+
+
+# ----------------------------------------------------------------- rows
+
+class Row(object):
+    """One credential identity to report."""
+
+    def __init__(self, cli, profile, kind_names, spec, source, ctx=None, key_var=None, unsupported=None):
+        self.cli = cli                    # CLI or provider id owning the credential
+        self.profile = profile            # '@default' or '@name'
+        self.kind_names = kind_names
+        self.spec = spec                  # usage table (dict) or None
+        self.source = source              # adapter id or 'none'
+        self.ctx = ctx                    # kinds.Context for file credentials
+        self.key_var = key_var            # env var holding the key (provider rows)
+        self.unsupported = unsupported    # reason, for n/d rows
+
+
+def _cli_order(model):
+    return list(model.clis)
+
+
+def _kinds_of_cli(model, cli_name):
+    return sorted(n for n, k in model.kinds.items() if k["cli"] == cli_name)
+
+
+def _kinds_of_provider(model, provider):
+    return sorted(n for n, k in model.kinds.items() if k.get("provider") == provider)
+
+
+def _profile_label(name):
+    return profiles.label(name)
+
+
+def _context(model, env, cli_name, name):
+    kind = model.kind(cli_name)
+    home = env.get("HOME") or env.get("USERPROFILE") or common.home()
+    if name:
+        return kinds.Context(kind, env, home, profile_dir=profiles.path(cli_name, name), profile_label=_profile_label(name))
+    return kinds.Context(kind, env, home)
+
+
+def _installed(model, env, cli_name):
+    try:
+        return bool(common.resolve_executable(model.clis[cli_name], env))
+    except Exception:
+        return False
+
+
+def enumerate_rows(model, env):
+    """Every row the kit can see, in the documented order, before filtering."""
+    listing = {}
+    for cli_name, name, _directory in profiles.listing(model, env):
+        listing.setdefault(cli_name, []).append(name)
+    rows = []
+    covered = set()      # (cli, profile label) already reported through a provider key
+    # provider-key rows (one per key variable that is set)
+    provider_rows = []
+    for pname, prov in model.providers.items():
+        table = model.provider_usage(pname)
+        if table is None:
+            continue
+        base = prov["key"]
+        names = sorted(n for n in env if env.get(n) and (n == base or n.startswith(base + "_")))
+        for var in names:
+            suffix = var[len(base) + 1:] if var != base else ""
+            label = "@default"
+            if suffix:
+                label = _profile_label(_match_profile_name(listing, suffix))
+            kind_names = _kinds_of_provider(model, pname)
+            if "unsupported" in table:
+                row = Row(pname, label, kind_names, table, "none", unsupported=table["unsupported"])
+            else:
+                row = Row(pname, label, kind_names, table, table["adapter"], key_var=var)
+            provider_rows.append(row)
+            for kn in kind_names:
+                covered.add((model.kinds[kn]["cli"], label))
+    # subscription / harness rows
+    for cli_name in _cli_order(model):
+        table = model.cli_usage(cli_name)
+        installed = _installed(model, env, cli_name)
+        candidates = [None] if installed else []
+        candidates.extend(sorted(listing.get(cli_name, [])))
+        for name in candidates:
+            label = _profile_label(name) if name else "@default"
+            kind_names = [cli_name] if table is None else _kinds_of_cli(model, cli_name)
+            if table is None:
+                if (cli_name, label) in covered:
+                    continue
+                rows.append(Row(cli_name, label, [cli_name], None, "none",
+                                unsupported="%s has no usage source of its own; usage follows the provider behind the kind" % cli_name))
+            elif "unsupported" in table:
+                rows.append(Row(cli_name, label, kind_names, table, "none", unsupported=table["unsupported"]))
+            else:
+                rows.append(Row(cli_name, label, [cli_name], table, table["adapter"],
+                                ctx=_context(model, env, cli_name, name)))
+    return _order(rows + provider_rows, model)
+
+
+def _match_profile_name(listing, suffix):
+    for names in listing.values():
+        for name in names:
+            if profiles.suffix(name) == suffix:
+                return name
+    return suffix.lower()
+
+
+def _order(rows, model):
+    order = {n: i for i, n in enumerate(_cli_order(model) + sorted(model.providers))}
+
+    def key(row):
+        return (order.get(row.cli, len(order)), 0 if row.profile == "@default" else 1, row.profile)
+    return sorted(rows, key=key)
+
+
+def filter_rows(model, rows, target, profile):
+    if target is not None:
+        if target not in model.kinds and target not in model.clis and target not in model.providers:
+            raise AkError("unknown kind, CLI or provider '%s'. Kinds: %s" % (target, " ".join(model.kind_names())))
+        rows = [r for r in rows if r.cli == target or target in r.kind_names]
+    if profile is not None:
+        rows = [r for r in rows if r.profile == profile]
+    return rows
+
+
+# ------------------------------------------------------------ transport
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+class HttpFailure(Exception):
+    """Transport failure with a message that cannot hold a secret."""
+
+
+def resolve_url(row, env):
+    table_url = row.spec["url"]
+    override = env.get("AGENTKIT_USAGE_URL_" + row.source.upper().replace("-", "_"))
+    if override:
+        parts = urllib.parse.urlsplit(override)
+        host = (parts.hostname or "")
+        if parts.scheme not in ("http", "https") or host not in [h.strip("[]") for h in LOOPBACK_HOSTS]:
+            raise AkError("AGENTKIT_USAGE_URL_%s must point to a loopback host (127.0.0.1, localhost, ::1)"
+                          % row.source.upper().replace("-", "_"))
+        return override
+    if not table_url.startswith("https://"):
+        raise AkError("usage source %s has a non-https URL" % row.source, common.EXIT_INTERNAL)
+    return table_url
+
+
+def http_get(url, headers, timeout):
+    """One GET: no redirect followed, body capped. -> (status, bytes)."""
+    request = urllib.request.Request(url, headers=headers, method="GET")
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(request, timeout=timeout) as response:
+            return response.status, response.read(MAX_BODY + 1)
+    except urllib.error.HTTPError as exc:
+        try:
+            return exc.code, exc.read(MAX_BODY + 1)
+        except Exception:
+            return exc.code, b""
+    except Exception as exc:
+        raise HttpFailure("network error (%s)" % exc.__class__.__name__)
+
+
+# ------------------------------------------------------------ evaluation
+
+def _result(row, status, plan=None, windows=None, error=None, reason=None):
+    return {"cli": row.cli, "profile": row.profile, "kinds": list(row.kind_names), "plan": plan, "status": status,
+            "windows": windows or [], "source": row.source, "error": error, "reason": reason}
+
+
+def _read_login_file(row):
+    """First existing login file of the row's context -> parsed JSON, None
+    (no file), or Failure."""
+    for ref in row.spec.get("files", []):
+        path = row.ctx.ref_path(ref)
+        if not os.path.isfile(path):
+            continue
+        try:
+            with open(path, "rb") as handle:
+                return json.loads(handle.read().decode("utf-8-sig"))
+        except (OSError, ValueError):
+            return Failure("error", "the login file could not be read as JSON")
+    return None
+
+
+def credential_of(row, env, adapter):
+    """-> Credential or Failure for a row, without any network."""
+    if row.spec.get("credential") == "env":
+        token = env.get(row.key_var or "", "")
+        return Credential(token) if token else Failure("no_login", "%s is not set" % row.key_var)
+    doc = _read_login_file(row)
+    if isinstance(doc, Failure):
+        return doc
+    if doc is None:
+        doc = read_keychain(row, env)
+        if isinstance(doc, Failure):
+            return doc
+    if doc is None:
+        return Failure("no_login", "no login found for this profile")
+    return adapter.credential_from_file(doc)
+
+
+def read_keychain(row, env):
+    """macOS Keychain fallback for the default home (implemented with the
+    Claude adapter). Returns parsed JSON, None, or Failure."""
+    return None
+
+
+def evaluate(row, env, timeout, now):
+    """One row -> its result dict. Never raises for a row-level problem."""
+    if row.unsupported:
+        return _result(row, "unsupported", reason=row.unsupported)
+    adapter = ADAPTERS.get(row.source)
+    if adapter is None:
+        return _result(row, "error", error="no parser for this source in this version")
+    cred = credential_of(row, env, adapter)
+    if isinstance(cred, Failure):
+        return _result(row, cred.status, error=cred.message)
+    if cred.expires_at is not None and cred.expires_at <= now:
+        return _result(row, "expired", error="the login has expired; open this profile once to renew it")
+    url = resolve_url(row, env)
+    headers = {k: v.replace("{token}", cred.token) for k, v in row.spec["headers"].items()}
+    headers.setdefault("user-agent", "agentkit/%s" % common.VERSION)
+    try:
+        status, body = http_get(url, headers, min(int(row.spec.get("timeout_s", DEFAULT_TIMEOUT)), MAX_TIMEOUT))
+    except HttpFailure as exc:
+        return _result(row, "error", error=str(exc))
+    if status != 200:
+        return _result(row, "error", error="HTTP %d" % status)
+    try:
+        doc = json.loads(body.decode("utf-8-sig"))
+        plan, windows = adapter.parse(doc)
+    except (ValueError, ShapeError):
+        return _result(row, "error", error="unexpected response shape")
+    return _result(row, "ok", plan=plan or cred.plan, windows=windows)
+
+
+def fetch_all(rows, env, timeout, now):
+    return [evaluate(row, env, timeout, now) for row in rows]
+
+
+# ------------------------------------------------------------- rendering
+
+def _relative(iso, now):
+    if not iso:
+        return "-"
+    delta = int(epoch_of(iso) - now)
+    if delta <= 0:
+        return "reset due"
+    days, rem = divmod(delta, 86400)
+    hours, rem = divmod(rem, 3600)
+    minutes = rem // 60
+    if days:
+        return "in %dd %dh" % (days, hours)
+    if hours:
+        return "in %dh %dm" % (hours, minutes)
+    return "in %dm" % max(minutes, 1)
+
+
+def _bar(pct, utf8):
+    full, empty = ("█", "░") if utf8 else ("#", "-")
+    filled = int(round(pct / 10.0))
+    return full * filled + empty * (10 - filled)
+
+
+def render_table(results, platform, color, now):
+    utf8 = platform.utf8_stdout()
+    header = ("CLI", "PROFILE", "PLAN", "WINDOW", "USED", "RESET / NOTE")
+    lines = []
+    for r in results:
+        base = [r["cli"], r["profile"], r["plan"] or "-"]
+        if r["status"] == "ok" and r["windows"]:
+            for i, w in enumerate(r["windows"]):
+                used = "-" if w["used_pct"] is None else "%s %d%%" % (_bar(w["used_pct"], utf8), round(w["used_pct"]))
+                pct = w["used_pct"]
+                if color and pct is not None:
+                    code = "31" if pct >= 90 else ("33" if pct >= 70 else "32")
+                    used = "\x1b[%sm%s\x1b[0m" % (code, used)
+                head = base if i == 0 else ["", "", ""]
+                lines.append(head + [w["label"], used, _relative(w["resets_at"], now)])
+        elif r["status"] == "ok":
+            lines.append(base + ["-", "no windows reported", ""])
+        elif r["status"] == "unsupported":
+            lines.append(base + ["n/d", "", r["reason"] or ""])
+        else:
+            lines.append(base + [r["status"], "", r["error"] or ""])
+    table = [header] + lines
+    widths = [max(len(_visible(c)) for c in col) for col in zip(*table)]
+    out = []
+    for row in table:
+        cells = [c + " " * (w - len(_visible(c))) for c, w in zip(row[:5], widths)]
+        out.append("  ".join(cells + [row[5]]).rstrip())
+    return "\n".join(out) + "\n"
+
+
+def _visible(text):
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
+def render_json(results, now):
+    stamp = iso_utc(now)
+    doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": stamp, "rows": results}
+    return json.dumps(doc, indent=2, sort_keys=True) + "\n"
+
+
+# ------------------------------------------------------------------ main
+
+def parse_args(args):
+    opts = {"target": None, "profile": None, "json": False, "timeout": None, "color": True}
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg in ("-h", "--help"):
+            opts["help"] = True
+        elif arg == "--json":
+            opts["json"] = True
+        elif arg == "--no-color":
+            opts["color"] = False
+        elif arg == "--timeout":
+            i += 1
+            if i >= len(args) or not args[i].isdigit() or not 1 <= int(args[i]) <= MAX_TIMEOUT:
+                raise AkError("--timeout needs a number of seconds from 1 to %d" % MAX_TIMEOUT)
+            opts["timeout"] = int(args[i])
+        elif arg.startswith("--"):
+            raise AkError("unknown option '%s'. See: ak usage --help" % arg)
+        elif arg.startswith("@"):
+            if opts["profile"] is not None:
+                raise AkError("only one @profile can be given")
+            opts["profile"] = _profile_label(profiles.normalize(arg[1:]))
+        else:
+            if opts["target"] is not None:
+                raise AkError("only one kind or CLI can be given")
+            opts["target"] = arg
+        i += 1
+    return opts
+
+
+def main(model, args, env, now=None, stdout=None, platform=None):
+    stdout = stdout or sys.stdout
+    opts = parse_args(args)
+    if opts.get("help"):
+        stdout.write(USAGE)
+        return EXIT_OK
+    now = common_now() if now is None else now
+    platform = platform or Platform.current(env, stdout)
+    rows = filter_rows(model, enumerate_rows(model, env), opts["target"], opts["profile"])
+    if not rows:
+        common.warn("nothing to report: no profile or login matches. Try: ak profiles")
+        if opts["json"]:
+            stdout.write(render_json([], now))
+        return EXIT_NOTHING
+    results = fetch_all(rows, env, opts["timeout"] or DEFAULT_TIMEOUT, now)
+    if opts["json"]:
+        stdout.write(render_json(results, now))
+    else:
+        stdout.write(render_table(results, platform, platform.supports_color(not opts["color"]), now))
+    return EXIT_PROBLEM if any(r["status"] in PROBLEM_STATUSES for r in results) else EXIT_OK
+
+
+def common_now():
+    import time
+    return time.time()

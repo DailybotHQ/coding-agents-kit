@@ -1,0 +1,53 @@
+# shellcheck shell=bash
+# `ak usage` (lib/usage.py): the pipeline, rendering, --json and the command
+# seam. The pipeline itself is exercised by tests/py/usage_checks.py (bash
+# free, so Windows CI runs it natively); here `ak usage` runs through the real
+# launcher in a sandbox home.
+
+scope_usage() {
+  local out status schema="${ROOT}/docs/schema/usage-v1.json" doc
+
+  # The bash-free checks: pipeline, enumeration, deduplication, filters, exit
+  # codes, rendering, secrecy, read-only, against a loopback fake endpoint.
+  py_checks usage_checks.py
+
+  # The command through bin/ak in a box: a fresh machine with the fake CLIs.
+  box_new usage
+  doc="${BOX}/usage.json"
+  ak_split -- usage --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "usage core: a fresh box has rows that need attention (exit 1)" "${status}" 1
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
+  expect_eq "usage json: ak usage --json matches docs/schema/usage-v1.json" "${out}" "valid"
+  expect_eq "usage json: schema and interface" "$(json_get "${doc}" '[d["schema"], d["interface"]]')" '["usage-v1", 1]'
+  expect_eq "usage core: unsupported sources are listed with a reason, not hidden" \
+    "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["cline", "cursor", "grok", "opencode", "pi"]'
+
+  out="$(ak -- usage --no-color)"; status=$?
+  expect_eq "usage core: the table exits like the JSON" "${status}" 1
+  expect_has "usage core: the table has a header" "${out}" "CLI"
+  expect_has "usage core: unsupported rows print n/d" "${out}" "n/d"
+
+  out="$(ak -- usage nope)"; status=$?
+  expect_eq "usage core: an unknown kind exits 2" "${status}" 2
+  expect_has "usage core: the error names the kinds" "${out}" "unknown kind"
+  out="$(ak -- usage --bogus)"; status=$?
+  expect_eq "usage core: an unknown option exits 2" "${status}" 2
+  out="$(ak -- usage --help)"; status=$?
+  expect_eq "usage core: --help exits 0" "${status}" 0
+  expect_has "usage core: --help prints the grammar" "${out}" "ak usage [<kind-or-cli>]"
+
+  out="$(ak -- --help)"
+  expect_has "usage core: ak --help lists the command" "${out}" "ak usage"
+
+  # An override that leaves the machine is refused before any request.
+  out="$(ak AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH=http://example.com/x -- usage claude)"; status=$?
+  expect_eq "usage core: a non-loopback URL override is refused or unused (never fetched)" "$([[ ${status} -eq 1 || ${status} -eq 2 ]] && echo ok)" ok
+
+  # The real HOME-equivalent stays untouched: a run writes nothing in the box.
+  local before after
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  ak_split -- usage >/dev/null
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "usage core: ak usage writes nothing under the home" "${before}" "${after}"
+}
