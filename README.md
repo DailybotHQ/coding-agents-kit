@@ -39,14 +39,14 @@ python3 ≥ 3.9. Nothing else.
 ## Install
 
 ```bash
-git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 `./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
 [docs/install.md](docs/install.md).
 
-Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.3.0 --skill agentkit-setup`, then ask it
+Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-setup`, then ask it
 to set the kit up on this machine or to write a container recipe ([setup](docs/setup.md)).
 
 ## Quickstart
@@ -95,7 +95,7 @@ agent itself.
 - [Install, `ak install`, aliases](docs/install.md)
 - [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
 - For agents: `ak --skill` prints the bundled skill; install it with
-  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.3.0 --skill agentkit`.
+  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit`.
 
 ## Security
 

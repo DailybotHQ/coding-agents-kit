@@ -12,6 +12,8 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
 Interface stays **1**. `ak usage`, and the `agentkit-setup` skill with `ak setup`.
 
 ### Added
@@ -226,7 +228,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.1
