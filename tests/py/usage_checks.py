@@ -447,6 +447,56 @@ source = open(os.path.join(ROOT, "lib", "usage.py"), encoding="utf-8").read()
 banned = re.findall(r"import (?:fcntl|pwd|grp|termios|resource)\b|os\.fork|signal\.alarm|os\.getuid\b|/home/|C:\\\\", source)
 check("usage platform: lib/usage.py has no POSIX-only import or hardcoded path", not banned, str(banned))
 
+
+# --------------------------------------------------- review hardening checks
+
+esc = copy.deepcopy(WINDOWS_OK)
+esc["plan"] = "max\x1b]0;pwned\x07\x1b[2J" + "x" * 200
+esc["windows"][0]["label"] = "5-hour\x1b[31m"
+server.set_routes({"/claude": {"json": esc}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+code, text, _ = run(["claude", "@default"], ENV)
+code_j, out_j, _ = run(["--json", "claude", "@default"], ENV)
+check("usage review: control characters from a response never reach the terminal (table and JSON)",
+      "\x1b" not in text and "\x07" not in text and "\x1b" not in out_j and "\x07" not in out_j, repr(text[:120]))
+check("usage review: a vendor-supplied plan label is capped", len(json.loads(out_j)["rows"][0]["plan"]) <= 60)
+server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+
+big = os.path.join(HOME, ".claude", ".credentials.json")
+with open(big, "wb") as handle:
+    handle.write(b"{\"claudeAiOauth\": {\"accessToken\": \"" + b"a" * (2 * 1024 * 1024) + b"\"}}")
+code, rows = rows_of(["claude", "@default"], ENV)
+check("usage review: an oversized login file is an error row, not read whole", rows[0]["status"] == "error" and "large" in rows[0]["error"], str(rows[0]))
+login(big)
+
+saved = {k: os.environ.get(k) for k in ("HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy", "ALL_PROXY", "NO_PROXY", "no_proxy")}
+try:
+    for k in saved:
+        os.environ.pop(k, None)
+    os.environ["http_proxy"] = os.environ["HTTP_PROXY"] = "http://127.0.0.1:9"      # a dead proxy
+    os.environ["https_proxy"] = os.environ["HTTPS_PROXY"] = "http://127.0.0.1:9"
+    code, rows = rows_of(["claude", "@default"], ENV)
+    check("usage review: a loopback override ignores the proxy variables of the environment",
+          rows[0]["status"] == "ok", str(rows[0]))
+finally:
+    for k in saved:
+        os.environ.pop(k, None)
+        if saved[k] is not None:
+            os.environ[k] = saved[k]
+
+
+# non-finite and absurd numbers from a response never become a percentage or a crash
+for label, doc in (("NaN", {"plan": "x", "windows": [{"id": "5h", "label": "5-hour", "used": float("nan"), "reset": None}]}),
+                   ("Infinity", {"plan": "x", "windows": [{"id": "5h", "label": "5-hour", "used": float("inf"), "reset": None}]})):
+    server.set_routes({"/claude": {"json": doc}})
+    row = rows_of(["claude", "@default"], ENV)[1][0]
+    check("usage review: a %s utilization is an unexpected shape, not 100 %%" % label,
+          row["status"] == "error" and row["error"] == "unexpected response shape", str(row))
+server.set_routes({"/claude": {"json": {"plan": "x", "windows": [{"id": "5h", "label": "5-hour", "used": 5, "reset": 10 ** 30}]}}})
+row = rows_of(["claude", "@default"], ENV)[1][0]
+check("usage review: an out-of-range reset time becomes unknown, not an error",
+      row["status"] == "ok" and row["windows"][0]["resets_at"] is None, str(row))
+server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+
 server.stop()
 if FAILS:
     sys.exit(1)

@@ -17,6 +17,7 @@ subprocess only; the few OS decisions sit in `Platform`.
 
 import datetime
 import json
+import math
 import os
 import re
 import socket
@@ -142,9 +143,21 @@ def register(adapter):
     return adapter
 
 
+_CONTROL = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def clean_text(value, limit=60):
+    """Text that came from a vendor response is shown on a terminal: drop
+    control characters (no escape sequence can reach the screen) and cap it."""
+    return _CONTROL.sub("", str(value))[:limit]
+
+
 def window(wid, label, used_pct, resets_at, window_seconds):
     """One window of a row (usage-v1). used_pct is clamped to 0..100."""
+    wid, label = clean_text(wid), clean_text(label)
     if used_pct is not None:
+        if not math.isfinite(float(used_pct)):
+            raise ShapeError("not a finite number")
         used_pct = max(0.0, min(100.0, float(used_pct)))
         used_pct = int(used_pct) if used_pct == int(used_pct) else round(used_pct, 1)
     return {"id": wid, "label": label, "used_pct": used_pct, "resets_at": resets_at,
@@ -157,7 +170,14 @@ def iso_utc(epoch_seconds):
 
 def parse_time(value):
     """An ISO-8601 string, or epoch seconds/milliseconds, -> ISO UTC string
-    (or None when it is not a time)."""
+    (or None when it is not a time or is out of range)."""
+    try:
+        return _parse_time(value)
+    except (ValueError, OverflowError, OSError):
+        return None
+
+
+def _parse_time(value):
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float)):
@@ -166,7 +186,7 @@ def parse_time(value):
     if isinstance(value, str):
         text = value.strip()
         if re.fullmatch(r"\d{9,13}(\.\d+)?", text):
-            return parse_time(float(text))
+            return _parse_time(float(text))
         match = re.fullmatch(r"(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2}):(\d{2})(\.\d+)?(Z|[+-]\d{2}:?\d{2})?", text)
         if not match:
             return None
@@ -343,11 +363,19 @@ def _timed_out(exc):
     return isinstance(exc, urllib.error.URLError) and isinstance(getattr(exc, "reason", None), socket.timeout)
 
 
+def _is_loopback(url):
+    return (urllib.parse.urlsplit(url).hostname or "") in [h.strip("[]") for h in LOOPBACK_HOSTS]
+
+
 def http_get(url, headers, timeout):
     """One GET: no redirect followed, body capped. -> (status, bytes).
-    A failure carries a message built from the exception class only."""
+    A failure carries a message built from the exception class only. A
+    loopback URL (the test override) never goes through a proxy."""
     request = urllib.request.Request(url, headers=headers, method="GET")
-    opener = urllib.request.build_opener(_NoRedirect)
+    handlers = [_NoRedirect()]
+    if _is_loopback(url):
+        handlers.append(urllib.request.ProxyHandler({}))
+    opener = urllib.request.build_opener(*handlers)
     try:
         with opener.open(request, timeout=timeout) as response:
             return response.status, response.read(MAX_BODY + 1)
@@ -365,7 +393,8 @@ def http_get(url, headers, timeout):
 # ------------------------------------------------------------ evaluation
 
 def _result(row, status, plan=None, windows=None, error=None, reason=None):
-    return {"cli": row.cli, "profile": row.profile, "kinds": list(row.kind_names), "plan": plan, "status": status,
+    plan = clean_text(plan) if plan is not None else None
+    return {"cli": row.cli, "profile": row.profile, "kinds": list(row.kind_names), "plan": plan or None, "status": status,
             "windows": windows or [], "source": row.source, "error": error, "reason": reason}
 
 
@@ -378,7 +407,10 @@ def _read_login_file(row):
             continue
         try:
             with open(path, "rb") as handle:
-                return json.loads(handle.read().decode("utf-8-sig"))
+                raw = handle.read(MAX_BODY + 1)
+            if len(raw) > MAX_BODY:
+                return Failure("error", "the login file is unexpectedly large")
+            return json.loads(raw.decode("utf-8-sig"))
         except (OSError, ValueError):
             return Failure("error", "the login file could not be read as JSON")
     return None
