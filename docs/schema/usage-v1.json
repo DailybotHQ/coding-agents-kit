@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.4.0/docs/schema/usage-v1.json",
+  "title": "ak usage --json (usage-v1)",
+  "description": "Quota and usage of each account the kit can see, one row per credential identity. Never contains a secret value, an account identity (e-mail, organisation, id) or a token. The endpoints behind it are vendor-internal and unofficial: a row whose source changed shape reports status `error`, never a crash. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "generated_at", "rows"],
+  "properties": {
+    "schema": { "const": "usage-v1" },
+    "interface": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "rows": {
+      "type": "array",
+      "description": "Ordered: CLI order of providers.toml, then @default, then profile names sorted.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cli", "profile", "kinds", "plan", "status", "windows", "source", "error", "reason"],
+        "properties": {
+          "cli": { "type": "string", "description": "The CLI (claude, codex, ...) or the provider (zai) that owns the credential." },
+          "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$", "description": "@default or @name." },
+          "kinds": { "type": "array", "items": { "type": "string" }, "description": "Every kind that shares this credential identity." },
+          "plan": { "type": ["string", "null"], "description": "The provider's own plan label when reported." },
+          "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"] },
+          "windows": {
+            "type": "array",
+            "description": "The provider's own windows; never merged into an invented quota. Empty unless status is ok.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "label", "used_pct", "resets_at", "window_seconds"],
+              "properties": {
+                "id": { "type": "string", "description": "Stable machine id: 5h, 7d, 7d-opus, tokens, mcp, ..." },
+                "label": { "type": "string" },
+                "used_pct": { "type": ["number", "null"], "description": "0..100, null when unknown." },
+                "resets_at": { "type": ["string", "null"], "description": "ISO-8601 UTC, null when unknown." },
+                "window_seconds": { "type": ["integer", "null"] }
+              }
+            }
+          },
+          "source": { "type": "string", "description": "The adapter id (anthropic-oauth, chatgpt-wham, zai-quota) or `none`." },
+          "error": { "type": ["string", "null"], "description": "One line, never a secret. Set for every status except ok and unsupported." },
+          "reason": { "type": ["string", "null"], "description": "One line explaining an `unsupported` row; null otherwise." }
+        }
+      }
+    }
+  }
+}
