@@ -85,7 +85,11 @@ scope_doctor() {
   expect_has "text doctor names the install command for a missing CLI" "${out}" "not installed — ak install pi"
   expect_has "text doctor states the posture" "${out}" "permissions: auto"
   expect_has "text doctor names the opt-out" "${out}" "opt out with --ask or AGENTKIT_PERMISSIONS=ask"
-  expect_has "text doctor warns about autonomy outside a container" "${out}" "autonomy is meant for disposable or sandboxed environments"
+  if [ -e /.dockerenv ]; then
+    skip "text doctor warns about autonomy outside a container (this run is inside a container)"
+  else
+    expect_has "text doctor warns about autonomy outside a container" "${out}" "autonomy is meant for disposable or sandboxed environments"
+  fi
   out="$(ak -- doctor --bogus)"; status=$?
   expect_eq "doctor with an unknown option is a usage error" "${status}" 2
 

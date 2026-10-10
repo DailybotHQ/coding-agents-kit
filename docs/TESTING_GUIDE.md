@@ -61,7 +61,7 @@ no other tool version changes flag behaviour.
     (under a second).
   - `bash tests/run.sh dispatch profiles` → `passed: 226  failed: 0
     skipped: 0`.
-  - `bash tests/run.sh run` → `passed: 67 …` (about 15 s; the slowest
+  - `bash tests/run.sh run` → `passed: 71 …` (about 15 s; the slowest
     scope, it exercises timeouts).
   An unknown scope exits 2 with the list of valid scopes. Every run ends
   with the `guard` check, so a correct run always shows
