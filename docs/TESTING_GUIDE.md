@@ -127,7 +127,11 @@ the python core natively (`ak --version`, `ak doctor --json`). The Windows job
 also runs the bash-free checks of `ak usage` (`tests/py/usage_checks.py`,
 `tests/py/usage_provider_checks.py`) and a smoke of `ak.cmd usage --json`
 against the loopback fake endpoint of `tests/py/fake_usage_server.py`, so
-Windows evidence is native, not inferred.
+Windows evidence is native, not inferred. `ak setup` follows the same rule
+(`tests/py/setup_checks.py` plus a PowerShell smoke of `ak.cmd setup probe` and
+`setup verify` against a temp install), and a `docker recipe builds` job runs the
+opt-in `setup-docker-live` scope: it renders the Dockerfile for the published
+tag and digest, builds it and runs `ak doctor` in the image.
 
 ## Writing a check
 

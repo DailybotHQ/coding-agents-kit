@@ -127,3 +127,42 @@ jobs:
           } finally {
             if ($server) { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
           }
+      - name: ak setup checks run natively (no bash)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $out = & python tests/py/setup_checks.py
+          if ($LASTEXITCODE -ne 0) { throw "setup_checks.py failed: $($out | Select-String '^FAIL')" }
+          Write-Output "setup_checks.py : $(@($out | Select-String '^ok').Count) checks ok"
+      - name: ak.cmd setup probe and verify through a temp install
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tmp = Join-Path $env:RUNNER_TEMP 'setup-smoke'
+          $prefix = Join-Path $tmp 'agentkit'
+          $envFile = Join-Path $tmp 'agentkit-env'
+          New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+          ./install.ps1 -NoPath -Prefix $prefix -EnvFile $envFile
+          $env:AGENTKIT_HOME = $prefix
+          $env:AGENTKIT_ENV = $envFile
+          $probe = & "$prefix\bin\ak.cmd" setup probe --json | ConvertFrom-Json
+          if ($probe.schema -ne 'setup-probe-v1' -or $probe.interface -ne 1) { throw "unexpected probe: $($probe.schema)" }
+          if ($probe.os -ne 'windows' -or $probe.install.found -ne $true) { throw "probe os=$($probe.os) install.found=$($probe.install.found)" }
+          $verify = & "$prefix\bin\ak.cmd" setup verify --json | ConvertFrom-Json
+          if ($verify.schema -ne 'setup-verify-v1') { throw "unexpected verify: $($verify.schema)" }
+          py -3 "$prefix\lib\ak.py" setup probe --json | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "the core started directly exited $LASTEXITCODE" }
+          ./install.ps1 -NoPath -Uninstall -Prefix $prefix -EnvFile $envFile
+
+  docker-recipe:
+    name: docker recipe builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # Opt-in scope: renders the Dockerfile for the published v0.3.0 tarball and
+      # its digest, builds it with Docker and runs `ak doctor` in the image.
+      - name: Render, build and run the container recipe
+        run: AGENTKIT_TEST_LIVE=1 bash tests/run.sh setup-docker-live
+
