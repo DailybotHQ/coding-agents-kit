@@ -35,7 +35,8 @@ scope_usage_providers() {
   local doc status
   box_new usage-providers claude
   mkdir -p "${BOX}/home/.claude"
-  printf '%s' '{"claudeAiOauth":{"accessToken":"planted-claude-cli-0x1","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' \
+  local planted="planted-claude-cli-0x1"
+  printf '{"claudeAiOauth":{"accessToken":"%s","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' "${planted}" \
     > "${BOX}/home/.claude/.credentials.json"
   printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":42,"resets_at":"2099-01-01T00:00:00Z"},"seven_day":{"utilization":13,"resets_at":"2099-01-02T00:00:00Z"}}}}' \
     > "${BOX}/routes.json"
@@ -47,7 +48,7 @@ scope_usage_providers() {
   expect_eq "usage claude cli: the 5-hour window is reported" \
     "$(json_get "${doc}" '[w["used_pct"] for w in d["rows"][0]["windows"]]')" '[42, 13]'
   expect_eq "usage claude cli: the plan comes from the login" "$(json_get "${doc}" 'd["rows"][0]["plan"]')" "max"
-  expect_lacks "usage claude cli: the token is not in the output" "$(cat "${BOX}/out" "${BOX}/err")" "planted-claude-cli-0x1"
+  expect_lacks "usage claude cli: the token is not in the output" "$(cat "${BOX}/out" "${BOX}/err")" "${planted}"
   expect_eq "usage claude cli: the fake endpoint saw exactly one request" "$(wc -l < "${BOX}/server.log" | tr -d ' ')" 1
   usage_server_stop
 }

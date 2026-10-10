@@ -32,6 +32,7 @@ FAILS = []
 NOW = 1790000000.0
 PLANTED_LOGIN = "PLANTED-LOGIN-5c1d9e0003"
 PLANTED_PROVIDER = "PLANTED-KEY-5c1d9e0004"
+PLANTED_REFRESH = "PLANTED-REFRESH-0009"
 
 
 def check(name, cond, why=""):
@@ -113,7 +114,7 @@ INSTALLED.add("claude")
 
 
 def claude_login(directory, **over):
-    oauth = {"accessToken": PLANTED_LOGIN, "refreshToken": "PLANTED-REFRESH-0009", "expiresAt": int((NOW + 3600) * 1000),
+    oauth = {"accessToken": PLANTED_LOGIN, "refreshToken": PLANTED_REFRESH, "expiresAt": int((NOW + 3600) * 1000),
              "scopes": ["user:inference", "user:profile"], "subscriptionType": "max"}
     oauth.update(over)
     write(os.path.join(directory, ".credentials.json"), json.dumps({"claudeAiOauth": oauth}))
@@ -175,7 +176,7 @@ for args in ([], ["--json"], ["claude", "@old"], ["claude", "@infer"]):
     c, o, e = run(args)
     blob += o + e
 check("usage claude: no token (access or refresh) reaches any output",
-      PLANTED_LOGIN not in blob and "PLANTED-REFRESH-0009" not in blob)
+      PLANTED_LOGIN not in blob and PLANTED_REFRESH not in blob)
 after = snapshot(TMP)
 check("usage claude: logins and profiles are byte- and mtime-identical after runs", before == after)
 
