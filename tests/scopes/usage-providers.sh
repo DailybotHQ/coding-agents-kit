@@ -3,28 +3,6 @@
 # (tests/py/fake_usage_server.py): bash-free checks for every adapter, plus the
 # real launcher end to end in a sandbox home.
 
-# usage_server_start <routes.json> — starts the fake endpoint; sets USAGE_PORT
-# and USAGE_PID. The routes file is re-read on every request.
-usage_server_start() {
-  local routes="$1" portfile="${BOX}/port"
-  rm -f "${portfile}"
-  "${AK_PY}" "${ROOT}/tests/py/fake_usage_server.py" --routes "${routes}" --port-file "${portfile}" --log "${BOX}/server.log" \
-    >/dev/null 2>&1 &
-  USAGE_PID=$!
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
-    [[ -s "${portfile}" ]] && break
-    sleep 0.25
-  done
-  USAGE_PORT="$(cat "${portfile}" 2>/dev/null)"
-}
-
-usage_server_stop() {
-  [[ -n "${USAGE_PID:-}" ]] && kill "${USAGE_PID}" 2>/dev/null
-  wait "${USAGE_PID:-0}" 2>/dev/null
-  USAGE_PID=""
-}
-
 scope_usage_providers() {
   check "usage providers: the fake endpoint server imports" "${AK_PY}" -c 'import sys; sys.path.insert(0, sys.argv[1]); import fake_usage_server' "${ROOT}/tests/py"
 

@@ -166,3 +166,25 @@ py_checks() {
     fail "${script} crashed (exit ${status}): $(printf '%s\n' "${out}" | tail -1)"
   fi
 }
+
+# usage_server_start <routes.json> — starts the fake endpoint; sets USAGE_PORT
+# and USAGE_PID. The routes file is re-read on every request.
+usage_server_start() {
+  local routes="$1" portfile="${BOX}/port"
+  rm -f "${portfile}"
+  "${AK_PY}" "${ROOT}/tests/py/fake_usage_server.py" --routes "${routes}" --port-file "${portfile}" --log "${BOX}/server.log" \
+    >/dev/null 2>&1 &
+  USAGE_PID=$!
+  local i
+  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+    [[ -s "${portfile}" ]] && break
+    sleep 0.25
+  done
+  USAGE_PORT="$(cat "${portfile}" 2>/dev/null)"
+}
+
+usage_server_stop() {
+  [[ -n "${USAGE_PID:-}" ]] && kill "${USAGE_PID}" 2>/dev/null
+  wait "${USAGE_PID:-0}" 2>/dev/null
+  USAGE_PID=""
+}

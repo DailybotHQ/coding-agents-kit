@@ -2,7 +2,7 @@
 # Planted secrets never leak: every verb, every error path and every file the
 # kit writes is searched for the planted values. Plus the static rules.
 
-SEC_VALUES="sec-zai-default-7Q1 sec-zai-work-7Q2 sec-xai-default-7Q3 sec-xai-work-7Q4 sec-azure-default-7Q5 sec-azure-work-7Q6 sec-unrelated-token-7Q7"
+SEC_VALUES="sec-usage-claude-7Q8 sec-usage-refresh-7Q9 sec-zai-default-7Q1 sec-zai-work-7Q2 sec-xai-default-7Q3 sec-xai-work-7Q4 sec-azure-default-7Q5 sec-azure-work-7Q6 sec-unrelated-token-7Q7"
 
 sec_env_file() {
   box_env_file ZAI_CODING_API_KEY=sec-zai-default-7Q1 ZAI_CODING_API_KEY_WORK=sec-zai-work-7Q2 \
@@ -200,4 +200,72 @@ for c in kinds.load().clis.values():
   ln -s "${BOX}/outside.toml" "${root}/codex/evil/glm.config.toml"
   ak_split -- codex-glm @evil; status=$?
   expect_eq "writers: a profile's planted config symlink is refused (nothing written outside)" "${status}:$(grep -c '^model = "x"$' "${BOX}/outside.toml")" "3:1"
+
+  security_usage
 }
+
+# `ak usage` reads credential content and talks to vendor endpoints: the first
+# part of the kit that does either. Every promise is a failing-if-broken check.
+security_usage() {
+  local out status before after dir tok="sec-usage-claude-7Q8" ref="sec-usage-refresh-7Q9" mode
+  box_new security-usage claude
+  sec_env_file
+  dir="${BOX}/home/.claude"
+  mkdir -p "${dir}"
+  printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' \
+    "${tok}" "${ref}" > "${dir}/.credentials.json"
+  chmod 600 "${dir}/.credentials.json"
+  printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}},"/zai":{"json":{"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":5}]}}}}' > "${BOX}/routes.json"
+  usage_server_start "${BOX}/routes.json"
+  local base="http://127.0.0.1:${USAGE_PORT}"
+  : > "${BOX}/usage-output"
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+
+  # Every mode of the server and the command, debug on, output collected.
+  for mode in ok 500 401 429 redirect garbage truncated; do
+    case "${mode}" in
+      ok) printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}},"/zai":{"json":{"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":5}]}}}}' > "${BOX}/routes.json" ;;
+      500) printf '%s' '{"/claude":{"status":500,"body":"boom"},"/zai":{"status":500,"body":"boom"}}' > "${BOX}/routes.json" ;;
+      401) printf '%s' '{"/claude":{"status":401,"body":"{}"},"/zai":{"status":401,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      429) printf '%s' '{"/claude":{"status":429,"body":"{}"},"/zai":{"status":429,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      redirect) printf '%s' '{"/claude":{"redirect":"/elsewhere"},"/zai":{"redirect":"/elsewhere"},"/elsewhere":{"json":{}}}' > "${BOX}/routes.json" ;;
+      garbage) printf '%s' '{"/claude":{"body":"<html>nope</html>"},"/zai":{"body":"<html>nope</html>"}}' > "${BOX}/routes.json" ;;
+      truncated) printf '%s' '{"/claude":{"body":"{\"five_hour\": "},"/zai":{"body":"{\"data\": "}}' > "${BOX}/routes.json" ;;
+    esac
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${base}/claude" AGENTKIT_USAGE_URL_ZAI_QUOTA="${base}/zai" -- usage
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/usage-output"
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${base}/claude" AGENTKIT_USAGE_URL_ZAI_QUOTA="${base}/zai" -- usage --json
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/usage-output"
+  done
+  expect_eq "security usage: no key, access token or refresh token in any output, in any failure mode" "$(leaked "${BOX}/usage-output")" ""
+  expect_lacks "security usage: the server log holds only hashed credentials" "$(cat "${BOX}/server.log")" "${tok}"
+  expect_eq "security usage: a redirect target was never requested" "$(grep -c '"/elsewhere"' "${BOX}/server.log")" 0
+  expect_eq "security usage: only the two usage paths were ever requested (no refresh or token endpoint)" \
+    "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" "path": "/zai" '
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "security usage: the credentials and the env file are byte-identical after every run" "${before}" "${after}"
+  expect_eq "security usage: the credential file mode is untouched" "$(file_mode "${dir}/.credentials.json")" "600"
+
+  # Network rules: nothing leaves loopback, whatever the environment says.
+  : > "${BOX}/server.log"
+  for out in "http://example.com/x" "https://127.0.0.1.evil.example/x" "http://127.0.0.1@evil.example/x" "file:///etc/passwd" "ftp://127.0.0.1/x"; do
+    ak_split AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${out}" -- usage claude; status=$?
+    expect_eq "security usage: an override to ${out} is refused (exit 2)" "${status}" 2
+    expect_has "security usage: ... with a loopback message" "$(cat "${BOX}/err")" "loopback"
+  done
+  expect_eq "security usage: ... and no request reached the fake endpoint" "$(wc -l < "${BOX}/server.log" | tr -d ' ')" 0
+
+  # Static rules over the module.
+  check "security usage: the only subprocess is the optional Keychain read, never through a shell" \
+    bash -c '[ "$(grep -c "subprocess\.run" "$1")" -le 1 ] && ! grep -Eq "shell *= *True|os\.system|os\.popen" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: the Keychain subprocess runs without any key or token variable" \
+    bash -c 'grep -q "secret_like" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: no autonomy flag is spelled in lib/usage.py" \
+    bash -c '! grep -Eq -- "--dangerously|--yolo|--always-approve|bypass-approvals" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: nothing in lib/usage.py fetches into a shell or writes a file" \
+    bash -c '! grep -Eq "\| *(ba|z)?sh|open\([^)]*[\"\x27][wa]b?[\"\x27]|os\.(rename|remove|unlink|replace)|shutil|chmod" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: no refresh endpoint or grant type appears in lib/usage.py or providers.toml" \
+    bash -c '! grep -Eqi "refresh_token *[:=]|grant_type|/oauth/token|/token\b" "$1" "$2"' _ "${ROOT}/lib/usage.py" "${ROOT}/providers.toml"
+  usage_server_stop
+}
+

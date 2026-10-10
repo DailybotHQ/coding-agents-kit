@@ -9,6 +9,9 @@ about, opt out with `--ask` on a launch or `AGENTKIT_PERMISSIONS=ask` in
 `~/.config/agentkit/env`; the opt-out always wins. Beyond that choice, the
 kit adds **no risk of its own**: no secret value leaves the place you put
 it, and nothing is installed or written outside the paths documented here.
+The one command that reads a login and talks to a vendor on your behalf is
+`ak usage`: a separate, read-only command (see the threat model and
+*Quota queries* below).
 
 Report a vulnerability privately through GitHub's security advisories for
 `DailybotHQ/coding-agents-kit` (Security → Report a vulnerability), not in a
@@ -28,6 +31,7 @@ public issue.
 | Windows argument parsing | a prompt containing `"` and `&`/`|` running commands through `cmd.exe` (the "BatBadBut" class) | npm-installed CLIs (`codex.cmd`, …) are started as `node <script>`, never through `cmd.exe`; any other batch target refuses arguments with cmd metacharacters. Programs that call ak on Windows must use `py -3 <install>\lib\ak.py …`, not `ak.cmd` (a batch shim re-parses its arguments; it is for typing at a prompt). |
 | Vendor installers | a compromised npm dependency reading your keys | `ak install` starts installers and npm with every `*_API_KEY` / `*_TOKEN` variable removed from their environment. |
 | Herdr hooks | writing into the CLI's own home | `ak profiles hooks` reads the real home and writes only inside the profile (checked path by path); it merges only Herdr's own entries and refuses files it cannot parse. |
+| Logins read by `ak usage` | a token printed, logged, written, refreshed, sent to the wrong host or used for the wrong account | `ak usage` reads a profile's login file (or the macOS Keychain item of the default home) into memory, uses it in one `Authorization` header for one request to the host written in `providers.toml`, and drops it. It never refreshes a token (a rotated refresh token can sign the CLI out), never reads a refresh token beyond parsing, never prints a token (messages are built from status codes and exception class names, not from requests), never writes under a profile or the env file, and reports an expired login without making a request. Each row uses only its own profile's login or key: no fallback to the default home's. Requests are `https` to the fixed hosts below; the only override (`AGENTKIT_USAGE_URL_<ADAPTER>`, for tests) must be a loopback address, no redirect is followed, the body is capped at 1 MiB, and at most 8 requests run at once. The `security` test scope plants tokens, runs every failure mode and searches every output and file. |
 | Agent output | instructions smuggled through another agent's answer | `ak run` returns the agent's text as data (`result_text`); the bundled skill tells agents to treat it as a claim to verify, never as instructions. |
 
 ## Documented exceptions and limits
@@ -51,8 +55,29 @@ public issue.
 - **The env file is code** on macOS/Linux (it is sourced by bash, which is
   what lets you fetch keys from a password manager). Only you should be able
   to write it; `ak` enforces that.
-- **Login state** is read from file presence only; the one file opened is
-  Claude's `.claude.json`, which names the account and holds no token.
+- **Login state** (`ak doctor`, `ak profiles`) is read from file presence
+  only; the one file opened is Claude's `.claude.json`, which names the
+  account and holds no token. **`ak usage` is the exception:** it opens the
+  login file (`.credentials.json`, `auth.json`) of each profile to use its
+  token, as described in *Quota queries*.
+- **The usage endpoints are vendor-internal and unofficial.** They can change
+  or disappear without notice; `ak usage` then reports `error: unexpected
+  response shape` for that row. Using them is your account's own token against
+  your own account's data, but the vendors have not documented the endpoints
+  for third parties.
+
+## Quota queries (`ak usage`)
+
+| Source | Host | Credential | Notes |
+| --- | --- | --- | --- |
+| Claude Code subscription | `api.anthropic.com` | the profile's `.credentials.json` (macOS: the Keychain item, default home only) | needs the `user:profile` permission; reported `no_scope` without it |
+| Codex (ChatGPT login) | `chatgpt.com` | the profile's `auth.json` | an API-key login has no quota and is reported `n/d` |
+| Z.AI coding plan | `api.z.ai` | the profile's `ZAI_CODING_API_KEY[_SUFFIX]` | one row per key, shared by the `*-glm` kinds |
+
+Cursor, Grok, xAI and Azure OpenAI are `n/d`: no readable account quota (or one
+that needs a browser session or a second, management credential, which `ak`
+never asks for). `ak usage` is the only command that makes a network request
+without you asking for an install; it has no side effects and no cache.
 
 ## What the kit writes
 
@@ -64,12 +89,16 @@ public issue.
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
-Nothing else: no telemetry, no network access except `ak install` fetching
-a vendor installer you asked for.
+`ak usage` writes nothing at all.
+
+Nothing else: no telemetry, and no network access except `ak install`
+fetching a vendor installer you asked for and `ak usage` querying the usage
+endpoint of an account you run (the hosts above, one request per row).
 
 ## Checks
 
 `bash tests/run.sh security` (planted secrets, file modes, env-file
-refusal, static rules), plus `permissions`, `doctor`, `profiles` and `lint`
+refusal, `ak usage` secrecy/read-only/loopback-only rules, static rules),
+plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers` and `lint`
 (secret-shaped strings, private references, shellcheck). The suite runs in a
 sandbox HOME with fake CLIs and never touches the network.
