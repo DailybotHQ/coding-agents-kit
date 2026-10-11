@@ -150,7 +150,7 @@ requests) and returns the account with the most usable room for a kind:
 account:
 
 ```text
-claude @work2  headroom 100%  binding 5-hour  resets in 3h 48m
+claude @work2  headroom 100%  binding 5h  resets in 3h 48m
 ```
 
 | Exit | Meaning |

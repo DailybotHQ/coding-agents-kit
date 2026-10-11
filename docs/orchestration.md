@@ -4,7 +4,7 @@ With profiles ([Accounts](accounts.md)), quota ([`ak usage`](usage.md)),
 a chooser ([`ak pick`](usage.md#choosing-an-account)) and a headless runner
 ([`ak run`](run.md)), one lead agent can spread work over several agents,
 accounts and vendors. This page is the method. Agents get it as a skill:
-`agentkit-orchestrate`, printed by `ak --skill orchestrate`.
+[`agentkit-orchestrate`](../skills/agentkit-orchestrate/SKILL.md), printed by `ak --skill orchestrate`.
 
 The kit does not schedule anything: it observes (`ak usage`), computes
 (`ak pick`) and runs one prompt at a time (`ak run`). The lead — you, or an
