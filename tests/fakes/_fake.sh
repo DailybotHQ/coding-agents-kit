@@ -57,7 +57,7 @@ fake_record() {
     eval "val=\${${var}:-}"
     echo "${var}=${val}"
   done
-  for var in ANTHROPIC_AUTH_TOKEN ZAI_CODING_API_KEY ZHIPU_API_KEY ZAI_API_KEY XAI_API_KEY \
+  for var in ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN ZAI_CODING_API_KEY ZHIPU_API_KEY ZAI_API_KEY XAI_API_KEY \
       AZURE_OPENAI_API_KEY GEMINI_API_KEY; do
     eval "val=\${${var}:-}"
     if [ "${FAKE_SHOW_SECRETS:-}" = 1 ]; then

@@ -312,4 +312,41 @@ scope_profiles() {
   else
     pass "every variable uses the AGENTKIT_ prefix"
   fi
+  profiles_claude_token
+}
+
+# A long-lived Claude token per account (CLAUDE_CODE_OAUTH_TOKEN[_SUFFIX]):
+# each profile gets its own as CLAUDE_CODE_OAUTH_TOKEN, never @default's.
+profiles_claude_token() {
+  local out root
+  box_new profiles-token claude
+  box_posture ask
+  box_env_file CLAUDE_CODE_OAUTH_TOKEN=tok-claude-default CLAUDE_CODE_OAUTH_TOKEN_WORK=tok-claude-work
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/claude/bare"
+
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude @work)"
+  expect_eq "profiles claude token: @work gets its own token as CLAUDE_CODE_OAUTH_TOKEN" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude @bare)"
+  expect_eq "profiles claude token: a profile without its own token never inherits @default's" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" ""
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude)"
+  expect_eq "profiles claude token: @default keeps CLAUDE_CODE_OAUTH_TOKEN" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-default"
+  out="$(ak FAKE_ENV_NAMES=1 -- claude @work)"
+  expect_lacks "profiles claude token: the suffixed variable never reaches the CLI" "${out}" "ENVNAME=CLAUDE_CODE_OAUTH_TOKEN_WORK"
+
+  : > "${BOX}/fake.log"
+  ak_split FAKE_MODE=headless FAKE_LOG="${BOX}/fake.log" FAKE_SHOW_SECRETS=1 -- run claude @work --output-format json -- "hello"
+  expect_eq "profiles claude token: ak run routes the profile's token too" "$(var_of "$(cat "${BOX}/fake.log")" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+
+  out="$(ak -- env claude @bare)"
+  expect_has "profiles claude token: ak env blanks the token for a profile without one" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_lacks "profiles claude token: ak env never prints a token value" "${out}" "tok-claude"
+
+  out="$(ak -- profiles)"
+  expect_has "profiles claude token: ak profiles names the token as set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK=set"
+  expect_has "profiles claude token: ... and unset where it is missing" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_BARE=unset"
+  expect_has "profiles claude token: a profile with a token counts as logged in" "$(printf '%s\n' "${out}" | grep '@work ')" " yes "
+  out="$(ak -- doctor --json)"
+  expect_has "profiles claude token: ak doctor lists the token by name" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK"
+  expect_lacks "profiles claude token: ... never its value" "${out}" "tok-claude"
 }

@@ -206,6 +206,7 @@ for c in kinds.load().clis.values():
   security_usage
   security_setup
   security_pick
+  security_claude_token
 }
 
 # `ak usage` reads credential content and talks to vendor endpoints: the first
@@ -379,4 +380,25 @@ security_pick() {
     out="$("${AK_PY}" "${ROOT}/tests/py/skill_rules.py" "${f}")"
     expect_eq "security pick: ${f#"${ROOT}"/} teaches no opt-out override, usage loop, expanding prompt or secret in a prompt" "${out}" ""
   done
+}
+
+# The per-profile Claude token is a credential: shown by name only, never
+# printed by any command, and never handed to another profile.
+security_claude_token() {
+  local tok="sec-claude-token-default-7S1" tokw="sec-claude-token-work-7S2" out
+  box_new security-token claude
+  box_env_file "CLAUDE_CODE_OAUTH_TOKEN=${tok}" "CLAUDE_CODE_OAUTH_TOKEN_WORK=${tokw}"
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/work" "${BOX}/home/.local/share/agentkit/profiles/claude/other"
+  : > "${BOX}/token-output"
+  for args in "profiles" "doctor" "doctor --json" "env claude @work" "env claude @other" "env claude" "usage" "usage --json" "pick claude --allow-unknown" "claude @work" "claude @other" "--help"; do
+    # shellcheck disable=SC2086  # args is a fixed word list
+    ak_split -- ${args}
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/token-output"
+  done
+  expect_lacks "security claude token: no command prints the default token" "$(cat "${BOX}/token-output")" "${tok}"
+  expect_lacks "security claude token: no command prints a profile's token" "$(cat "${BOX}/token-output")" "${tokw}"
+  out="$(ak -- claude @other)"
+  expect_has "security claude token: a profile without its own token launches with none (not @default's)" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_lacks "security claude token: ... and the fake saw no token set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN=(set)"
+  expect_eq "security claude token: the env file is untouched (mode 600)" "$(file_mode "${BOX}/home/.config/agentkit/env")" "600"
 }

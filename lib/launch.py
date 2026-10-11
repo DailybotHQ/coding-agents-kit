@@ -160,6 +160,7 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
         directory = profiles.ensure(kind.cli_name, name, note=kind.cli.get("login", {}).get("profile_note"))
     else:
         directory = profiles.existing(kind.cli_name, name)
+    profiles.apply_token(kind.cli, name, env)
     if purpose == "print":
         profiles.apply_keys(kind, name, env, require=False)
     else:

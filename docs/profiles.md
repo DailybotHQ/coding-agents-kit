@@ -143,6 +143,13 @@ The provider config the writers produce (Codex `<provider>.config.toml`,
 OpenCode `opencode.json`, Pi `models.json`) goes inside the profile, so
 `ak codex-glm @2` never touches `~/.codex`.
 
+## A Claude login token per account
+
+`CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>` in the env file (from `claude setup-token`)
+logs a named Claude profile in without the browser login; `@default` reads
+`CLAUDE_CODE_OAUTH_TOKEN`. A profile never inherits another's token. See
+[Accounts → A Claude login token per account](accounts.md#a-claude-login-token-per-account).
+
 ## Managing profiles
 
 ```bash

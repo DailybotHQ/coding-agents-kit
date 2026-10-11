@@ -106,6 +106,23 @@ in upper case with `-` and `.` turned into `_`.
 - Non-secret settings follow the same suffix rule; see
   [Profiles → Provider keys per profile](profiles.md#provider-keys-per-profile).
 
+## A Claude login token per account
+
+Claude Code can log in with a long-lived token instead of the browser login
+(`claude setup-token`, run once per account). Put it in the env file:
+`CLAUDE_CODE_OAUTH_TOKEN` for `@default`, `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+for a named profile (`CLAUDE_CODE_OAUTH_TOKEN_WORK` for `@work`). `ak claude
+@work` (and `ak run`, `ak env`) gives that profile its own token as
+`CLAUDE_CODE_OAUTH_TOKEN`; a profile without one gets none, never
+`@default`'s. `ak profiles` and `ak doctor` show the variable by name, and a
+profile with its token set counts as logged in.
+
+Use it where the browser login cannot follow the account: a container that
+mounts the host's profiles (the macOS login lives in the Keychain, which a
+Linux container cannot read), or a second machine. The token is
+inference-only: `ak usage` / `ak pick` cannot read that account's quota from
+it, so query quota on a host that has the browser login.
+
 ## Platforms
 
 - **macOS:** Claude Code keeps a profile's login in the Keychain item

@@ -14,6 +14,12 @@ permission posture changes.
 
 ### Added
 
+- **A Claude login token per account**: `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+  (from `claude setup-token`) logs a named Claude profile in;
+  `ak claude @name`, `ak run` and `ak env` hand it to that profile as
+  `CLAUDE_CODE_OAUTH_TOKEN`, never `@default`'s. `ak profiles` and
+  `ak doctor` show it by name and count it as a login. Meant for containers
+  that reuse the host's profiles (the macOS login lives in the Keychain).
 - **`ak pick`**: the account(s) with the most usable headroom for a kind,
   from the same rows as `ak usage` and equally read-only (no login refreshed,
   no reset spent). One documented policy: `ok` rows only, model-scoped

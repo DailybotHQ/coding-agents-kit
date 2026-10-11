@@ -87,6 +87,15 @@ in upper case with `-` and `.` turned into `_`.
 - `grok` and `antigravity` treat the key as optional: without it they use
   the profile's own login (grok) or the machine's Google login (antigravity).
 
+### A Claude token per account
+
+`CLAUDE_CODE_OAUTH_TOKEN` (`@default`) or `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+(`@name`), made by the user with `claude setup-token`, logs a Claude profile
+in without the browser login: useful in containers and on second machines.
+A profile never inherits another's token. It gives no readable quota (`ak
+usage` shows that account as needing a full login). Tell the user where it
+goes; never ask for it or read it.
+
 ## Platforms
 
 - **macOS:** Claude Code keeps a profile's login in the Keychain item

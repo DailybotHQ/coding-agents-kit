@@ -208,10 +208,34 @@ def apply_keys(kind, name, env, require=True):
         raise AkError("%s is not set. Add it to %s." % (var, envfile), EXIT_NOT_READY)
 
 
+def token_var(cli, name):
+    """The per-profile login token variable of a CLI for profile `name`
+    (CLAUDE_CODE_OAUTH_TOKEN for @default, CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>
+    for @name), or None when the CLI declares none."""
+    base = cli.get("profile_token")
+    if not base:
+        return None
+    return "%s_%s" % (base, suffix(name)) if name else base
+
+
+def apply_token(cli, name, env):
+    """A named profile gets its own token as the CLI's variable, or none at
+    all: it never inherits @default's token. @default is left as it is."""
+    base = cli.get("profile_token")
+    if not base or not name:
+        return
+    own = env.get(token_var(cli, name))
+    if own:
+        env[base] = own
+    else:
+        env.pop(base, None)
+
+
 def strip_profile_keys(model, env, keep=()):
     """Remove every <KEY>_<SUFFIX> of the known providers: those are the
     kit's per-profile variables and never meaningful to a CLI."""
     keys = [p["key"] for p in model.providers.values()]
+    keys += [c["profile_token"] for c in model.clis.values() if c.get("profile_token")]
     for name in list(env):
         if name in keep:
             continue
@@ -231,6 +255,8 @@ def login_state(model, cli_name, name, env):
     kind = model.kind(cli_name)
     directory = path(cli_name, name) if name else None
     ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=directory)
+    if name and env.get(token_var(cli, name) or ""):
+        return True
     for ref in login.get("files", []):
         p = ctx.ref_path(ref)
         if os.path.isfile(p):
@@ -291,6 +317,9 @@ def keys_by_name(model, cli_name, name, env):
     for var in sorted(seen):
         full = "%s_%s" % (var, suffix(name)) if name else var
         out.append("%s=%s" % (full, "set" if env.get(full) else "unset"))
+    token = token_var(model.clis[cli_name], name)
+    if token:
+        out.append("%s=%s" % (token, "set" if env.get(token) else "unset"))
     return out
 
 
