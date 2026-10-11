@@ -139,6 +139,10 @@ login token per account let another host reuse the same accounts,
 
 ### Fixed
 
+- **`ak usage` bars show small numbers**: 4% drew an empty bar and 14% looked
+  like 10%. The bar keeps its ten cells, with eighth-cell precision on UTF-8;
+  any nonzero use shows at least one mark, and only 100% is full (ASCII:
+  whole `#` cells, same rule).
 - The fake usage endpoint of the test suite accepts the 8 parallel
   connections `ak usage` opens; its default listen backlog of 5 made macOS
   refuse some, which showed up as a flaky scenario check.

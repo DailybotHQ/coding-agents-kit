@@ -960,10 +960,30 @@ def _amount(value):
     return ("%.2f" % value).rstrip("0").rstrip(".")
 
 
+BAR_CELLS = 10
+EIGHTHS = "▏▎▍▌▋▊▉"
+
+
 def _bar(pct, utf8):
-    full, empty = ("█", "░") if utf8 else ("#", "-")
-    filled = int(round(pct / 10.0))
-    return full * filled + empty * (10 - filled)
+    """A fixed-width bar. Any nonzero use is visible (1% is never an empty
+    bar) and anything below 100 is never drawn full. UTF-8 has eighth-cell
+    precision; ASCII has whole cells of '#'."""
+    pct = max(0.0, min(100.0, float(pct)))
+    if not utf8:
+        filled = int(round(pct / 10.0))
+        if pct > 0:
+            filled = max(1, filled)
+        if pct < 100:
+            filled = min(BAR_CELLS - 1, filled)
+        return "#" * filled + "-" * (BAR_CELLS - filled)
+    eighths = int(round(pct * BAR_CELLS * 8 / 100.0))
+    if pct > 0:
+        eighths = max(1, eighths)
+    if pct < 100:
+        eighths = min(BAR_CELLS * 8 - 1, eighths)
+    full, part = divmod(eighths, 8)
+    bar = "█" * full + (EIGHTHS[part - 1] if part else "")
+    return bar + "░" * (BAR_CELLS - len(bar))
 
 
 STATUS_LABELS = {"expired": "expired", "no_login": "no login", "no_scope": "no access",

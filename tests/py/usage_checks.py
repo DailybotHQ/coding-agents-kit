@@ -518,6 +518,20 @@ check("usage review: an out-of-range reset time becomes unknown, not an error",
       row["status"] == "ok" and row["windows"][0]["resets_at"] is None, str(row))
 server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
 
+# The bar: fixed width; any nonzero use is visible; below 100 never full.
+for pct in (0, 1, 4, 14, 50, 99, 100):
+    for utf8 in (True, False):
+        bar = usage._bar(pct, utf8)
+        mode = "utf-8" if utf8 else "ascii"
+        empty = "░" if utf8 else "-"
+        check("usage bar %s %d%%: ten cells wide" % (mode, pct), len(bar) == 10, repr(bar))
+        check("usage bar %s %d%%: empty only at 0%%" % (mode, pct), (bar == empty * 10) == (pct == 0), repr(bar))
+        check("usage bar %s %d%%: full only at 100%%" % (mode, pct), (bar == ("█" if utf8 else "#") * 10) == (pct == 100), repr(bar))
+check("usage bar: 4% shows the thinnest mark", usage._bar(4, True).startswith(("▏", "▎", "▍")), repr(usage._bar(4, True)))
+check("usage bar: 14% draws more than 10%", usage._bar(14, True) != usage._bar(10, True), repr(usage._bar(14, True)))
+check("usage bar: 1% in ASCII is one '#'", usage._bar(1, False) == "#" + "-" * 9, repr(usage._bar(1, False)))
+check("usage bar: 99% is not full in either mode", usage._bar(99, True) != "█" * 10 and usage._bar(99, False) != "#" * 10, "")
+
 server.stop()
 if FAILS:
     sys.exit(1)
