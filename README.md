@@ -46,6 +46,15 @@ python3 ≥ 3.9. Nothing else.
 git clone --branch v0.5.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
+Verify the checkout against the release's checksums (every shipped file is
+listed):
+
+```bash
+cd coding-agents-kit
+curl -fsSLO https://github.com/DailybotHQ/coding-agents-kit/releases/download/v0.5.0/SHA256SUMS
+shasum -a 256 -c SHA256SUMS --ignore-missing      # Linux: sha256sum -c SHA256SUMS --ignore-missing
+```
+
 Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 `./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
 [docs/install.md](docs/install.md).
@@ -83,6 +92,27 @@ A named profile reads its own keys (`ZAI_CODING_API_KEY_WORK` for
 `claude-glm @work`) and never falls back to the default key. See
 [Accounts](docs/accounts.md) and [Orchestration](docs/orchestration.md).
 
+### Choosing accounts, and agents launching agents
+
+```text
+$ ak pick claude --count 2
+claude @work2  headroom 100%  binding 5h  resets in 3h 48m
+claude @work3  headroom 100%  binding 5h  resets in 3h 58m
+```
+
+```bash
+ak pick claude --model fable --json      # pick-v1: chosen + every account with its reason
+ak profiles --json                       # profiles-v1: every account by name, no values, no paths
+ak run claude @work2 --cwd ../wt-api --trust-cwd --output-format json -- 'Implement the API lane; commit.'
+```
+
+`--trust-cwd` marks the lane's folder as trusted in that profile first, so a
+new account does not stop at its folder-trust screen (opt-in only). A Claude
+profile can also log in with its own token, `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+(from `claude setup-token`), for containers that reuse the host's accounts.
+The loop — inventory, pick, one worktree per writer, failover, verify, merge
+— is [Orchestration](docs/orchestration.md).
+
 ### Skills for agents
 
 | Skill | For | Install |
@@ -111,6 +141,39 @@ recognise, and everything after it, reaches the CLI unchanged. `ak`
 replaces itself with the CLI (`exec`), so Herdr and your terminal see the
 agent itself.
 
+## How it fits with DeepWorkPlan
+
+`ak` works on its own. In a repository that runs [DeepWorkPlan](https://deepworkplan.com),
+the pack's `agentkit` addon uses `ak run` as the headless delegation transport
+for a plan's `parallel_safe` tasks, and the lead assigns one account per lane
+with `ak pick --count`; interactive lanes run in Herdr panes through
+[herdr-peers](https://github.com/DailybotHQ/herdr-peers), started as
+`ak <kind> @account --trust-cwd`. [devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit)
+installs the kit, pinned and verified, in its images. The kit page is
+[deepworkplan.com/kit/agentkit](https://deepworkplan.com/kit/agentkit).
+
+## Part of the DeepWorkPlan ecosystem
+
+| Repository | Role | Purpose |
+| --- | --- | --- |
+| [deepworkplan-skill](https://github.com/DailybotHQ/deepworkplan-skill) | pack | The DeepWorkPlan methodology as an installable agent skill: plans, gates, the spec and the addons |
+| [coding-agents-kit](https://github.com/DailybotHQ/coding-agents-kit) (this repository) | addon | One command surface for every coding-agent CLI: accounts, quota, headless runs, orchestration |
+| [devcontainer-kit](https://github.com/DailybotHQ/devcontainer-kit) | addon | Development-container images and installer for agent-ready repositories |
+| [herdr-peers](https://github.com/DailybotHQ/herdr-peers) | addon | One authorized ask and reply between agents in Herdr panes, on any machine |
+| [deepworkplan-vim](https://github.com/DailybotHQ/deepworkplan-vim) | addon | A Neovim distribution with a plan reader and sidebar |
+| [ai-diff-reviewer](https://github.com/DailybotHQ/ai-diff-reviewer) | addon | The local and CI pull-request reviewer behind the `Ready` label |
+| [agent-skill](https://github.com/DailybotHQ/agent-skill) | addon | The Dailybot agent skill (progress reporting) |
+| [deepworkplan.com](https://deepworkplan.com) | site | The methodology, the specification and the kit catalog |
+
+## Security
+
+Autonomy by default with an always-effective opt-out (`--ask`,
+`AGENTKIT_PERMISSIONS=ask`), keys only in `~/.config/agentkit/env` (mode 600),
+no network except `ak install` fetching a pinned vendor installer you asked
+for and `ak usage` / `ak pick` querying the usage endpoint of an account you run (one
+request per account, read-only). Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
+the threat model is [docs/SECURITY.md](docs/SECURITY.md).
+
 ## Documentation
 
 - [Kinds and providers](docs/kinds.md) — the data model, provider keys, adding a kind
@@ -126,15 +189,6 @@ agent itself.
 - [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
 - For agents: `ak --skill` prints the bundled skill (`ak --skill setup`, `ak --skill orchestrate` the others);
   install lines in [Skills for agents](#skills-for-agents).
-
-## Security
-
-Autonomy by default with an always-effective opt-out (`--ask`,
-`AGENTKIT_PERMISSIONS=ask`), keys only in `~/.config/agentkit/env` (mode 600),
-no network except `ak install` fetching a pinned vendor installer you asked
-for and `ak usage` / `ak pick` querying the usage endpoint of an account you run (one
-request per account, read-only). Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
-the threat model is [docs/SECURITY.md](docs/SECURITY.md).
 
 ## Contributing
 
