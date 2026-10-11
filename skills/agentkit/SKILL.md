@@ -10,7 +10,8 @@ metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 
 `ak <kind> [@profile]` launches a coding-agent CLI the same way everywhere:
 the same session flags, several accounts per CLI, provider routes, and
-**no permission-bypass flag unless the user opts in**. This skill teaches an
+**autonomy by default with an opt-out that always wins** (`--ask`,
+`AGENTKIT_PERMISSIONS=ask`; see Permissions). This skill teaches an
 agent to use it. It works alone; nothing here needs any other tool.
 
 ## When to use — and when not
