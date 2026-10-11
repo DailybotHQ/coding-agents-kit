@@ -131,6 +131,21 @@ never falls back to the default token), and are shown by name only. A token
 from `claude setup-token` is inference-only, so `ak usage` cannot read that
 account's quota from it.
 
+## Folder trust (`--trust-cwd`)
+
+On explicit request only (`--trust-cwd`, `AGENTKIT_TRUST_CWD=1`), `ak`
+writes one entry into the profile's own CLI config — Claude's
+`.claude.json` (`projects[<folder>].hasTrustDialogAccepted`) or Codex's
+`config.toml` (`[projects."<folder>"] trust_level = "trusted"`) — so the CLI
+skips its folder-trust screen for that folder. The write is atomic, keeps
+every other key and the file mode, never rewrites an existing Codex table,
+and happens nowhere else. It does not change the permission posture and
+never answers the bypass-permissions warning or any other screen. The
+orchestration skill allows a lead agent to answer first-run screens with
+keys only under a standing user grant, only the folder-trust screen of its
+own lane and the bypass warning of an account run with autonomy (never under
+`AGENTKIT_PERMISSIONS=ask`); everything else escalates to the user.
+
 ## Profiles with a HOME of their own
 
 Cursor and Antigravity profiles get a separate `HOME` whose other entries are

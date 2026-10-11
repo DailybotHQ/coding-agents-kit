@@ -90,6 +90,29 @@ delegates: the `agentkit` addon runs them headless through `ak run`, the
 the plan's ledger records each delegate launch with its profile. The plan's
 own gates decide whether a lane's work is accepted.
 
+## Unattended lanes
+
+When you want lanes to run without you, say so: that instruction (or a
+plan's pre-authorization) is the standing grant the lead relies on.
+
+1. **Launch so nothing stops:** `ak <kind> @account --trust-cwd` in the
+   lane's worktree (or `ak run … --cwd <worktree> --trust-cwd`) pre-trusts
+   the folder in that account's config. Accept Claude's one-time
+   bypass-permissions warning once per account, or grant the lead to do it.
+2. **Detect:** `herdr agent list` shows a lane `blocked` (or `idle` with no
+   output); `herdr pane read <pane>` shows which screen.
+3. **Unblock, within limits:** under the standing grant, the lead answers
+   with `herdr agent send-keys` only the folder-trust screen for the lane's
+   own worktree and the bypass warning for an account you run with autonomy
+   (never when you set `AGENTKIT_PERMISSIONS=ask`), only on panes it created,
+   and reads the screen again to confirm.
+4. **Escalate everything else:** logins and credentials, per-action
+   permission requests, destructive confirmations, payment or plan prompts,
+   unknown screens. Two failures stop the lane.
+
+`ak` sends no keystrokes itself; the procedure is in the skill
+(`references/unattended.md`).
+
 ## Safety
 
 - `ak usage` and `ak pick` contact the vendors with your logins: once per

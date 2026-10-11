@@ -314,6 +314,7 @@ scope_profiles() {
   fi
   profiles_claude_token
   profiles_json
+  profiles_trust_cwd
 }
 
 # A long-lived Claude token per account (CLAUDE_CODE_OAUTH_TOKEN[_SUFFIX]):
@@ -384,4 +385,57 @@ profiles_json() {
   ak_split -- profiles add claude @x --json; expect_eq "profiles json: --json on another subcommand exits 2" "$?" 2
   ak_split -- profiles
   expect_has "profiles json: the text listing is unchanged" "$(cat "${BOX}/out")" "PROFILE"
+}
+
+# --trust-cwd / AGENTKIT_TRUST_CWD=1: pre-trust the launch folder in the
+# profile's own CLI config; never without the opt-in.
+profiles_trust_cwd() {
+  local root cj ct wd out sum1 sum2 other
+  box_new profiles-trust claude codex grok
+  box_posture ask
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/codex/work" "${root}/grok/work"
+  cj="${root}/claude/work/.claude.json"; ct="${root}/codex/work/config.toml"
+  printf '{"oauthAccount":{"x":1},"theme":"dark"}' > "${cj}"; chmod 600 "${cj}"
+  wd="$(cd "${BOX}/work" && pwd -P)"
+
+  ak -- claude @work >/dev/null
+  expect_lacks "profiles trust-cwd: without the opt-in nothing is written" "$(cat "${cj}")" "projects"
+  out="$(ak -- claude @work --trust-cwd)"
+  expect_eq "profiles trust-cwd: claude: the launch folder is trusted in the profile's .claude.json" \
+    "$("${AK_PY}" -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["projects"][sys.argv[2]]["hasTrustDialogAccepted"]))' "${cj}" "${wd}")" "true"
+  expect_eq "profiles trust-cwd: claude: every other key is kept" "$(json_get "${cj}" '[d["theme"], d["oauthAccount"]["x"]]')" '["dark", 1]'
+  expect_eq "profiles trust-cwd: claude: the file mode is kept" "$(file_mode "${cj}")" "600"
+  expect_has "profiles trust-cwd: one line names the file changed" "${out}" "trusted in ${cj}"
+  sum1="$(cksum < "${cj}")"
+  out="$(ak -- claude @work --trust-cwd)"
+  sum2="$(cksum < "${cj}")"
+  expect_eq "profiles trust-cwd: idempotent (a second run changes nothing)" "${sum2}" "${sum1}"
+  expect_lacks "profiles trust-cwd: ... and says nothing" "${out}" "trusted in"
+
+  ak AGENTKIT_TRUST_CWD=1 -- codex @work >/dev/null
+  expect_has "profiles trust-cwd: codex: AGENTKIT_TRUST_CWD=1 appends the project table" "$(cat "${ct}")" "[projects.\"${wd}\"]"
+  expect_has "profiles trust-cwd: codex: ... trusted" "$(cat "${ct}")" 'trust_level = "trusted"'
+  ak AGENTKIT_TRUST_CWD=1 -- codex @work >/dev/null
+  expect_eq "profiles trust-cwd: codex: idempotent (one table)" "$(grep -c '^\[projects\.' "${ct}")" 1
+  other="${BOX}/elsewhere"; mkdir -p "${other}"; other="$(cd "${other}" && pwd -P)"
+  printf '[projects."%s"]\ntrust_level = "untrusted"\n' "${other}" >> "${ct}"
+  ( BOX_CWD="${other}"; ak -- codex @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: codex: an existing table is the user's and is left alone" "$(grep -c 'trust_level = "untrusted"' "${ct}")" 1
+
+  out="$(ak FAKE_ENV_NAMES=1 -- claude @work --trust-cwd)"
+  expect_has "profiles trust-cwd: the opt-in is inherited by a nested ak" "${out}" "ENVNAME=AGENTKIT_TRUST_CWD"
+
+  mkdir -p "${BOX}/lane"
+  ak_split FAKE_MODE=headless -- run claude @work --cwd "${BOX}/lane" --trust-cwd --output-format json -- "hello"
+  expect_eq "profiles trust-cwd: ak run trusts its --cwd" \
+    "$("${AK_PY}" -c 'import json,sys,os; print(json.load(open(sys.argv[1]))["projects"].get(os.path.realpath(sys.argv[2]), {}).get("hasTrustDialogAccepted"))' "${cj}" "${BOX}/lane")" "True"
+
+  ak -- claude --trust-cwd >/dev/null
+  expect_eq "profiles trust-cwd: @default writes the account root's .claude.json (the CLI's own home)" \
+    "$("${AK_PY}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["projects"][sys.argv[2]]["hasTrustDialogAccepted"])' "${BOX}/home/.claude.json" "${wd}")" "True"
+
+  out="$(ak -- grok @work --trust-cwd)"
+  expect_has "profiles trust-cwd: a CLI with no known trust screen gets a note" "${out}" "nothing written"
+  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/grok/work" -type f | wc -l | tr -d ' ')" 0
 }

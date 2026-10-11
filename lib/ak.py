@@ -1,7 +1,7 @@
 """ak / agentkit — the python core behind bin/ak.
 
-    ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+    ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
     ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
@@ -23,8 +23,8 @@ import kinds  # noqa: E402
 from common import AkError  # noqa: E402
 
 USAGE = """usage:
-  ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+  ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
   ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]

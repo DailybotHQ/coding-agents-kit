@@ -1,4 +1,4 @@
-"""`ak <kind> [@profile] [--ask | --auto] [-c | -r [id] | -l] [--] [cli args…]`.
+"""`ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | -r [id] | -l] [--] [cli args…]`.
 
 The kit reads only the head of the arguments; everything after the first
 token it does not own (or after `--`) reaches the CLI untouched:
@@ -26,6 +26,7 @@ import sys
 import common
 import kinds
 import profiles
+import trust
 import writers
 from common import AkError, EXIT_NOT_READY, EXIT_USAGE
 
@@ -39,6 +40,7 @@ class Head(object):
         self.profile_from_env = False
         self.auto = False
         self.ask = False
+        self.trust_cwd = False
         self.session = None      # continue | resume | pick | list
         self.session_id = None
         self.passthrough = False
@@ -57,6 +59,10 @@ def parse_head(cli, args, env):
             head.passthrough = True
             i += 1
             break
+        if tok == "--trust-cwd":
+            head.trust_cwd = True
+            i += 1
+            continue
         if tok in ("--auto", "--ask"):
             if tok == "--auto":
                 head.auto = True
@@ -291,6 +297,9 @@ def launch(model, kind_name, args, base_env):
     head = parse_head(kind.cli, args, base_env)
     prep = prepare(model, kind_name, head, base_env, purpose="launch")
     finish_env(model, prep)
+    if trust.requested(head.trust_cwd, base_env):
+        trust.mark(prep, os.getcwd())
+        prep.env[trust.ENV] = "1"          # inherited by a nested ak, like the opt-out
     argv, standalone = interactive_argv(prep, head)
     if not standalone:
         run_pre(prep)

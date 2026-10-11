@@ -71,7 +71,7 @@ ak claude-glm @work         # Claude Code routed to Z.AI with ZAI_CODING_API_KEY
 ak claude -- @src/app.ts    # after --, everything goes to the CLI untouched
 ```
 
-Grammar: `ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]`.
+Grammar: `ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]`.
 Only a first `@name` is a profile; `@default` is the CLI's own home.
 
 ## Accounts (profiles)

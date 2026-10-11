@@ -1,7 +1,7 @@
 # `ak run` — one prompt, headless
 
 ```
-ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
 ```
 
 Runs one prompt non-interactively in `--cwd` (default: the current
@@ -22,6 +22,10 @@ exit codes) is [Orchestration](orchestration.md).
   `--ask` with `--auto` on one command is a usage error.
 - `--timeout SECONDS` kills the whole process tree when it expires (`0` =
   none). Cline also receives it as its own `-t`.
+- `--trust-cwd` (or `AGENTKIT_TRUST_CWD=1`) marks `--cwd` as trusted in the
+  profile's own config first, so a new account does not stop at its CLI's
+  folder-trust screen ([Permissions → Trusting the launch folder](permissions.md#trusting-the-launch-folder---trust-cwd)).
+  Opt-in only.
 
 **Windows:** a program that calls `ak run` must start the python core
 directly — `py -3 <install>\lib\ak.py run …` — not `ak.cmd`. A batch file

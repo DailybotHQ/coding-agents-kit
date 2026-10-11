@@ -41,6 +41,7 @@ import time
 import common
 import launch
 import profiles
+import trust
 from common import (AkError, EXIT_AGENT_FAILED, EXIT_CANCELLED, EXIT_INTERNAL, EXIT_NOT_READY, EXIT_OK,
                     EXIT_TIMEOUT, EXIT_USAGE)
 
@@ -49,7 +50,7 @@ CAPTURE_CAP = 8 * 1024 * 1024   # bytes of CLI stdout kept for extraction
 KILL_GRACE = 3.0                # seconds between SIGTERM and SIGKILL
 
 USAGE = ('usage: ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] '
-         '[--output-format text|json] [--ask | --auto] -- "<prompt>"')
+         '[--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"')
 
 
 class Options(object):
@@ -61,6 +62,7 @@ class Options(object):
         self.fmt = "text"
         self.auto = False
         self.ask = False
+        self.trust_cwd = False
         self.prompt = None
 
 
@@ -84,6 +86,8 @@ def parse(args, env):
             opts.auto = True
         elif tok == "--ask":
             opts.ask = True
+        elif tok == "--trust-cwd":
+            opts.trust_cwd = True
         elif tok in ("--cwd", "--timeout", "--output-format"):
             if i + 1 >= n:
                 raise AkError("%s needs a value. %s" % (tok, USAGE), EXIT_USAGE)
@@ -418,6 +422,8 @@ def main(model, args, env):
                 how = "ak %s%s (it asks you to log in)" % (prep.kind.name, " " + profile_label if prep.profile else "")
             raise AkError("%s is not logged in for %s. Log in once with: %s"
                           % (prep.kind.cli["name"], profile_label, how), EXIT_NOT_READY)
+        if trust.requested(opts.trust_cwd, env):
+            trust.mark(prep, cwd)
         launch.finish_env(model, prep)
         argv = build_argv(prep, opts, cwd)
         if prep.kind.data.get("pre"):

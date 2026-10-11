@@ -108,6 +108,9 @@ ak run codex @work1 --cwd ../wt-api --output-format json -- 'Review the changes 
   third; each step picks its own account.
 - **Interactive lanes in Herdr panes, and Deep Work Plans** (both optional):
   [references/herdr-and-dwp.md](references/herdr-and-dwp.md).
+- **Unattended lanes** (the user asked for no interruptions): launch with
+  `--trust-cwd`, detect a blocked lane, and the only first-run screens a lead
+  may answer — [references/unattended.md](references/unattended.md).
 
 ## Permissions
 

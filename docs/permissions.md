@@ -56,6 +56,25 @@ opt-out outranks it). When a launch is autonomous, `ak` removes
 `AGENTKIT_PERMISSIONS` from the CLI's environment, and nested launches follow
 the default.
 
+## Trusting the launch folder: `--trust-cwd`
+
+A new account opened in a new folder stops at its CLI's folder-trust screen
+(Claude: "Do you trust the files in this folder?", Codex: "Trust this
+folder?"). `--trust-cwd` on `ak <kind>` or `ak run`, or
+`AGENTKIT_TRUST_CWD=1` in the environment (inherited by nested `ak`), marks
+the launch folder (`--cwd` for `ak run`) as trusted in that profile's own
+config before the CLI starts:
+
+| CLI | File | Change |
+| --- | --- | --- |
+| Claude Code | `.claude.json` at the account root (the profile directory; `CLAUDE_CONFIG_DIR` or `~` for `@default`) | `projects["<folder>"].hasTrustDialogAccepted = true`, every other key kept |
+| Codex | `config.toml` in the profile (`CODEX_HOME`) | `[projects."<folder>"]` `trust_level = "trusted"`, appended only when that table is absent |
+
+Opt-in only: no flag, no write. Idempotent; one stderr line names the file
+it changed. Other CLIs: a note and no write. It answers no other screen and
+does not change the permission posture: trusting a folder is not autonomy.
+Claude's one-time bypass-permissions warning stays the user's to accept.
+
 ## The `classic` aliases
 
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,

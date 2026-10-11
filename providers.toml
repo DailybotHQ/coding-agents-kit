@@ -42,6 +42,11 @@ docs = "https://docs.claude.com/en/docs/claude-code"
 home = { default = "{CLAUDE_CONFIG_DIR:-~/.claude}", profile = "{dir}" }
 account = { default = "{CLAUDE_CONFIG_DIR:-~}", profile = "{dir}" }
 
+# `--trust-cwd` (explicit opt-in): where the folder-trust answer lives.
+[clis.claude.trust]
+file = "account:.claude.json"
+format = "claude-json"
+
 [clis.claude.session]
 continue = ["--continue"]
 resume = ["--resume", "{id}"]
@@ -98,6 +103,10 @@ docs = "https://developers.openai.com/codex/cli"
 
 [clis.codex.roots]
 home = { default = "{CODEX_HOME:-~/.codex}", profile = "{dir}" }
+
+[clis.codex.trust]
+file = "home:config.toml"
+format = "codex-toml"
 
 [clis.codex.session]
 continue = ["resume", "--last"]

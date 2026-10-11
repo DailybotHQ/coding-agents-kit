@@ -228,7 +228,12 @@ elif SETUP:
     check("the skill forbids asking for, reading or echoing a key value", "never ask for, read, echo, store or log a key" in text.lower().replace("**", ""))
 
 if ORCH:
-    for ref in ("references/patterns.md", "references/herdr-and-dwp.md"):
+    unattended = ref_texts.get("references/unattended.md", "")
+    check("the unattended reference names the standing grant and escalates logins, permission requests, destructive and unknown screens",
+          "standing grant" in unattended and all(w in unattended for w in ("login", "per-action permission", "destructive", "cannot name")))
+    check("the unattended reference never accepts the bypass warning against the opt-out",
+          "never** when the user set `AGENTKIT_PERMISSIONS=ask`" in unattended)
+    for ref in ("references/patterns.md", "references/herdr-and-dwp.md", "references/unattended.md"):
         check("%s exists and is linked from SKILL.md" % ref, ref in ref_texts and "](%s)" % ref in text)
     import run as runmod  # noqa: E402
     run_lines = [c for c in commands if c.split()[:2] == ["ak", "run"] and len(c.split()) > 2]

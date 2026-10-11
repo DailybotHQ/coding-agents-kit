@@ -207,6 +207,7 @@ for c in kinds.load().clis.values():
   security_setup
   security_pick
   security_claude_token
+  security_trust_cwd
 }
 
 # `ak usage` reads credential content and talks to vendor endpoints: the first
@@ -401,4 +402,26 @@ security_claude_token() {
   expect_has "security claude token: a profile without its own token launches with none (not @default's)" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
   expect_lacks "security claude token: ... and the fake saw no token set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN=(set)"
   expect_eq "security claude token: the env file is untouched (mode 600)" "$(file_mode "${BOX}/home/.config/agentkit/env")" "600"
+}
+
+# --trust-cwd writes one CLI config file, only on request, only inside the
+# profile (or the CLI's own home for @default).
+security_trust_cwd() {
+  local before after out root
+  box_new security-trust claude codex
+  sec_env_file
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/codex/work"
+  before="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  ak -- claude @work >/dev/null; ak -- codex @work >/dev/null; ak -- claude >/dev/null
+  ak_split FAKE_MODE=headless -- run claude @work --output-format json -- "hello"
+  after="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  expect_eq "security trust-cwd: without the opt-in no launch writes a trust entry" "${before}" "${after}"
+  out="$(ak -- claude @work --trust-cwd; ak -- codex @work --trust-cwd)"
+  expect_eq "security trust-cwd: with it, exactly the two profile files change" \
+    "$(cd "${BOX}" && find . -newer "${BOX}/home/.config/agentkit/env" -type f -not -path './out' -not -path './err' | sort | tr '\n' ' ')" \
+    "./home/.local/share/agentkit/profiles/claude/work/.claude.json ./home/.local/share/agentkit/profiles/codex/work/config.toml "
+  expect_eq "security trust-cwd: no key in any output" "$(printf '%s' "${out}" > "${BOX}/trust-out"; leaked "${BOX}/trust-out")" ""
+  expect_eq "security trust-cwd: the files it creates are mode 600" \
+    "$(file_mode "${root}/claude/work/.claude.json") $(file_mode "${root}/codex/work/config.toml")" "600 600"
 }
