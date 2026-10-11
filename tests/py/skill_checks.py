@@ -231,8 +231,11 @@ if ORCH:
     unattended = ref_texts.get("references/unattended.md", "")
     check("the unattended reference names the standing grant and escalates logins, permission requests, destructive and unknown screens",
           "standing grant" in unattended and all(w in unattended for w in ("login", "per-action permission", "destructive", "cannot name")))
-    check("the unattended reference never accepts the bypass warning against the opt-out",
-          "never** when the user set `AGENTKIT_PERMISSIONS=ask`" in unattended)
+    check("no agent answers the bypass-permissions acknowledgement (named plainly; escalated)",
+          "**No agent ever answers it.**" in unattended and "bypass-permissions acknowledgement" in unattended.split("## 4.", 1)[-1]
+          and "accept" not in unattended.split("## 3.", 1)[-1].split("## 4.", 1)[0].lower().replace("accept the risk", ""))
+    check("the only keystroke is folder trust, on a pane the lead launched, when --trust-cwd was unavailable",
+          "only when `--trust-cwd` could not be used" in unattended and "a pane the lead launched itself" in unattended)
     for ref in ("references/patterns.md", "references/herdr-and-dwp.md", "references/unattended.md"):
         check("%s exists and is linked from SKILL.md" % ref, ref in ref_texts and "](%s)" % ref in text)
     import run as runmod  # noqa: E402

@@ -73,7 +73,9 @@ config before the CLI starts:
 Opt-in only: no flag, no write. Idempotent; one stderr line names the file
 it changed. Other CLIs: a note and no write. It answers no other screen and
 does not change the permission posture: trusting a folder is not autonomy.
-Claude's one-time bypass-permissions warning stays the user's to accept.
+Claude's bypass-permissions acknowledgement is a one-time step you take per
+profile, when you create it (open `ak claude @name` once and accept); no
+agent ever answers it.
 
 A symlinked config (a dotfiles repository) is updated where it points, and a
 link that leaves the profile is refused. On Windows the entry is written with

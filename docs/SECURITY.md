@@ -140,11 +140,12 @@ writes one entry into the profile's own CLI config — Claude's
 skips its folder-trust screen for that folder. The write is atomic, keeps
 every other key and the file mode, never rewrites an existing Codex table,
 and happens nowhere else. It does not change the permission posture and
-never answers the bypass-permissions warning or any other screen. The
-orchestration skill allows a lead agent to answer first-run screens with
-keys only under a standing user grant, only the folder-trust screen of its
-own lane and the bypass warning of an account run with autonomy (never under
-`AGENTKIT_PERMISSIONS=ask`); everything else escalates to the user.
+never answers the bypass-permissions acknowledgement or any other screen.
+No agent ever answers Claude's bypass-permissions acknowledgement: it is a
+one-time step the developer takes per profile. The orchestration skill lets
+a lead agent send one keystroke only — the folder-trust screen of its own
+lane, on a pane it launched, when `--trust-cwd` was unavailable — and
+escalates every other screen.
 
 ## Profiles with a HOME of their own
 

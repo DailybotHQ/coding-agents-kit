@@ -27,9 +27,11 @@ login token per account let another host reuse the same accounts,
   inherited by nested `ak`): marks the launch folder as trusted in that
   profile's Claude or Codex config before the CLI starts, so a new account
   does not stop at the folder-trust screen. Opt-in only. The orchestration
-  skill documents unattended lanes (`references/unattended.md`): which
-  first-run screens a lead may answer under a standing grant, and what
-  always goes to the user.
+  skill documents unattended lanes (`references/unattended.md`): launch with
+  no per-launch approval, the one keystroke a lead may send (folder trust of
+  its own lane when `--trust-cwd` was unavailable), and escalation of every
+  other screen. No agent answers Claude's bypass-permissions acknowledgement:
+  the developer accepts it once per profile (the setup skill says so).
 - **`ak profiles --json`** (schema `profiles-v1`, additive): every account
   by name — CLI, profile, path relative to the profiles root, isolation,
   login kind by presence and the key names that are set — with no value and

@@ -1,10 +1,10 @@
-# Unattended lanes: launch, detect a blocked agent, unblock it
+# Unattended lanes: launch, detect a blocked agent, escalate
 
 Read this when the user wants lanes to run without them — launching new
-agents on new accounts or folders and getting them past their first-run
-screens — and has said so. That instruction (or a plan's pre-authorization)
-is the **standing grant** this page relies on. Without it, every screen below
-is the user's to answer.
+agents on new accounts or folders without a per-launch approval — and has
+said so. That instruction (or a plan's pre-authorization) is the
+**standing grant** this page relies on. It covers launching; it never covers answering
+a CLI's risk acknowledgement.
 
 ## 1. Launch so nothing stops
 
@@ -24,9 +24,10 @@ lane in a Herdr pane, start the agent the same way: `ak claude @work2
 --trust-cwd` in the lane's worktree.
 
 Claude shows one more screen the first time a profile runs with autonomy:
-the bypass-permissions warning. `ak` never accepts it. The user accepts it
-once per profile (`ak claude @work2`, then accept); when the user gave the
-standing grant, the lead may accept it as described in step 3.
+the bypass-permissions acknowledgement ("Bypass Permissions mode … accept
+the risk"). **No agent ever answers it.** It is a one-time step the
+developer takes per profile, when the profile is created: open
+`ak claude @work2` once and accept it. A lane that stops there is escalated.
 
 ## 2. Detect a blocked lane
 
@@ -35,25 +36,27 @@ standing grant, the lead may accept it as described in step 3.
 - `herdr pane read <pane>` — read the screen before doing anything. Identify
   it by its text; if you cannot name it with certainty, it is unknown.
 
-## 3. What the lead may answer with keys (standing grant only)
+## 3. The one keystroke a lead may send
 
-Only these, only on panes the lead created, only for the lane's own worktree:
+Only one screen, and only when `--trust-cwd` could not be used (an older
+`ak`, a CLI launched some other way): the **folder-trust** screen of the
+lane's own worktree, on a pane the lead launched itself.
 
 | Screen | Answer |
 | --- | --- |
 | Claude: "Do you trust the files in this folder?" (No, exit preselected) | select "Yes, I trust this folder", then Enter |
 | Codex: "Trust this folder?" | select the trust option, then Enter |
-| Claude: bypass-permissions warning (first autonomous run of a profile) | accept — **never** when the user set `AGENTKIT_PERMISSIONS=ask` or launched with `--ask` |
 
-Send the fewest keys that answer that screen with `herdr agent send-keys`
-(Herdr's own skill defines the key names), then `herdr pane read <pane>`
-again to confirm the agent moved on. Record what you answered in your report
-to the user.
+Send the fewest keys that answer it with `herdr agent send-keys` (Herdr's
+own skill defines the key names), then `herdr pane read <pane>` again to
+confirm the agent moved on, and record it in your report to the user.
 
 ## 4. What always goes to the user
 
-Never send keys for, and tell the user instead:
+Never send keys for any other screen. Read it, record it, and tell the user:
 
+- Claude's bypass-permissions acknowledgement — the developer accepts it
+  once per profile;
 - a login, a credential, a token or an API-key prompt;
 - a per-action permission request — that is the user's opt-out working;
 - a destructive confirmation (delete, reset, force, overwrite);

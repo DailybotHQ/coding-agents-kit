@@ -95,20 +95,22 @@ own gates decide whether a lane's work is accepted.
 When you want lanes to run without you, say so: that instruction (or a
 plan's pre-authorization) is the standing grant the lead relies on.
 
-1. **Launch so nothing stops:** `ak <kind> @account --trust-cwd` in the
+1. **Once per account, by you:** open `ak claude @account` once when you
+   create the profile and accept Claude's bypass-permissions
+   acknowledgement. No agent ever answers that screen.
+2. **Launch so nothing stops:** `ak <kind> @account --trust-cwd` in the
    lane's worktree (or `ak run … --cwd <worktree> --trust-cwd`) pre-trusts
-   the folder in that account's config. Accept Claude's one-time
-   bypass-permissions warning once per account, or grant the lead to do it.
-2. **Detect:** `herdr agent list` shows a lane `blocked` (or `idle` with no
+   the folder in that account's config. No per-launch approval is needed.
+3. **Detect:** `herdr agent list` shows a lane `blocked` (or `idle` with no
    output); `herdr pane read <pane>` shows which screen.
-3. **Unblock, within limits:** under the standing grant, the lead answers
-   with `herdr agent send-keys` only the folder-trust screen for the lane's
-   own worktree and the bypass warning for an account you run with autonomy
-   (never when you set `AGENTKIT_PERMISSIONS=ask`), only on panes it created,
-   and reads the screen again to confirm.
-4. **Escalate everything else:** logins and credentials, per-action
-   permission requests, destructive confirmations, payment or plan prompts,
-   unknown screens. Two failures stop the lane.
+4. **The one keystroke allowed:** only when `--trust-cwd` was unavailable,
+   the lead may answer the folder-trust screen of its own lane's worktree,
+   on a pane it launched, with `herdr agent send-keys`, and reads the screen
+   again to confirm.
+5. **Escalate everything else:** the bypass-permissions acknowledgement,
+   logins and credentials, per-action permission requests, destructive
+   confirmations, payment or plan prompts, unknown screens — read, record,
+   tell you. Two failures stop the lane.
 
 `ak` sends no keystrokes itself; the procedure is in the skill
 (`references/unattended.md`).

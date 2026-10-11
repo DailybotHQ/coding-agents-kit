@@ -20,6 +20,8 @@ ak profiles run cursor @2 -- agent login
 ```
 Profiles live in `~/.local/share/agentkit/profiles/<cli>/<name>` (mode 700). `@default` is the CLI's own home.
 
+Claude, once per profile, by the user: the first launch with autonomy shows Claude's bypass-permissions acknowledgement. Tell the user to open `ak claude @work` once, right after creating the profile, and accept it themselves. No agent ever answers that screen; lanes that run unattended later need this done first.
+
 ## Provider keys — names only
 
 Z.AI (`ZAI_CODING_API_KEY`), Azure (`AZURE_OPENAI_API_KEY` plus resource and model) and xAI (`XAI_API_KEY`) keys go in the env file, per profile as `<KEY>_<SUFFIX>` (`@work` → `_WORK`). Say the *name* and the *file*; the user types the value themselves. Never ask them to paste it, never open the file to read it. Confirm with `ak setup verify --keys ZAI_CODING_API_KEY`: it answers set or unset.

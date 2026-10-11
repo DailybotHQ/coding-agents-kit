@@ -109,8 +109,9 @@ ak run codex @work1 --cwd ../wt-api --output-format json -- 'Review the changes 
 - **Interactive lanes in Herdr panes, and Deep Work Plans** (both optional):
   [references/herdr-and-dwp.md](references/herdr-and-dwp.md).
 - **Unattended lanes** (the user asked for no interruptions): launch with
-  `--trust-cwd`, detect a blocked lane, and the only first-run screens a lead
-  may answer — [references/unattended.md](references/unattended.md).
+  `--trust-cwd`, detect a blocked lane, escalate. No agent answers Claude's
+  bypass-permissions acknowledgement: the developer accepts it once per
+  profile — [references/unattended.md](references/unattended.md).
 
 ## Permissions
 
