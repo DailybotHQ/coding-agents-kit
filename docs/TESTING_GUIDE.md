@@ -33,6 +33,10 @@ when nothing failed.
 | permission posture (`--ask`, `--auto`, `AGENTKIT_PERMISSIONS`, `box_posture`) | `permissions` |
 | `ak env` (`lib/envcmd.py`), `ak doctor` (`lib/doctor.py`), `docs/schema/doctor-v1.json` | `doctor` |
 | `ak run` (`lib/run.py`) | `run` |
+| `ak setup` (`lib/setup.py`, `docs/schema/setup-*.json`, checks in `tests/py/setup_checks.py`) | `setup` (probe, verify, docker on simulated Linux, macOS, Windows, WSL, musl and container hosts), `security` |
+| `skills/agentkit-setup/` (`tests/py/skill_checks.py agentkit-setup`, `tests/py/skill_scenarios.py`) | `setup-skill` (form, marketplace rules, consent gates, and the documented flows run in sandboxes), `skill` |
+| the container recipes (`ak setup docker`) | `setup`; the opt-in `setup-docker-live` builds one with a real Docker (`AGENTKIT_TEST_LIVE=1`) |
+| `ak usage` (`lib/usage.py`, `docs/schema/usage-v1.json`, the usage tables of `providers.toml`, checks in `tests/py/usage_checks.py`) | `usage` (pipeline, rendering, the launcher), `usage-providers` (one adapter at a time, the end-to-end layout; `tests/py/usage_provider_checks.py`), `kinds` (the tables), `security` (secrecy, read-only, loopback-only) |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
@@ -42,6 +46,11 @@ when nothing failed.
 | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow`, any tracked file | `hygiene` (and the CI job `public hygiene`: `bash scripts/check-public-hygiene.sh`) |
 | repository meta (README sections, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, `.github/`, release workflow) | `oss` |
 | a shared module or several surfaces | the full suite |
+
+`ak usage` is tested against a loopback fake endpoint (`tests/py/fake_usage_server.py`),
+never the network. Its pipeline and adapter checks are bash-free python
+(`python3 tests/py/usage_checks.py`, `python3 tests/py/usage_provider_checks.py`),
+so the Windows CI job runs them natively; the scopes fold their `ok`/`FAIL` lines in.
 
 `live` runs a real CLI and is never part of the default run: it reports
 `unavailable` unless `AGENTKIT_TEST_LIVE=1` is set, because a real CLI reads
@@ -117,7 +126,15 @@ no other tool version changes flag behaviour.
 
 `.github/workflows/ci.yml` runs the full suite on ubuntu and macOS, again
 under python 3.9, and a Windows job that parses every PowerShell file and runs
-the python core natively (`ak --version`, `ak doctor --json`).
+the python core natively (`ak --version`, `ak doctor --json`). The Windows job
+also runs the bash-free checks of `ak usage` (`tests/py/usage_checks.py`,
+`tests/py/usage_provider_checks.py`) and a smoke of `ak.cmd usage --json`
+against the loopback fake endpoint of `tests/py/fake_usage_server.py`, so
+Windows evidence is native, not inferred. `ak setup` follows the same rule
+(`tests/py/setup_checks.py` plus a PowerShell smoke of `ak.cmd setup probe` and
+`setup verify` against a temp install), and a `docker recipe builds` job runs the
+opt-in `setup-docker-live` scope: it renders the Dockerfile for the published
+tag and digest, builds it and runs `ak doctor` in the image.
 
 ## Writing a check
 

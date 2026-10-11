@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.4.0/docs/schema/setup-probe-v1.json",
+  "title": "ak setup probe --json (setup-probe-v1)",
+  "description": "What a machine or container looks like to someone about to install or configure coding-agents-kit. Read-only; it works from an uninstalled clone. Never contains a secret value: keys are variable names only. Consumers check `schema` and `interface` first; additional top-level keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "version", "os", "arch", "libc", "wsl", "container", "ci", "root", "home_writable", "shell", "python", "tools", "install", "env_file", "profiles", "clis", "posture_hint", "problems"],
+  "properties": {
+    "schema": { "const": "setup-probe-v1" },
+    "interface": { "const": 1 },
+    "version": { "type": "string", "description": "The version of the kit code that ran the probe." },
+    "os": { "enum": ["macos", "linux", "windows", "unknown"] },
+    "arch": { "type": "string", "description": "x64, arm64, or the raw machine name." },
+    "libc": { "enum": ["glibc", "musl", "n/a", "unknown"] },
+    "wsl": { "type": "boolean" },
+    "container": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["detected", "signals"],
+      "properties": {
+        "detected": { "type": "boolean" },
+        "signals": { "type": "array", "items": { "type": "string" }, "description": "Which signals fired: dockerenv, REMOTE_CONTAINERS, CODESPACES, DEVCONTAINER, container, cgroup." }
+      }
+    },
+    "ci": { "type": "boolean", "description": "True when a CI variable name is present (its value is not read)." },
+    "root": { "type": ["boolean", "null"], "description": "null where the notion does not apply (Windows)." },
+    "home_writable": { "type": "boolean" },
+    "shell": { "type": ["string", "null"], "description": "Basename of the login shell, or powershell/cmd on Windows." },
+    "python": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "ok"],
+      "properties": { "version": { "type": "string" }, "ok": { "type": "boolean", "description": "python >= 3.9" } }
+    },
+    "tools": {
+      "type": "object",
+      "description": "git, bash, node, npm, docker, herdr, pwsh when present on PATH.",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["found", "version"],
+        "properties": { "found": { "type": "boolean" }, "version": { "type": ["string", "null"] } }
+      }
+    },
+    "install": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["found", "path", "version", "on_path", "no_rc"],
+      "properties": {
+        "found": { "type": "boolean" },
+        "path": { "type": ["string", "null"] },
+        "version": { "type": ["string", "null"] },
+        "on_path": { "type": "boolean" },
+        "no_rc": { "type": ["boolean", "null"], "description": "true when the install was made with --no-rc." }
+      }
+    },
+    "env_file": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "exists", "mode", "keys"],
+      "properties": {
+        "path": { "type": "string" },
+        "exists": { "type": "boolean" },
+        "mode": { "type": ["string", "null"], "description": "Octal permission bits; null on Windows or when missing." },
+        "keys": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "Names of the provider keys that are set. Never values." }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": { "type": "array", "items": { "type": "string", "pattern": "^[a-z0-9._-]{1,32}$" } }
+    },
+    "clis": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["installed", "version"],
+        "properties": { "installed": { "type": "boolean" }, "version": { "type": ["string", "null"] } }
+      }
+    },
+    "posture_hint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["value", "reason"],
+      "properties": {
+        "value": { "enum": ["auto", "ask"], "description": "A hint for the person to decide on; the probe never applies it." },
+        "reason": { "type": "string" }
+      }
+    },
+    "problems": { "type": "array", "items": { "type": "string" } }
+  }
+}

@@ -32,6 +32,12 @@ PLATFORMS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64", "windows-x6
 SESSION_KEYS = ("continue", "resume", "pick", "list", "last", "standalone",
                 "pick_error", "continue_strategy")
 CONTINUE_STRATEGIES = ("cline-history",)
+# `ak usage` sources: the parser ids lib/usage.py implements. A usage table
+# may only name one of these; adding an adapter means a parser, a fixture and
+# a test (docs/kinds.md, "Usage sources").
+USAGE_ADAPTERS = ("anthropic-oauth", "chatgpt-wham", "zai-quota")
+USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "timeout_s", "note", "unsupported")
+USAGE_CREDENTIALS = ("file", "env", "keychain", "cli")
 
 
 class KindsError(Exception):
@@ -206,6 +212,9 @@ class Model(object):
             for ref in cli.get("login", {}).get("files", []) + cli.get("hooks", {}).get("files", []):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
+            if "usage" in cli:
+                for problem in usage_problems(cli["usage"], roots=roots):
+                    bad("%s.usage: %s" % (where, problem))
         for pname, prov in sorted(self.providers.items()):
             where = "providers.%s" % pname
             if not prov.get("key", "").isupper():
@@ -213,6 +222,9 @@ class Model(object):
             for var in prov.get("vars", {}).values():
                 if references_secret(var):
                     bad("%s.vars: {key} is not allowed in a variable" % where)
+            if "usage" in prov:
+                for problem in usage_problems(prov["usage"], provider=True):
+                    bad("%s.usage: %s" % (where, problem))
         for kname, kind in sorted(self.kinds.items()):
             where = "kinds.%s" % kname
             cli = self.clis.get(kind.get("cli"))
@@ -253,6 +265,14 @@ class Model(object):
         if name not in self.kinds:
             raise KindsError("unknown kind '%s'. Kinds: %s" % (name, " ".join(self.kind_names())))
         return Kind(self, name)
+
+    def cli_usage(self, cli_name):
+        """The `[clis.<cli>.usage]` table, or None when the CLI has none."""
+        return self.clis.get(cli_name, {}).get("usage")
+
+    def provider_usage(self, provider_name):
+        """The `[providers.<id>.usage]` table, or None."""
+        return self.providers.get(provider_name, {}).get("usage")
 
     def cli_of(self, name):
         """The CLI family for a kind or CLI name (claude-glm -> claude)."""
@@ -442,6 +462,75 @@ def main(argv):
         return 1
     sys.stderr.write("usage: kinds.py list | show <kind> | check [file]\n")
     return 2
+
+
+def usage_problems(table, roots=None, provider=False):
+    """Every rule a `usage` table must follow (closed key set, https only,
+    {token} only inside header values). Returns a list of messages."""
+    problems = []
+    if not isinstance(table, dict):
+        return ["must be a table"]
+    for key in table:
+        if key not in USAGE_KEYS:
+            problems.append("unknown key %s" % key)
+    if "unsupported" in table:
+        reason = table["unsupported"]
+        if not isinstance(reason, str) or not reason.strip() or "\n" in reason:
+            problems.append("unsupported needs a non-empty one-line reason")
+        others = [k for k in table if k not in ("unsupported", "note")]
+        if others:
+            problems.append("unsupported excludes %s" % ", ".join(sorted(others)))
+        return problems
+    if table.get("adapter") not in USAGE_ADAPTERS:
+        problems.append("adapter must be one of %s" % ", ".join(USAGE_ADAPTERS))
+    url = table.get("url")
+    if not isinstance(url, str) or not url.startswith("https://") or any(c in url for c in " {}\t\n"):
+        problems.append("url must be a plain https:// URL")
+    credential = table.get("credential")
+    if credential not in USAGE_CREDENTIALS:
+        problems.append("credential must be one of %s" % ", ".join(USAGE_CREDENTIALS))
+    if provider and credential not in (None, "env") and credential in USAGE_CREDENTIALS:
+        problems.append("a provider usage table reads its key from the environment (credential = \"env\")")
+    headers = table.get("headers")
+    if not isinstance(headers, dict) or not headers:
+        problems.append("headers must be a non-empty table")
+    else:
+        carries_token = False
+        for name, value in headers.items():
+            if not isinstance(name, str) or not name or not all(c.isalnum() or c == "-" for c in name):
+                problems.append("header name %r is not a plain token" % name)
+            if not isinstance(value, str):
+                problems.append("header %s must be a string" % name)
+                continue
+            try:
+                names = template_names(value)
+            except KindsError as exc:
+                problems.append("header %s: %s" % (name, exc))
+                continue
+            if any(n != "token" for n in names):
+                problems.append("header %s: only {token} may be used" % name)
+            carries_token = carries_token or "token" in names
+        if not carries_token:
+            problems.append("a header must carry {token}")
+    files = table.get("files")
+    if credential == "file":
+        if provider:
+            problems.append("a provider usage table has no files")
+        elif not isinstance(files, list) or not files or not all(isinstance(f, str) for f in files):
+            problems.append("credential = \"file\" needs files")
+        else:
+            for ref in files:
+                if ":" not in ref or ref.split(":", 1)[0] not in (roots or {}):
+                    problems.append("files entry %s names an unknown root" % ref)
+    elif files is not None:
+        problems.append("files only goes with credential = \"file\"")
+    keychain = table.get("keychain")
+    if keychain is not None and (not isinstance(keychain, str) or not keychain.strip()):
+        problems.append("keychain must be a non-empty service name")
+    timeout = table.get("timeout_s")
+    if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 60):
+        problems.append("timeout_s must be an integer 1-60")
+    return problems
 
 
 def _is_hex64(value):

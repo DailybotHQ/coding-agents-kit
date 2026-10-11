@@ -18,8 +18,8 @@ FAKES="${TESTS}/fakes"
 export FAKES  # read by the scopes in tests/scopes/
 
 # Order matters only for readability of the report.
-ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor run install aliases skill hooks security contract hygiene oss"
-KNOWN_SCOPES="${ALL_SCOPES} live harness-selftest"
+ALL_SCOPES="harness lint kinds dispatch profiles permissions doctor usage usage-providers setup setup-skill run install aliases skill hooks security contract hygiene oss"
+KNOWN_SCOPES="${ALL_SCOPES} live setup-docker-live harness-selftest"
 
 PASSES=0
 FAILS=0
@@ -54,6 +54,10 @@ trap 'rm -rf "${SANDBOX}"' EXIT
 SYSBIN="${SANDBOX}/sysbin"
 mkdir -p "${SYSBIN}"
 ln -s "${AK_PY}" "${SYSBIN}/python3"
+# macOS ships /usr/bin/security, which reads the real login Keychain: shadow it
+# with a stub that finds nothing, so `ak usage` never sees a developer's real
+# Claude login during the suite (Keychain tests plant their own fake first).
+ln -s "${ROOT}/tests/fakes-host/security" "${SYSBIN}/security"
 BASE_PATH="${SYSBIN}:/usr/bin:/bin:/usr/sbin:/sbin"
 export BASE_PATH  # read by tests/lib.sh and the scopes
 

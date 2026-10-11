@@ -2,7 +2,7 @@
 # Planted secrets never leak: every verb, every error path and every file the
 # kit writes is searched for the planted values. Plus the static rules.
 
-SEC_VALUES="sec-zai-default-7Q1 sec-zai-work-7Q2 sec-xai-default-7Q3 sec-xai-work-7Q4 sec-azure-default-7Q5 sec-azure-work-7Q6 sec-unrelated-token-7Q7"
+SEC_VALUES="sec-usage-claude-7Q8 sec-usage-refresh-7Q9 sec-zai-default-7Q1 sec-zai-work-7Q2 sec-xai-default-7Q3 sec-xai-work-7Q4 sec-azure-default-7Q5 sec-azure-work-7Q6 sec-unrelated-token-7Q7"
 
 sec_env_file() {
   box_env_file ZAI_CODING_API_KEY=sec-zai-default-7Q1 ZAI_CODING_API_KEY_WORK=sec-zai-work-7Q2 \
@@ -118,7 +118,9 @@ assert argv_key == ["cline-azure", "cline-xai"], argv_key' "${ROOT}"
   if grep -rnE '\beval\b' "${ROOT}/bin" "${ROOT}/lib"/*.sh "${ROOT}/install.sh" >/dev/null; then
     fail "a shell script uses eval"
   else pass "no eval in the shell launchers or the installer"; fi
-  if grep -rnE '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/bin" "${ROOT}/lib" "${ROOT}/skills" "${ROOT}/install.sh" \
+  # Text only (-I) and no bytecode: a .pyc marshals unrelated constants next to
+  # each other, so "curl" ... "|" ... "sh" can line up in binary data.
+  if grep -rnIE --exclude-dir=__pycache__ '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/bin" "${ROOT}/lib" "${ROOT}/skills" "${ROOT}/install.sh" \
       "${ROOT}/install.ps1" "${ROOT}/docs" "${ROOT}/README.md" >/dev/null; then
     fail "a fetch-piped-to-shell line is spelled somewhere in the product"
   else pass "no fetch-piped-to-shell line anywhere in the product or its docs"; fi
@@ -200,4 +202,130 @@ for c in kinds.load().clis.values():
   ln -s "${BOX}/outside.toml" "${root}/codex/evil/glm.config.toml"
   ak_split -- codex-glm @evil; status=$?
   expect_eq "writers: a profile's planted config symlink is refused (nothing written outside)" "${status}:$(grep -c '^model = "x"$' "${BOX}/outside.toml")" "3:1"
+
+  security_usage
+  security_setup
 }
+
+# `ak usage` reads credential content and talks to vendor endpoints: the first
+# part of the kit that does either. Every promise is a failing-if-broken check.
+security_usage() {
+  local out status before after dir tok="sec-usage-claude-7Q8" ref="sec-usage-refresh-7Q9" mode
+  box_new security-usage claude
+  sec_env_file
+  dir="${BOX}/home/.claude"
+  mkdir -p "${dir}"
+  printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' \
+    "${tok}" "${ref}" > "${dir}/.credentials.json"
+  chmod 600 "${dir}/.credentials.json"
+  printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}},"/zai":{"json":{"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":5}]}}}}' > "${BOX}/routes.json"
+  usage_server_start "${BOX}/routes.json"
+  local base="http://127.0.0.1:${USAGE_PORT}"
+  : > "${BOX}/usage-output"
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+
+  # Every mode of the server and the command, debug on, output collected.
+  for mode in ok 500 401 429 redirect garbage truncated; do
+    case "${mode}" in
+      ok) printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}},"/zai":{"json":{"data":{"limits":[{"type":"TOKENS_LIMIT","percentage":5}]}}}}' > "${BOX}/routes.json" ;;
+      500) printf '%s' '{"/claude":{"status":500,"body":"boom"},"/zai":{"status":500,"body":"boom"}}' > "${BOX}/routes.json" ;;
+      401) printf '%s' '{"/claude":{"status":401,"body":"{}"},"/zai":{"status":401,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      429) printf '%s' '{"/claude":{"status":429,"body":"{}"},"/zai":{"status":429,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      redirect) printf '%s' '{"/claude":{"redirect":"/elsewhere"},"/zai":{"redirect":"/elsewhere"},"/elsewhere":{"json":{}}}' > "${BOX}/routes.json" ;;
+      garbage) printf '%s' '{"/claude":{"body":"<html>nope</html>"},"/zai":{"body":"<html>nope</html>"}}' > "${BOX}/routes.json" ;;
+      truncated) printf '%s' '{"/claude":{"body":"{\"five_hour\": "},"/zai":{"body":"{\"data\": "}}' > "${BOX}/routes.json" ;;
+    esac
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${base}/claude" AGENTKIT_USAGE_URL_ZAI_QUOTA="${base}/zai" -- usage
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/usage-output"
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${base}/claude" AGENTKIT_USAGE_URL_ZAI_QUOTA="${base}/zai" -- usage --json
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/usage-output"
+  done
+  expect_eq "security usage: no key, access token or refresh token in any output, in any failure mode" "$(leaked "${BOX}/usage-output")" ""
+  expect_lacks "security usage: the server log holds only hashed credentials" "$(cat "${BOX}/server.log")" "${tok}"
+  expect_eq "security usage: a redirect target was never requested" "$(grep -c '"/elsewhere"' "${BOX}/server.log")" 0
+  expect_eq "security usage: only the two usage paths were ever requested (no refresh or token endpoint)" \
+    "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" "path": "/zai" '
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "security usage: the credentials and the env file are byte-identical after every run" "${before}" "${after}"
+  expect_eq "security usage: the credential file mode is untouched" "$(file_mode "${dir}/.credentials.json")" "600"
+
+  # Network rules: nothing leaves loopback, whatever the environment says.
+  : > "${BOX}/server.log"
+  for out in "http://example.com/x" "https://127.0.0.1.evil.example/x" "http://127.0.0.1@evil.example/x" "file:///etc/passwd" "ftp://127.0.0.1/x"; do
+    ak_split AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="${out}" -- usage claude; status=$?
+    expect_eq "security usage: an override to ${out} is refused (exit 2)" "${status}" 2
+    expect_has "security usage: ... with a loopback message" "$(cat "${BOX}/err")" "loopback"
+  done
+  expect_eq "security usage: ... and no request reached the fake endpoint" "$(wc -l < "${BOX}/server.log" | tr -d ' ')" 0
+
+  # Static rules over the module.
+  check "security usage: the only subprocess is the optional Keychain read, never through a shell" \
+    bash -c '[ "$(grep -c "subprocess\.run" "$1")" -le 1 ] && ! grep -Eq "shell *= *True|os\.system|os\.popen" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: the Keychain subprocess runs without any key or token variable" \
+    bash -c 'grep -q "secret_like" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: no autonomy flag is spelled in lib/usage.py" \
+    bash -c '! grep -Eq -- "--dangerously|--yolo|--always-approve|bypass-approvals" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: nothing in lib/usage.py fetches into a shell or writes a file" \
+    bash -c '! grep -Eq "\| *(ba|z)?sh|open\([^)]*[\"\x27][wa]b?[\"\x27]|os\.(rename|remove|unlink|replace)|shutil|chmod" "$1"' _ "${ROOT}/lib/usage.py"
+  check "security usage: no refresh endpoint or grant type appears in lib/usage.py or providers.toml" \
+    bash -c '! grep -Eqi "refresh_token *[:=]|grant_type|/oauth/token|/token\b" "$1" "$2"' _ "${ROOT}/lib/usage.py" "${ROOT}/providers.toml"
+  usage_server_stop
+}
+
+# `ak setup` (the helper behind the agentkit-setup skill) observes and renders;
+# it must never print a key, write anything but an explicit --out, apply a
+# repair, or render a recipe that breaks the container rules. The skill's
+# promises (consent gates, pinned sources) are checked as text.
+security_setup() {
+  local out digest="8c163a81fa31151cd577797f07cfbe3e61dad49ff691de0b6d5de0975f1cc8ca" before after f gate status
+  box_new security-setup
+  sec_env_file
+  : > "${BOX}/setup-output"
+  before="$(find "${BOX}" -type f ! -name setup-output ! -name out ! -name err | sort | xargs -r cksum)"
+  for f in "setup probe" "setup probe --json" "setup verify --keys ZAI_CODING_API_KEY,XAI_API_KEY --cli claude --expect-posture ask" \
+      "setup verify --json --keys AZURE_OPENAI_API_KEY" "setup docker --ref v0.3.0 --sha256 ${digest} --cli claude,codex" \
+      "setup docker --ref v0.3.0 --sha256 ${digest} --format compose" "setup docker --ref v0.3.0 --sha256 ${digest} --format entrypoint" \
+      "setup docker --ref v0.3.0 --sha256 ${digest} --format devcontainer" "setup docker --ref main --sha256 ${digest}" "setup docker --ref v0.3.0 --sha256 ${digest} --base alpine"; do
+    # shellcheck disable=SC2086
+    ak_split GITHUB_TOKEN=sec-unrelated-token-7Q7 -- ${f}
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/setup-output"
+  done
+  expect_eq "security setup: no key or token value in any probe, verify or recipe output" "$(leaked "${BOX}/setup-output")" ""
+  after="$(find "${BOX}" -type f ! -name setup-output ! -name out ! -name err | sort | xargs -r cksum)"
+  expect_eq "security setup: probe, verify and docker write nothing and apply no repair" "${before}" "${after}"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"
+  ak_split -- setup docker --ref v0.3.0 --sha256 "${digest}" --out "${BOX}/work/Dockerfile"; status=$?
+  expect_eq "security setup: --out writes a new file once and never overwrites" "${status}:$(grep -c 'FROM ' "${BOX}/work/Dockerfile")" "2:1"
+  expect_eq "security setup: the recipe on disk carries no secret value" "$(leaked "${BOX}/work/Dockerfile")" ""
+
+  # The recipe rules hold for every format (the renderer also refuses to print a recipe that breaks them).
+  for f in dockerfile compose entrypoint devcontainer; do
+    check "security setup: the ${f} recipe passes the container safety rules" \
+      "${AK_PY}" -c 'import sys; sys.path.insert(0, sys.argv[1]); import kinds, setup
+model = kinds.load()
+opts = setup.parse_docker_args(model, ["--ref", "v0.3.0", "--sha256", sys.argv[2], "--format", sys.argv[3], "--cli", "claude,codex"])
+sys.exit(1 if setup.recipe_problems(setup.render_docker(model, opts), sys.argv[3]) else 0)' "${ROOT}/lib" "${digest}" "${f}"
+  done
+  out="$(ak -- setup docker --ref latest --sha256 "${digest}")"; status=$?
+  expect_eq "security setup: latest is refused as a ref (exit 2)" "${status}" 2
+  out="$(ak -- setup docker --ref v0.3.0)"; status=$?
+  expect_eq "security setup: a missing digest is refused, never invented (exit 2)" "${status}" 2
+
+  # Static rules over the helper and the skill.
+  check "security setup: lib/setup.py opens no file for writing except through the no-overwrite --out (one O_EXCL create)" \
+    bash -c '! grep -Eq "(^|[^a-z_.])open\([^)]*[\"\x27](w|a|r\+)b?[\"\x27]" "$1" && [ "$(grep -c "os\.open(" "$1")" -eq 1 ] && grep -q "O_EXCL" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: its only subprocess is the version probe; no shell, no package manager call, no rc edit" \
+    bash -c '[ "$(grep -c "subprocess\.run(" "$1")" -eq 1 ] && ! grep -Eq "shell *= *True|os\.system|os\.popen|os\.exec|\[[\"\x27](apt-get|brew|winget|apk|npm|pip)[\"\x27]" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: lib/setup.py spells no autonomy flag" \
+    bash -c '! grep -Eq -- "--dangerously|--yolo|--always-approve|bypass-approvals" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: its child processes run without key or token variables" \
+    bash -c 'grep -q "secret_like" "$1"' _ "${ROOT}/lib/setup.py"
+  check "security setup: no skill, reference or helper text fetches into a shell or names a branch or latest as a source" \
+    bash -c '! grep -rEq "(curl|wget)[^|\n]*\|[[:space:]]*(ba|z)?sh([[:space:]]|$)|--branch (main|master|latest)|releases/latest" "$1" "$2"' _ "${ROOT}/skills/agentkit-setup" "${ROOT}/lib/setup.py"
+  for gate in "system package" "shell rc" "posture" "profile" "CLI install" "repository write" "uninstall"; do
+    check "security setup: the skill names the consent gate [GATE: ${gate}]" grep -q "\[GATE: ${gate}\]" "${ROOT}/skills/agentkit-setup/SKILL.md"
+  done
+  check "security setup: the skill forbids typing an autonomy flag or removing the opt-out" \
+    grep -q "type an autonomy flag or remove the user's opt-out" "${ROOT}/skills/agentkit-setup/SKILL.md"
+}
+

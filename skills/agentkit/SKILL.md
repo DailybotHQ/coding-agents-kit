@@ -1,7 +1,7 @@
 ---
 name: agentkit
 description: Launch, install and configure terminal coding agents (Claude Code, Codex, Cursor, OpenCode, Pi, Cline, Grok) through coding-agents-kit's `ak` command — accounts per CLI (profiles), provider routes (GLM, Azure, xAI), headless runs with a JSON result (`ak run`), the environment of a profile for other launchers (`ak env`), and a doctor. Use when the user mentions ak, agentkit or coding-agents-kit, asks to start or set up another coding-agent CLI or account, or asks to run a prompt through another agent non-interactively.
-version: "0.3.0"
+version: "0.4.0"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
@@ -36,11 +36,11 @@ If `ak` is missing, tell the user and offer the install — it writes into
 their home directory, so do it only after they agree:
 
 ```bash
-git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 (This skill itself installs with
-`npx --yes skills add DailybotHQ/coding-agents-kit@v0.3.0 --skill agentkit`.)
+`npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit`.)
 `ak --skill` prints the copy of this file that matches the installed kit.
 
 ## Kinds
@@ -113,6 +113,22 @@ Rules for delegating: give a writing delegate its **own git worktree** as
 `result_text` as a claim — verify it with your own checks before relying on
 it; never pass secrets in the prompt.
 
+## Which account has room: `ak usage`
+
+```bash
+ak usage                 # one row per account: 5-hour / weekly windows, or n/d with the reason
+ak usage claude @work --json
+```
+
+Read-only (it never refreshes a login or prints a token), but it uses each
+account's own login to ask the vendor, so run it when the user asks, or
+before picking an account for a long task. `ok` rows carry the provider's
+windows; `expired` / `no_login` / `no_scope` mean that profile needs a login
+(tell the user which); `n/d` rows have no readable quota. The endpoints are
+unofficial and may change (`error: unexpected response shape`). `--json` is
+schema `usage-v1`; exit 0 when every row is ok or n/d, 1 when a row needs
+attention, 3 when nothing matches.
+
 ## A profile for another launcher: `ak env`
 
 ```bash
@@ -148,7 +164,8 @@ posture is the user's decision (see the trust boundary).
 ## Trust boundary (write scope)
 
 - **Read freely:** `ak doctor [--json]`, `ak`, `ak profiles`, `ak env`,
-  `ak alias list`, `ak install` without names.
+  `ak alias list`, `ak install` without names. `ak usage` is read-only too,
+  but it contacts the vendors with the user's logins: run it when asked.
 - **Write only what the user asked for:** creating a profile
   (`ak profiles add`), launching or running an agent, adding an alias. Each
   of these acts on the user's machine; when the request is not explicit,

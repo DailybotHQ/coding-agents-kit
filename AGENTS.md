@@ -15,17 +15,18 @@ agentkit (alias ak); skill agentkit
 | Path | What |
 | --- | --- |
 | `bin/ak`, `bin/agentkit` | one byte-identical bash launcher: sources the env file, exec's the python core |
-| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `aliases`, `installer`, `hooks`, `common` |
+| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `usage`, `setup`, `aliases`, `installer`, `hooks`, `common` |
 | `lib/common.sh`, `lib/env.template` | the launcher's shell half; the env file template |
 | `providers.toml` | the kinds model as data (CLIs, providers, kinds) — see `docs/kinds.md` |
 | `skills/agentkit/SKILL.md` | the bundled skill (`ak --skill`) |
+| `skills/agentkit-setup/` | the configurator skill (`ak --skill setup`): `SKILL.md` + `references/`; executable documentation, see `docs/setup.md` |
 | `install.sh`, `install.ps1`, `win/*.cmd` | installers (POSIX, Windows) and Windows shims |
 | `tests/run.sh`, `tests/scopes/`, `tests/fakes/`, `tests/py/` | the suite: sandbox HOME, fake CLIs, one scope per surface |
-| `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json` |
+| `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json`, `schema/usage-v1.json`, `schema/setup-probe-v1.json`, `schema/setup-verify-v1.json`, `setup.md`, `usage.md` |
 | `scripts/` | maintainer tooling: `check-public-hygiene.sh`, `release.sh`, `update-pins.sh` |
 | `.agents/` (+ `.claude`, `.cursor` symlinks) | the agent kit for working on this repo: personas, `dwp-*` delegators, vendored skills, catalog in `.agents/docs/` |
 
-Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`).
+Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`). `ak usage --json` (schema `usage-v1`, `docs/usage.md`) and `ak setup probe|verify --json` (schemas `setup-probe-v1`, `setup-verify-v1`, `docs/setup.md`) are additive, separately versioned surfaces; `ak usage` reads logins and queries vendors and `ak setup` guides machine changes, so their rules are in `docs/SECURITY.md`.
 
 ## Quick commands
 

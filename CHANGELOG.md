@@ -12,6 +12,50 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-10
+
+Interface stays **1**. `ak usage`, and the `agentkit-setup` skill with `ak setup`.
+
+### Added
+
+- **`ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]`**:
+  the quota and usage of every account, one row per credential identity, in
+  one table. Live for Claude Code subscriptions (5-hour, weekly and per-model
+  windows), Codex ChatGPT logins (session, weekly and named limits) and the
+  Z.AI coding plan (one row per key, shared by the `*-glm` kinds); Cursor, Grok,
+  xAI and Azure OpenAI are `n/d` with their reason, and OpenCode, Pi and Cline
+  report through the provider behind each kind. Rows are fetched in parallel
+  and a failing row never hides the others. Read-only: it never refreshes a
+  login, prints a token or writes under a profile. The endpoints are
+  vendor-internal and unofficial. Works the same on Linux, macOS and Windows.
+- **`usage-v1` JSON schema** (`docs/schema/usage-v1.json`): an additive,
+  versioned surface; interface 1 and `doctor-v1` are unchanged.
+- **`[clis.<cli>.usage]` / `[providers.<id>.usage]` tables** in `providers.toml`
+  with a closed, validated key set (https only, `{token}` only in header values).
+- Tests: the `usage` and `usage-providers` scopes, bash-free checks that run
+  natively on Windows in CI, and a loopback fake endpoint.
+- **`agentkit-setup` skill and `ak setup probe | verify | docker`**: a configurator an agent follows to install,
+  configure, verify, repair and upgrade the kit on macOS, Linux, WSL, Windows and in containers. The skill asks
+  before each system package, shell rc edit, autonomy choice, profile, CLI install, repository write and uninstall,
+  and handles provider keys by name only. The helper is read-only and works from an uninstalled clone: `probe`
+  reports the machine (OS, arch, libc, container/CI/WSL, tools, existing install, env file, profiles, a posture
+  hint), `verify` returns ordered checks each with the exact repair command, and `docker` renders a Dockerfile,
+  compose file, entrypoint or devcontainer snippet that pins a release tag, verifies the tarball's SHA256 before
+  unpacking, runs as a non-root user and keeps keys out of the image. `ak --skill setup` prints the skill. JSON
+  schemas `setup-probe-v1` and `setup-verify-v1` are additive; interface 1 is unchanged.
+- Tests: the `setup` and `setup-skill` scopes, bash-free checks that run natively on Windows in CI, the skill's
+  documented flows executed in sandboxes (with deliberate drifts that must fail), and an opt-in
+  `setup-docker-live` scope plus a `docker recipe builds` CI job.
+
+### Security
+
+- `ak setup` and the setup skill: read-only helper commands, a recipe renderer that refuses to print an unsafe
+  recipe, tag-and-digest-only install sources and consent gates; see `docs/SECURITY.md`.
+- `ak usage` is the first command that reads login content and queries a
+  vendor on your behalf. See `docs/SECURITY.md`, "Quota queries": fixed https
+  hosts, no redirect, loopback-only override, no refresh, no write, planted-secret
+  tests. The "no network except `ak install`" statement now names `ak usage`.
+
 ## [0.3.0] - 2026-10-09
 
 Interface stays **1**. The `providers` alias preset.
@@ -184,7 +228,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.2
 [0.2.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.1

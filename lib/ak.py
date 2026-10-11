@@ -4,10 +4,12 @@
     ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
+    ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+    ak setup probe [--json] | ak setup verify [--json] [...] | ak setup docker --ref TAG --sha256 HEX [...]
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
-    ak --skill | --version | --help
+    ak --skill [setup] | --version | --help
 """
 
 import os
@@ -24,10 +26,12 @@ USAGE = """usage:
   ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
+  ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+  ak setup probe [--json] | ak setup verify [--json] [--cli LIST] [--profile CLI=@a,@b] [--keys NAMES] [--expect-posture auto|ask]
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
-  ak --skill | --version | --help
+  ak --skill [setup] | --version | --help
 
 Kinds: {kinds}
 Autonomy by default: every launch adds the CLI's own autonomy flag. Opt out
@@ -46,8 +50,13 @@ def list_kinds(model):
     return 0
 
 
-def print_skill():
-    path = os.path.join(common.KIT_ROOT, "skills", "agentkit", "SKILL.md")
+SKILLS = {"": "agentkit", "agentkit": "agentkit", "setup": "agentkit-setup", "agentkit-setup": "agentkit-setup"}
+
+
+def print_skill(which=""):
+    if which not in SKILLS:
+        raise AkError("unknown skill '%s'. Skills: agentkit (default), setup" % which)
+    path = os.path.join(common.KIT_ROOT, "skills", SKILLS[which], "SKILL.md")
     try:
         with open(path) as handle:
             sys.stdout.write(handle.read())
@@ -75,7 +84,9 @@ def main(argv):
         sys.stdout.write(USAGE.format(kinds=" ".join(model.kind_names()), root=common.KIT_ROOT))
         return 0
     if first == "--skill":
-        return print_skill()
+        if len(rest) > 1:
+            raise AkError("usage: ak --skill [setup]")
+        return print_skill(rest[0] if rest else "")
     model = kinds.load()
     if first == "run":
         import run
@@ -86,6 +97,12 @@ def main(argv):
     if first == "doctor":
         import doctor
         return doctor.main(model, rest, env)
+    if first == "usage":
+        import usage
+        return usage.main(model, rest, env)
+    if first == "setup":
+        import setup
+        return setup.main(model, rest, env)
     if first == "profiles":
         import profiles
         return profiles.main(model, rest, env)

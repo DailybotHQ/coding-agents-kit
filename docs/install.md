@@ -2,17 +2,20 @@
 
 ## The kit
 
+(An agent can do all of this for you, safely and repeatably, including in containers: see
+[Set up on any machine or container](setup.md).)
+
 macOS, Linux, WSL (and Git Bash):
 
 ```bash
-git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit
 ./coding-agents-kit/install.sh
 ```
 
 Windows (PowerShell 5.1 or 7):
 
 ```powershell
-git clone --branch v0.3.0 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit
 .\coding-agents-kit\install.ps1
 ```
 

@@ -54,6 +54,23 @@ keep a one-time `<file>.agentkit.bak`, and write atomically with mode 600. A
 Codex overlay without the kit's generated header is yours, and is refused
 rather than overwritten.
 
+## Usage sources
+
+`ak usage` reads each account's quota from a **usage source**, declared as data next to the login: `[clis.<cli>.usage]` for a subscription CLI, `[providers.<id>.usage]` for an API-key provider. Only the parsing of a response is code (an adapter in `lib/usage.py`); the URL, headers and credential file are in `providers.toml`. The endpoints are vendor-internal and unofficial.
+
+| Key | Meaning |
+|---|---|
+| `adapter` | the parser: `anthropic-oauth`, `chatgpt-wham` or `zai-quota` |
+| `url` | a plain `https://` URL (no templates) |
+| `headers` | name → fixed value; at least one value carries `{token}`, which is resolved only into the request |
+| `credential` | `file` (CLI: `files`), `env` (provider: its key variable), `keychain`, `cli` |
+| `files` | `<root>:<path>` references of that CLI, like `login.files` |
+| `keychain` | macOS service name for the default home |
+| `timeout_s` | integer 1-60 (default 10) |
+| `unsupported` | a one-line reason instead of a source: the row prints `n/d` with it (excludes every other key) |
+
+The key set is closed: an unknown key, a non-https URL, a template other than `{token}` in a header, an unknown adapter or a `files` entry naming an unknown root is a validation error (`python3 lib/kinds.py check`). A CLI without a table (OpenCode, Pi, Cline) reports through the provider behind each kind. Adding an adapter means a parser in `lib/usage.py`, its id in `USAGE_ADAPTERS`, a fixture and a test.
+
 ## Adding a kind
 
 1. Add `[kinds.<cli>-<provider>]` (and, for a new API, `[providers.<id>]`)
