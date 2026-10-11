@@ -117,6 +117,7 @@ scope_permissions() {
 import sys; sys.path.insert(0, sys.argv[1] + "/lib"); import kinds
 m = kinds.load()
 want = {"claude": ["--dangerously-skip-permissions"], "codex": ["--dangerously-bypass-approvals-and-sandbox"],
-        "cursor": ["--force"], "opencode": ["--auto"], "pi": ["--approve"], "cline": ["--yolo"], "grok": ["--always-approve"]}
+        "cursor": ["--force"], "opencode": ["--auto"], "pi": ["--approve"], "cline": ["--yolo"], "grok": ["--always-approve"],
+        "antigravity": ["--dangerously-skip-permissions"]}
 assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
 }

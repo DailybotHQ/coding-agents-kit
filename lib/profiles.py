@@ -69,7 +69,9 @@ def _ask(question):
     return answer in ("y", "Y", "yes", "YES", "Yes")
 
 
-def create(cli, name):
+def create(cli, name, note=None):
+    """Create the profile directory (mode 700). note: the CLI's
+    `login.profile_note`, printed after the creation line."""
     directory = path(cli, name)
     cdir = os.path.join(root(), cli)
     if os.path.isdir(cdir):
@@ -90,10 +92,12 @@ def create(cli, name):
         except OSError:
             pass
     common.warn("created %s profile @%s at %s — log in inside the session" % (cli, name, directory))
+    if note:
+        common.warn(note.replace("{suffix}", suffix(name)))
     return directory
 
 
-def ensure(cli, name, may_ask=True):
+def ensure(cli, name, may_ask=True, note=None):
     """The profile directory; asks once to create an unknown profile."""
     if not name:
         return None
@@ -105,7 +109,7 @@ def ensure(cli, name, may_ask=True):
         raise AkError("%s profile \"@%s\" does not exist. Create it with: %s" % (cli, name, hint), EXIT_NOT_READY)
     if not _ask("%s profile \"@%s\" does not exist. Create it?" % (cli, name)):
         raise AkError("not created; nothing launched.", EXIT_AGENT_FAILED)
-    return create(cli, name)
+    return create(cli, name, note)
 
 
 def existing(cli, name):
@@ -164,6 +168,15 @@ def activate(cli_name, cli, name, directory, env):
         env["HOME"] = fake_home
         env["AGENT_CLI_CREDENTIAL_STORE"] = "file"
         env["CURSOR_CONFIG_DIR"] = os.path.join(fake_home, ".cursor")
+    elif isolation == "home":
+        # The CLI keeps its state in one dot-directory of HOME and offers no
+        # variable to move it: the profile gets a HOME of its own, with every
+        # other entry of the real HOME linked in (git, ssh, gh keep working).
+        fake_home = os.path.join(directory, "home")
+        mirror(real_home, fake_home, cli["home_dir"])
+        os.makedirs(os.path.join(fake_home, cli["home_dir"]), exist_ok=True)
+        env["AGENTKIT_REAL_HOME"] = real_home
+        env["HOME"] = fake_home
 
 
 def apply_keys(kind, name, env, require=True):
@@ -195,11 +208,44 @@ def apply_keys(kind, name, env, require=True):
         raise AkError("%s is not set. Add it to %s." % (var, envfile), EXIT_NOT_READY)
 
 
+def token_var(cli, name):
+    """The per-profile login token variable of a CLI for profile `name`
+    (CLAUDE_CODE_OAUTH_TOKEN for @default, CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>
+    for @name), or None when the CLI declares none."""
+    base = cli.get("profile_token_var")
+    if not base:
+        return None
+    return "%s_%s" % (base, suffix(name)) if name else base
+
+
+def apply_token(cli, name, env):
+    """A named profile gets its own token as the CLI's variable, or none at
+    all: it never inherits @default's token. @default is left as it is."""
+    base = cli.get("profile_token_var")
+    if not base or not name:
+        return
+    own = env.get(token_var(cli, name))
+    if own:
+        env[base] = own
+    else:
+        env.pop(base, None)
+
+
 def strip_profile_keys(model, env, keep=()):
     """Remove every <KEY>_<SUFFIX> of the known providers: those are the
     kit's per-profile variables and never meaningful to a CLI."""
     keys = [p["key"] for p in model.providers.values()]
+    # A login token variable is stripped only for the suffixes of existing
+    # profiles: a vendor variable that merely shares the prefix stays.
+    tokens = set()
+    for cli_name, pname, _d in listing(model, env):
+        base = model.clis[cli_name].get("profile_token_var")
+        if base:
+            tokens.add("%s_%s" % (base, suffix(pname)))
     for name in list(env):
+        if name in tokens and name not in keep:
+            env.pop(name, None)
+            continue
         if name in keep:
             continue
         for key in keys:
@@ -218,6 +264,8 @@ def login_state(model, cli_name, name, env):
     kind = model.kind(cli_name)
     directory = path(cli_name, name) if name else None
     ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=directory)
+    if name and env.get(token_var(cli, name) or ""):
+        return True
     for ref in login.get("files", []):
         p = ctx.ref_path(ref)
         if os.path.isfile(p):
@@ -232,8 +280,37 @@ def login_state(model, cli_name, name, env):
                 pass
     if not name and any(env.get(v) for v in login.get("env", [])):
         return True
+    if not name and keychain_has(login.get("keychain"), env):
+        return True
     if not login.get("definitive"):
         return None
+    return False
+
+
+def keychain_has(entries, env):
+    """True when one of the CLI's macOS Keychain login items exists (its
+    default home only: profiles keep their login elsewhere or share it).
+    Only presence is asked — `security find-generic-password` without -w
+    never returns the secret, and its output is discarded. AGENTKIT_KEYCHAIN=off
+    skips it (the test suite never touches the real Keychain)."""
+    if not entries or env.get("AGENTKIT_KEYCHAIN") == "off" or common.os_name() != "macos":
+        return False
+    security = common.which("security", env)
+    if not security:
+        return False
+    import subprocess
+    clean = {k: v for k, v in env.items() if not common.secret_like(k)}
+    for entry in entries:
+        argv = [security, "find-generic-password", "-s", entry["service"]]
+        if entry.get("account"):
+            argv += ["-a", entry["account"]]
+        try:
+            proc = subprocess.run(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                  stdin=subprocess.DEVNULL, timeout=5, env=clean)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if proc.returncode == 0:
+            return True
     return False
 
 
@@ -249,6 +326,9 @@ def keys_by_name(model, cli_name, name, env):
     for var in sorted(seen):
         full = "%s_%s" % (var, suffix(name)) if name else var
         out.append("%s=%s" % (full, "set" if env.get(full) else "unset"))
+    token = token_var(model.clis[cli_name], name)
+    if token:
+        out.append("%s=%s" % (token, "set" if env.get(token) else "unset"))
     return out
 
 
@@ -257,7 +337,8 @@ def keys_by_name(model, cli_name, name, env):
 def _target(model, args, verb):
     if len(args) < 2:
         raise AkError("usage: ak profiles %s <cli> @name" % verb)
-    cli_name = model.cli_of(args[0]) if args[0] in model.clis or args[0] in model.kinds else None
+    name = model.canonical(args[0])
+    cli_name = model.cli_of(name) if name in model.clis or name in model.kinds else None
     if cli_name is None:
         raise AkError("unknown CLI '%s'. Use one of: %s (or a kind such as claude-glm)."
                       % (args[0], " ".join(model.cli_names())))
@@ -288,7 +369,60 @@ def listing(model, env):
     return rows
 
 
-def cmd_ls(model, env):
+def login_kind(model, cli_name, name, env):
+    """How an account is logged in, by presence only (no credential is read):
+    token-var, file, keychain, none, or unknown when the CLI cannot tell."""
+    import kinds
+    cli = model.clis[cli_name]
+    login = cli.get("login", {})
+    if env.get(token_var(cli, name) or "") or (not name and any(env.get(v) for v in login.get("env", []))):
+        return "token-var"
+    kind = model.kind(cli_name)
+    ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=path(cli_name, name) if name else None)
+    for ref in login.get("files", []):
+        p = ctx.ref_path(ref)
+        if os.path.isfile(p):
+            marker = login.get("marker")
+            try:
+                with open(p, "rb") as handle:
+                    if not marker or marker.encode() in handle.read():
+                        return "file"
+            except OSError:
+                pass
+    if not name and keychain_has(login.get("keychain"), env):
+        return "keychain"
+    return "none" if login.get("definitive") else "unknown"
+
+
+def set_names(model, cli_name, name, env):
+    """The NAMES of the provider keys and login token this account would read
+    that are set (never a value)."""
+    return sorted(entry.split("=", 1)[0] for entry in keys_by_name(model, cli_name, name, env) if entry.endswith("=set"))
+
+
+def portable(model, env):
+    """profiles-v1: every account, names and kinds only, no absolute path."""
+    out = []
+    for cli_name in model.cli_names():
+        cli = model.clis[cli_name]
+        if common.resolve_executable(cli, env):
+            out.append({"cli": cli_name, "profile": "@default", "path_relative": None, "isolation": cli["isolation"],
+                        "login": login_kind(model, cli_name, "", env), "key_names_set": set_names(model, cli_name, "", env)})
+    for cli_name, name, _directory in listing(model, env):
+        cli = model.clis[cli_name]
+        out.append({"cli": cli_name, "profile": "@" + name, "path_relative": "%s/%s" % (cli_name, name),
+                    "isolation": cli["isolation"], "login": login_kind(model, cli_name, name, env),
+                    "key_names_set": set_names(model, cli_name, name, env)})
+    order = {c: i for i, c in enumerate(model.cli_names())}
+    out.sort(key=lambda r: (order[r["cli"]], r["profile"] != "@default", r["profile"]))
+    return {"schema": "profiles-v1", "interface": common.INTERFACE, "profiles": out}
+
+
+def cmd_ls(model, env, as_json=False):
+    if as_json:
+        import json
+        sys.stdout.write(json.dumps(portable(model, env), indent=2, sort_keys=True) + "\n")
+        return 0
     rows = listing(model, env)
     print("%-9s %-14s %-6s %-40s %s" % ("CLI", "PROFILE", "LOGIN", "KEYS", "PATH"))
     for cli_name, name, directory in rows:
@@ -309,7 +443,7 @@ def cmd_add(model, args, env):
     if os.path.isdir(directory):
         print("%s profile @%s already exists: %s" % (cli_name, name, directory))
         return 0
-    create(cli_name, name)
+    create(cli_name, name, model.clis[cli_name].get("login", {}).get("profile_note"))
     return 0
 
 
@@ -363,6 +497,7 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    apply_token(model.clis[cli_name], name, env)   # its own login token or none, never @default's
     # Same hygiene as a launch: no per-profile key variables; the opt-out is
     # inherited, autonomy is not exported.
     strip_profile_keys(model, env)
@@ -386,10 +521,18 @@ def exec_command(argv, env):
 
 
 def main(model, args, env):
+    as_json = bool(args) and args[0] == "--json"
+    if as_json:
+        args = args[1:]
     sub = args[0] if args else "ls"
     rest = args[1:]
     if sub in ("ls", "list"):
-        return cmd_ls(model, env)
+        as_json = as_json or rest == ["--json"]
+        if rest and rest != ["--json"]:
+            raise AkError("ak profiles ls takes no arguments (only --json)", EXIT_USAGE)
+        return cmd_ls(model, env, as_json)
+    if as_json:
+        raise AkError("--json applies to ak profiles [ls] only", EXIT_USAGE)
     if sub == "add":
         return cmd_add(model, rest, env)
     if sub == "path":

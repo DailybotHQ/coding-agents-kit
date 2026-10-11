@@ -6,7 +6,7 @@
 #
 # Sources, per channel (the comment above each [clis.<cli>.install] names it):
 #   binary/tarball with a vendor manifest  claude: the release manifest.json
-#   binary/tarball without one             cursor, grok: download each
+#   binary/tarball without one             cursor, grok, antigravity: download each
 #                                          platform's artifact and hash it
 #                                          (trust on first use)
 #   npm                                    the registry's dist.integrity

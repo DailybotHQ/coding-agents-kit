@@ -46,12 +46,30 @@ scope_dispatch() {
     "grok -c|--continue"
     "grok -r abc|--resume|abc"
     "grok -r|--resume"
+    "antigravity -c|--continue"
+    "antigravity -r abc|--conversation|abc"
   )
   for row in "${table[@]}"; do
     dispatch_case "${row%%|*}" "${row#*|}" FAKE_CLINE_HISTORY="${BOX}/cline-history.json"
   done
 
   # Only the head is the kit's; everything else reaches the CLI untouched.
+  # A CLI's command names its kind: ak agy is ak antigravity, ak agent is ak cursor.
+  dispatch_case "agy -c" "--continue"
+  dispatch_case "agy -r abc" "--conversation|abc"
+  dispatch_case "agent -c" "--continue"
+  out="$(ak -- agy)"
+  expect_line "ak agy launches the antigravity CLI (agy)" "${out}" "CLI=agy"
+  ak_split FAKE_MODE=headless -- run agy --output-format json -- "q"; status=$?
+  expect_eq "ak run agy is ak run antigravity" "${status}:$(json_get "${BOX}/out" 'd["kind"]')" "0:antigravity"
+  ak_split -- agyy; status=$?
+  expect_eq "a name that is no kind and no command is still unknown (exit 2)" "${status}" 2
+
+  ak_split -- antigravity -r; status=$?
+  if [[ "${status}" -eq 2 && "$(cat "${BOX}/err")" == *"conversation_id"* && "$(cat "${BOX}/out")" != *CLI=* ]]; then
+    pass "antigravity -r without an id: exit 2 pointing at -r <conversation_id>, nothing launched"
+  else fail "antigravity -r (exit ${status}): $(cat "${BOX}/out" "${BOX}/err")"; fi
+
   dispatch_case "claude 2" "2"
   dispatch_case "claude 2 -c" "2|-c"
   dispatch_case "claude fix -c" "fix|-c"
@@ -106,7 +124,7 @@ scope_dispatch() {
 
   # The verbs around launching.
   out="$(ak -- --version)"
-  expect_eq "ak --version" "${out}" "agentkit 0.4.0 (interface 1)"
+  expect_eq "ak --version" "${out}" "agentkit 0.5.0 (interface 1)"
   out="$(ak)"; status=$?
   expect_eq "ak with no arguments lists the kinds" "${status}:$(grep -c '^claude-glm ' <<<"${out}")" "0:1"
   expect_has "ak with no arguments shows what is installed" "${out}" "${BOX}/bin/claude"

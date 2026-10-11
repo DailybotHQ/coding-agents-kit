@@ -12,6 +12,7 @@ for anything that is printed (`ak env`, doctor, errors, `show`).
 """
 
 import os
+import re
 import sys
 
 try:  # python >= 3.11
@@ -24,9 +25,9 @@ PROVIDERS_FILE = os.path.join(KIT_ROOT, "providers.toml")
 SCHEMA = 1
 
 SEGMENTS = ("provider", "session", "auto", "json", "timeout")
-ISOLATIONS = ("env", "cursor-home", "xdg")
-WRITER_TYPES = ("codex", "opencode", "pi")
-RESULT_EXTRACTORS = ("json-result", "codex-jsonl", "opencode-jsonl", "pi-jsonl", "cline-jsonl")
+ISOLATIONS = ("env", "cursor-home", "xdg", "home")
+WRITER_TYPES = ("codex", "opencode", "pi", "antigravity")
+RESULT_EXTRACTORS = ("json-result", "codex-jsonl", "opencode-jsonl", "pi-jsonl", "cline-jsonl", "antigravity-json")
 INSTALL_CHANNELS = ("binary", "tarball", "npm")
 PLATFORMS = ("linux-x64", "linux-arm64", "macos-x64", "macos-arm64", "windows-x64", "windows-arm64")
 SESSION_KEYS = ("continue", "resume", "pick", "list", "last", "standalone",
@@ -36,7 +37,9 @@ CONTINUE_STRATEGIES = ("cline-history",)
 # may only name one of these; adding an adapter means a parser, a fixture and
 # a test (docs/kinds.md, "Usage sources").
 USAGE_ADAPTERS = ("anthropic-oauth", "chatgpt-wham", "zai-quota")
-USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "timeout_s", "note", "unsupported")
+USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "keychain_profile", "timeout_s", "note",
+              "unsupported", "short")
+USAGE_SHORT_MAX = 32  # the table's few-word note; the full reason stays in --json and -v
 USAGE_CREDENTIALS = ("file", "env", "keychain", "cli")
 
 
@@ -173,8 +176,19 @@ class Model(object):
                     bad("%s: missing %s" % (where, field))
             if cli.get("isolation") not in ISOLATIONS:
                 bad("%s: isolation must be one of %s" % (where, ", ".join(ISOLATIONS)))
+            trust = cli.get("trust")
+            if trust is not None and (not isinstance(trust, dict) or trust.get("format") not in ("claude-json", "codex-toml")
+                                      or ":" not in str(trust.get("file", ""))):
+                bad("%s.trust: needs file = '<root>:<path>' and format claude-json or codex-toml" % where)
+            token = cli.get("profile_token_var")
+            if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", token)):
+                bad("%s: profile_token_var must be an UPPER_CASE variable name" % where)
             if cli.get("isolation") == "env" and not cli.get("home_env"):
                 bad("%s: isolation 'env' needs home_env" % where)
+            home_dir = cli.get("home_dir")
+            if cli.get("isolation") == "home" and (not isinstance(home_dir, str) or not home_dir.startswith(".")
+                                                   or "/" in home_dir or "\\" in home_dir or home_dir in (".", "..")):
+                bad("%s: isolation 'home' needs home_dir, one dot-directory of HOME (e.g. .gemini)" % where)
             roots = cli.get("roots", {})
             if "home" not in roots:
                 bad("%s.roots: missing home" % where)
@@ -209,6 +223,11 @@ class Model(object):
                 bad("%s.install.channel must be one of %s" % (where, ", ".join(INSTALL_CHANNELS)))
             for problem in install_problems(install):
                 bad("%s.install: %s" % (where, problem))
+            keychain = cli.get("login", {}).get("keychain", [])
+            if not isinstance(keychain, list) or not all(isinstance(e, dict) and isinstance(e.get("service"), str)
+                                                         and e["service"] and set(e) <= {"service", "account"}
+                                                         for e in keychain):
+                bad("%s.login.keychain: a list of { service, account? } tables" % where)
             for ref in cli.get("login", {}).get("files", []) + cli.get("hooks", {}).get("files", []):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
@@ -261,7 +280,20 @@ class Model(object):
     def cli_names(self):
         return sorted(self.clis)
 
+    def canonical(self, name):
+        """A CLI's command names its canonical kind: `agy` is `antigravity`,
+        `agent` and `cursor-agent` are `cursor` (the executable and the
+        names its install links). Any other name is returned unchanged."""
+        if name in self.kinds or name in self.clis:
+            return name
+        for cli_name, cli in sorted(self.clis.items()):
+            commands = [cli.get("executable")] + list(cli.get("install", {}).get("links", {}))
+            if name in commands and cli_name in self.kinds:
+                return cli_name
+        return name
+
     def kind(self, name):
+        name = self.canonical(name)
         if name not in self.kinds:
             raise KindsError("unknown kind '%s'. Kinds: %s" % (name, " ".join(self.kind_names())))
         return Kind(self, name)
@@ -276,6 +308,7 @@ class Model(object):
 
     def cli_of(self, name):
         """The CLI family for a kind or CLI name (claude-glm -> claude)."""
+        name = self.canonical(name)
         if name in self.clis:
             return name
         if name in self.kinds:
@@ -477,7 +510,11 @@ def usage_problems(table, roots=None, provider=False):
         reason = table["unsupported"]
         if not isinstance(reason, str) or not reason.strip() or "\n" in reason:
             problems.append("unsupported needs a non-empty one-line reason")
-        others = [k for k in table if k not in ("unsupported", "note")]
+        short = table.get("short")
+        if short is not None and (not isinstance(short, str) or not short.strip() or "\n" in short
+                                  or len(short) > USAGE_SHORT_MAX):
+            problems.append("short needs a one-line note of at most %d characters" % USAGE_SHORT_MAX)
+        others = [k for k in table if k not in ("unsupported", "note", "short")]
         if others:
             problems.append("unsupported excludes %s" % ", ".join(sorted(others)))
         return problems
@@ -527,6 +564,10 @@ def usage_problems(table, roots=None, provider=False):
     keychain = table.get("keychain")
     if keychain is not None and (not isinstance(keychain, str) or not keychain.strip()):
         problems.append("keychain must be a non-empty service name")
+    if "keychain_profile" in table and (table["keychain_profile"] is not True or keychain is None):
+        problems.append("keychain_profile is true or absent, and needs keychain")
+    if "short" in table:
+        problems.append("short only goes with unsupported")
     timeout = table.get("timeout_s")
     if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int) or not 1 <= timeout <= 60):
         problems.append("timeout_s must be an integer 1-60")

@@ -1,9 +1,10 @@
-"""Checks for a bundled skill (skills/agentkit/ or skills/agentkit-setup/):
-frontmatter, marketplace rules, and that every `ak` command line it teaches is
-valid grammar. The two skills are held to the same bar; the checks that only
-make sense for one of them are conditional on its name.
+"""Checks for a bundled skill (skills/agentkit/, skills/agentkit-setup/ or
+skills/agentkit-orchestrate/): frontmatter, marketplace rules, and that every
+`ak` command line it teaches is valid grammar. The three skills are held to
+the same bar; the checks that only make sense for one of them are conditional
+on its name.
 
-usage: python3 skill_checks.py <kit-root> [agentkit | agentkit-setup]
+usage: python3 skill_checks.py <kit-root> [agentkit | agentkit-setup | agentkit-orchestrate]
 """
 
 import json
@@ -19,11 +20,13 @@ import kinds  # noqa: E402
 
 SKILL = sys.argv[2] if len(sys.argv) > 2 else "agentkit"
 SETUP = SKILL == "agentkit-setup"
+ORCH = SKILL == "agentkit-orchestrate"
+ENTRY = not SETUP and not ORCH
 SKILL_DIR = os.path.join(ROOT, "skills", SKILL)
 PATH = os.path.join(SKILL_DIR, "SKILL.md")
 
 
-PREFIX = "setup-skill: " if SETUP else ""
+PREFIX = "setup-skill: " if SETUP else ("orchestrate-skill form: " if ORCH else "")
 
 
 def ok(name):
@@ -39,10 +42,12 @@ with open(PATH) as h:
 # The marketplace rules apply to the whole skill: SKILL.md and its references.
 alltext = text
 refs_dir = os.path.join(SKILL_DIR, "references")
+ref_texts = {}  # "references/<name>" -> text
 if os.path.isdir(refs_dir):
     for ref_name in sorted(os.listdir(refs_dir)):
         with open(os.path.join(refs_dir, ref_name)) as h:
-            alltext += "\n" + h.read()
+            ref_texts["references/" + ref_name] = h.read()
+        alltext += "\n" + ref_texts["references/" + ref_name]
 
 # --- frontmatter (the YAML subset skills use: key: value lines) -----------
 m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
@@ -94,15 +99,29 @@ check("no secret-shaped string", not re.search(r"(sk-[A-Za-z0-9_-]{20,}|xai-[A-Z
 check("stays short enough to load cheaply (< 250 lines)", text.count("\n") < 250, str(text.count("\n")))
 check("works alone: no dependency on another skill or DeepWorkPlan",
       "deepworkplan" not in alltext.lower() and ".dwp" not in alltext)
+if ORCH:
+    check("Herdr and Deep Work Plans stay optional (named only in a reference that says so)",
+          "herdr pane" not in text and "(both optional)" in text and "Neither\nis required" in ref_texts.get("references/herdr-and-dwp.md", ""))
 
 # --- every taught `ak` command is valid grammar --------------------------------
-verbs = {"run", "env", "doctor", "usage", "setup", "profiles", "alias", "install", "--skill", "--version", "--help"}
+verbs = {"run", "env", "doctor", "usage", "pick", "setup", "profiles", "alias", "install", "--skill", "--version",
+         "--help"}
 commands = []
-for block in re.findall(r"```(?:bash|sh)?\n(.*?)```", alltext, re.S):
+# A fence with any info string opens a block; only bash, sh and bare blocks hold commands (a closing fence of a
+# ```text block must never be taken for an opening one).
+for lang, block in re.findall(r"```([A-Za-z]*)\n(.*?)```", alltext, re.S):
+    if lang not in ("", "bash", "sh"):
+        continue
     for line in block.splitlines():
         line = line.split("#", 1)[0].strip()
         if line.startswith("ak"):
             commands.append(line)
+# Inline `ak …` spans in the references (tables, prose) follow the same rule; a placeholder (`ak <kind>`) is not
+# a command.
+for body in ref_texts.values():
+    for span in re.findall(r"`(ak [^`\n]+)`", body):
+        if not span.split()[1].startswith("<"):
+            commands.append(span)
 bad = []
 for cmd in commands:
     words = cmd.split()
@@ -114,14 +133,56 @@ for cmd in commands:
 check("every ak command in the examples names a real verb or kind (%d checked)" % len(commands),
       commands and not bad, str(bad))
 
-if not SETUP:
+# --- every `ak pick` line parses with the real grammar ---------------------------
+import pick  # noqa: E402
+
+pick_bad = []
+pick_lines = [c for c in commands if c.split()[:2] == ["ak", "pick"] and len(c.split()) > 2
+              and not c.split()[2].startswith(("-", "<")) and "[" not in c]   # a mention or the grammar line is not a command
+for cmd in pick_lines:
+    try:
+        pick.parse_args(cmd.split("#", 1)[0].split()[2:])
+    except Exception as exc:  # AkError carries the grammar complaint
+        pick_bad.append((cmd, str(exc)[:60]))
+if pick_lines or ORCH:
+    check("every ak pick line parses with the real grammar (%d checked)" % len(pick_lines), pick_lines and not pick_bad, str(pick_bad))
+
+# --- every relative link in SKILL.md and the references resolves -------------
+link_bad = []
+for rel, body in [("SKILL.md", text)] + sorted(ref_texts.items()):
+    base = os.path.dirname(os.path.join(SKILL_DIR, rel))
+    for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", body):
+        if re.match(r"[a-z]+:", target):
+            continue
+        if not os.path.exists(os.path.normpath(os.path.join(base, target))):
+            link_bad.append("%s -> %s" % (rel, target))
+check("every relative link in SKILL.md and its references resolves", not link_bad, str(link_bad))
+
+if ENTRY:
+    for ref in ("references/accounts.md", "references/usage.md"):
+        check("skill references: %s exists and is linked from SKILL.md" % ref,
+              ref in ref_texts and "](%s)" % ref in text)
+    usage_ref = ref_texts.get("references/usage.md", "")
+    statuses = ("ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error")
+    check("skill references: usage.md gives an action for every usage-v1 status",
+          all(re.search(r"^\| `%s` \|" % st, usage_ref, re.M) for st in statuses),
+          str([st for st in statuses if not re.search(r"^\| `%s` \|" % st, usage_ref, re.M)]))
+    pick_exits = re.findall(r"^\| (0|1|2|3|≥ 64) \|", usage_ref.split("## Choosing an account", 1)[-1], re.M)
+    check("skill references: usage.md names the ak pick exit codes 0, 1, 2, 3 and >= 64",
+          pick_exits[:5] == ["0", "1", "2", "3", "≥ 64"], str(pick_exits))
+    check("skill references: usage.md carries the worked examples E1-E8",
+          all("| E%d | `ak pick " % i in usage_ref for i in range(1, 9)))
+    check("skill references: SKILL.md puts ak pick in the trust boundary",
+          "`ak pick`" in text.split("## Trust boundary (write scope)", 1)[-1])
+
+if ENTRY:
     kinds_in_table = set(re.findall(r"^\| `([a-z-]+)` \|", text, re.M))
     variants = set(re.findall(r"`([a-z]+-(?:glm|azure|xai))`", text))
     check("the kinds table covers every kind", kinds_in_table | variants >= set(model.kind_names()),
           str(sorted(set(model.kind_names()) - kinds_in_table - variants)))
     for code in ("0", "1", "2", "3", "4", "5"):
         check("the exit code table names %s" % code, re.search(r"^\| %s \|" % code, text, re.M) is not None)
-else:
+elif SETUP:
     import setup  # noqa: E402
 
     # Every `ak setup ...` line (also spelled python3 .../lib/ak.py setup ...) parses with the real grammar.
@@ -165,3 +226,27 @@ else:
     check("every reference file is linked from SKILL.md", all(("references/" + n) in text for n in sorted(os.listdir(refs_dir))))
     check("no install source is a branch or latest", not re.search(r"--branch (main|master|latest)\b|releases/latest|:latest\b", alltext))
     check("the skill forbids asking for, reading or echoing a key value", "never ask for, read, echo, store or log a key" in text.lower().replace("**", ""))
+
+if ORCH:
+    unattended = ref_texts.get("references/unattended.md", "")
+    check("the unattended reference names the standing grant and escalates logins, permission requests, destructive and unknown screens",
+          "standing grant" in unattended and all(w in unattended for w in ("login", "per-action permission", "destructive", "cannot name")))
+    check("no agent answers the bypass-permissions acknowledgement (named plainly; escalated)",
+          "**No agent ever answers it.**" in unattended and "bypass-permissions acknowledgement" in unattended.split("## 4.", 1)[-1]
+          and "accept" not in unattended.split("## 3.", 1)[-1].split("## 4.", 1)[0].lower().replace("accept the risk", ""))
+    check("the only keystroke is folder trust, on a pane the lead launched, when --trust-cwd was unavailable",
+          "only when `--trust-cwd` could not be used" in unattended and "a pane the lead launched itself" in unattended)
+    for ref in ("references/patterns.md", "references/herdr-and-dwp.md", "references/unattended.md"):
+        check("%s exists and is linked from SKILL.md" % ref, ref in ref_texts and "](%s)" % ref in text)
+    import run as runmod  # noqa: E402
+    run_lines = [c for c in commands if c.split()[:2] == ["ak", "run"] and len(c.split()) > 2]
+    run_bad = [c for c in run_lines if " -- " not in c or "--cwd" not in c and "PLAN.md" not in c and "Review" not in c]
+    check("every ak run line separates the prompt with -- (%d checked)" % len(run_lines), run_lines and not [c for c in run_lines if " -- " not in c], str(run_bad))
+    writers = [c for c in run_lines if "commit" in c.lower()]
+    check("every writing delegate runs in its own worktree (--cwd ../wt-*)", writers and all(re.search(r"--cwd \.\./wt-[a-z0-9-]+", c) for c in writers), str(writers))
+    check("the loop says once per batch, never in a loop", "never in a loop" in text and not re.search(r"(while|watch)\s[^\n]*ak (usage|pick)", alltext))
+    check("the skill forbids putting a secret in a prompt", "put a key, token or secret in a prompt" in text)
+    check("the skill forbids getting around a limit the user is not entitled to exceed", "not entitled to exceed" in text)
+    check("one writer per path is a rule", "one writer per path" in text.lower())
+    check("every fenced example the scenarios run is marked (# test: inventory, fanout, pick, review)",
+          all("# test: %s" % t in text for t in ("inventory", "fanout", "pick", "review")))

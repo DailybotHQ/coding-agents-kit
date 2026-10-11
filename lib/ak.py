@@ -1,15 +1,16 @@
 """ak / agentkit — the python core behind bin/ak.
 
-    ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+    ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+    ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
-    ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+    ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
+    ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
     ak setup probe [--json] | ak setup verify [--json] [...] | ak setup docker --ref TAG --sha256 HEX [...]
-    ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
+    ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
-    ak --skill [setup] | --version | --help
+    ak --skill [setup | orchestrate] | --version | --help
 """
 
 import os
@@ -22,16 +23,17 @@ import kinds  # noqa: E402
 from common import AkError  # noqa: E402
 
 USAGE = """usage:
-  ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
-  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+  ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
+  ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
-  ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+  ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
+  ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
   ak setup probe [--json] | ak setup verify [--json] [--cli LIST] [--profile CLI=@a,@b] [--keys NAMES] [--expect-posture auto|ask]
-  ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
+  ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
-  ak --skill [setup] | --version | --help
+  ak --skill [setup | orchestrate] | --version | --help
 
 Kinds: {kinds}
 Autonomy by default: every launch adds the CLI's own autonomy flag. Opt out
@@ -40,22 +42,33 @@ disposable or sandboxed environments). Docs: {root}/docs/
 """
 
 
+def _cli_label(kind):
+    """The CLI, and its command when that is another name: `antigravity (agy)`."""
+    if kind.executable == kind.cli_name:
+        return kind.cli_name
+    return "%s (%s)" % (kind.cli_name, kind.executable)
+
+
 def list_kinds(model):
-    print("%-16s %-9s %-10s %s" % ("KIND", "CLI", "PROVIDER", "INSTALLED"))
-    for name in model.kind_names():
+    names = model.kind_names()
+    wk = max([len(n) for n in names] + [len("KIND")]) + 1
+    wc = max([len(_cli_label(model.kind(n))) for n in names] + [len("CLI")]) + 1
+    print("%-*s %-*s %-10s %s" % (wk, "KIND", wc, "CLI", "PROVIDER", "INSTALLED"))
+    for name in names:
         kind = model.kind(name)
         exe = common.resolve_executable(kind.cli)
-        print("%-16s %-9s %-10s %s" % (name, kind.cli_name, kind.provider_name or "-", exe or "no"))
+        print("%-*s %-*s %-10s %s" % (wk, name, wc, _cli_label(kind), kind.provider_name or "-", exe or "no"))
     print("\nRun: ak <kind> [@profile]   ·   ak --help")
     return 0
 
 
-SKILLS = {"": "agentkit", "agentkit": "agentkit", "setup": "agentkit-setup", "agentkit-setup": "agentkit-setup"}
+SKILLS = {"": "agentkit", "agentkit": "agentkit", "setup": "agentkit-setup", "agentkit-setup": "agentkit-setup",
+          "orchestrate": "agentkit-orchestrate", "agentkit-orchestrate": "agentkit-orchestrate"}
 
 
 def print_skill(which=""):
     if which not in SKILLS:
-        raise AkError("unknown skill '%s'. Skills: agentkit (default), setup" % which)
+        raise AkError("unknown skill '%s'. Skills: agentkit (default), setup, orchestrate" % which)
     path = os.path.join(common.KIT_ROOT, "skills", SKILLS[which], "SKILL.md")
     try:
         with open(path) as handle:
@@ -85,7 +98,7 @@ def main(argv):
         return 0
     if first == "--skill":
         if len(rest) > 1:
-            raise AkError("usage: ak --skill [setup]")
+            raise AkError("usage: ak --skill [setup | orchestrate]")
         return print_skill(rest[0] if rest else "")
     model = kinds.load()
     if first == "run":
@@ -100,6 +113,9 @@ def main(argv):
     if first == "usage":
         import usage
         return usage.main(model, rest, env)
+    if first == "pick":
+        import pick
+        return pick.main(model, rest, env)
     if first == "setup":
         import setup
         return setup.main(model, rest, env)
@@ -114,6 +130,7 @@ def main(argv):
         return installer.main(model, rest, env)
     if first.startswith("-"):
         raise AkError("unknown option '%s'. See: ak --help" % first)
+    first = model.canonical(first)          # `ak agy` is `ak antigravity`
     if first not in model.kinds:
         raise AkError("unknown kind '%s'. Kinds: %s" % (first, " ".join(model.kind_names())))
     import launch

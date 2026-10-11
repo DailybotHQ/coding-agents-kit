@@ -38,6 +38,14 @@ def compute(model, kind_name, head, env):
     # it removed one (optional key, named profile), print it empty so the
     # pane cannot inherit profile 1's key.
     blank = []
+    token = prep.kind.cli.get("profile_token_var")
+    token_note = None
+    if token and prep.profile and (before.get(token) or prep.env.get(token)):
+        # Never printed; printed empty so a pane cannot keep another account's token.
+        blank.append(token)
+        if prep.env.get(token):
+            token_note = ("%s is not printed (it is @%s's login token). Launch the kind itself in the pane "
+                          "instead: ak %s @%s" % (token, prep.profile, kind_name, prep.profile))
     if prep.kind.key_var:
         changed.pop(prep.kind.key_var, None)
         if before.get(prep.kind.key_var) and prep.kind.key_var not in prep.env:
@@ -52,7 +60,7 @@ def compute(model, kind_name, head, env):
         if (common.secret_like(name) and value) or "\n" in value:
             continue
         lines.append("%s=%s" % (name, value))
-    notes = []
+    notes = [token_note] if token_note else []
     if skipped or prep.kind.key_var and not prep.kind.key_optional:
         names = skipped or [prep.kind.key_var]
         notes.append("%s is not printed (it carries the %s key). Launch the kind itself in the pane "
@@ -61,7 +69,10 @@ def compute(model, kind_name, head, env):
     extra = []
     if prep.kind.data.get("args"):
         extra.append("its arguments (%s)" % " ".join(a for a in prep.kind.data["args"] if "{key}" not in a))
-    if prep.kind.data.get("writer"):
+    writer = prep.kind.data.get("writer")
+    # The antigravity writer only acts with a key (modelProvider); without one
+    # an environment carries everything the launch needs.
+    if writer and not (writer.get("type") == "antigravity" and not prep.env.get(prep.kind.key_var or "")):
         extra.append("the provider config ak writes before launch")
     if prep.kind.data.get("pre"):
         extra.append("`%s %s` before launch" % (prep.kind.executable, prep.kind.data["pre"][0]))
@@ -189,7 +200,7 @@ def main(model, args, env):
         return main_import(args[1:], env)
     if not args or args[0].startswith("-"):
         raise AkError("usage: ak env <kind> [@profile]", EXIT_USAGE)
-    kind_name = args[0]
+    kind_name = model.canonical(args[0])
     if kind_name not in model.kinds:
         raise AkError("unknown kind '%s'. Kinds: %s" % (kind_name, " ".join(model.kind_names())), EXIT_USAGE)
     rest = args[1:]

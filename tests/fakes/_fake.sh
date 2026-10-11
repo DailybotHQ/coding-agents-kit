@@ -1,6 +1,6 @@
 # shellcheck shell=sh
 # Shared body of every fake CLI in tests/fakes/. Sourced by the per-CLI entry
-# points (claude, codex, agent, opencode, pi, cline, grok); never run directly.
+# points (claude, codex, agent, opencode, pi, cline, grok, agy); never run directly.
 #
 # A fake never talks to a network and never reads a credential. It reports
 # what it received so the suite can assert the exact argv and environment:
@@ -57,8 +57,8 @@ fake_record() {
     eval "val=\${${var}:-}"
     echo "${var}=${val}"
   done
-  for var in ANTHROPIC_AUTH_TOKEN ZAI_CODING_API_KEY ZHIPU_API_KEY ZAI_API_KEY XAI_API_KEY \
-      AZURE_OPENAI_API_KEY; do
+  for var in ANTHROPIC_AUTH_TOKEN CLAUDE_CODE_OAUTH_TOKEN ZAI_CODING_API_KEY ZHIPU_API_KEY ZAI_API_KEY XAI_API_KEY \
+      AZURE_OPENAI_API_KEY GEMINI_API_KEY; do
     eval "val=\${${var}:-}"
     if [ "${FAKE_SHOW_SECRETS:-}" = 1 ]; then
       echo "${var}=${val}"
@@ -161,6 +161,17 @@ if [ "${FAKE_MODE:-}" = headless ]; then
     grok)
       if fake_has json "$@"; then
         printf '{"type":"result","is_error":%s,"result":"%s"}\n' "${err}" "${text}"
+      else
+        printf '%s\n' "${FAKE_RESULT:-fake answer}"
+      fi
+      ;;
+    agy)
+      if fake_has json "$@"; then
+        if [ "${err}" = true ]; then
+          printf '{"conversation_id":"fake-conv","status":"ERROR","error":"%s","duration_seconds":0.1,"num_turns":1}\n' "${text}"
+        else
+          printf '{"conversation_id":"fake-conv","status":"SUCCESS","response":"%s","duration_seconds":0.1,"num_turns":1}\n' "${text}"
+        fi
       else
         printf '%s\n' "${FAKE_RESULT:-fake answer}"
       fi

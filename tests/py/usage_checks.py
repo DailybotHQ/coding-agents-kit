@@ -131,7 +131,7 @@ MODEL = fake_model()
 
 
 def env_for(extra=None):
-    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", ""),
+    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", ""), "AGENTKIT_KEYCHAIN": "off",
            "AGENTKIT_USAGE_URL_FAKE_OAUTH": server.base + "/claude",
            "AGENTKIT_USAGE_URL_FAKE_KEY": server.base + "/zai"}
     env.update(extra or {})
@@ -174,6 +174,10 @@ order = [(r["cli"], r["profile"]) for r in rows]
 check("usage core: one row per credential identity in the documented order",
       order == [("claude", "@default"), ("claude", "@2"), ("claude", "@work"), ("codex", "@default"), ("codex", "@work"),
                 ("cursor", "@default"), ("cursor", "@work"), ("zai", "@default"), ("zai", "@2")], str(order))
+moved = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "CLAUDE_CONFIG_DIR": os.path.join(PROFILES, "claude", "work")})
+_c, moved_rows = rows_of(["claude"], moved)
+check("usage core: a default home moved onto a profile directory is one account (no @default row twice)",
+      [r["profile"] for r in moved_rows] == ["@2", "@work"], str([r["profile"] for r in moved_rows]))
 zai = [r for r in rows if r["cli"] == "zai"]
 check("usage core: four glm kinds of one key collapse into one row",
       len(zai) == 2 and zai[0]["kinds"] == ["claude-glm", "codex-glm", "opencode-glm", "pi-glm"], str(zai))
@@ -189,9 +193,26 @@ check("usage core: exit 0 when every row is ok or unsupported", code == 0, str(c
 
 text = run([], ENV)[1]
 check("usage core: the table names the columns and a bar with its percent",
-      text.startswith("CLI") and "5-hour" in text and "42%" in text and "in 2h 14m" in text, text[:300])
+      text.startswith("  PROFILE") and "5-hour" in text and "42%" in text and "in 2h 14m" in text, text[:300])
 check("usage core: unsupported rows print n/d with the reason", "n/d" in text and "web session" in text)
 check("usage core: a second run is byte-identical", run([], ENV)[1] == text)
+lines = text.splitlines()
+titles = [line for line in lines if line and not line.startswith(" ") and not line.startswith("n/d")]
+check("usage core: one titled block per CLI or provider, in row order, the human name next to the id",
+      [t.split()[0] for t in titles] == ["claude", "codex", "zai"] and "Claude Code" in titles[0], str(titles))
+check("usage core: a blank line separates the blocks and every account sits indented under its title",
+      all(lines[lines.index(t) - 1] == "" for t in titles)
+      and all(line.startswith("  @") for line in lines if "@" in line and not line.startswith("n/d")), text)
+check("usage core: the id of the CLI is not repeated on its account rows", not any(line.startswith("claude  @") for line in lines))
+fit = usage.Platform("linux", True, "utf-8", {"TERM": "xterm"}, 60)
+narrow = run([], ENV, platform=fit)[1]
+check("usage core: on a terminal every line fits its width (notes are shortened, never wrapped)",
+      all(len(usage._visible(line)) <= 60 for line in narrow.splitlines()), narrow)
+check("usage core: -v keeps every note whole, even on a narrow terminal",
+      "usage is only available through the Cursor web session" in run(["-v"], ENV, platform=fit)[1])
+check("usage core: -v and --verbose are the same option", run(["-v"], ENV)[1] == run(["--verbose"], ENV)[1])
+check("usage core: the table's short notes never reach --json", "_short" not in run(["--json"], ENV)[1])
+
 
 # --json against the schema
 code, out, _ = run(["--json"], ENV)
@@ -496,6 +517,20 @@ row = rows_of(["claude", "@default"], ENV)[1][0]
 check("usage review: an out-of-range reset time becomes unknown, not an error",
       row["status"] == "ok" and row["windows"][0]["resets_at"] is None, str(row))
 server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
+
+# The bar: fixed width; any nonzero use is visible; below 100 never full.
+for pct in (0, 1, 4, 14, 50, 99, 100):
+    for utf8 in (True, False):
+        bar = usage._bar(pct, utf8)
+        mode = "utf-8" if utf8 else "ascii"
+        empty = "░" if utf8 else "-"
+        check("usage bar %s %d%%: ten cells wide" % (mode, pct), len(bar) == 10, repr(bar))
+        check("usage bar %s %d%%: empty only at 0%%" % (mode, pct), (bar == empty * 10) == (pct == 0), repr(bar))
+        check("usage bar %s %d%%: full only at 100%%" % (mode, pct), (bar == ("█" if utf8 else "#") * 10) == (pct == 100), repr(bar))
+check("usage bar: 4% shows the thinnest mark", usage._bar(4, True).startswith(("▏", "▎", "▍")), repr(usage._bar(4, True)))
+check("usage bar: 14% draws more than 10%", usage._bar(14, True) != usage._bar(10, True), repr(usage._bar(14, True)))
+check("usage bar: 1% in ASCII is one '#'", usage._bar(1, False) == "#" + "-" * 9, repr(usage._bar(1, False)))
+check("usage bar: 99% is not full in either mode", usage._bar(99, True) != "█" * 10 and usage._bar(99, False) != "#" * 10, "")
 
 server.stop()
 if FAILS:

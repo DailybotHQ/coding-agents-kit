@@ -34,13 +34,13 @@ import common
 from common import AkError, EXIT_USAGE
 
 CLASSIC = [("claudex", "claude"), ("codexx", "codex"), ("cursorx", "cursor"), ("opencodex", "opencode"),
-           ("pix", "pi"), ("clinex", "cline"), ("grokx", "grok")]
+           ("pix", "pi"), ("clinex", "cline"), ("grokx", "grok"), ("agyx", "antigravity")]
 BEGIN = "# >>> agentkit >>>"
 END = "# <<< agentkit <<<"
 # POSIX sh function names: dash (often /bin/sh) rejects "-".
 _NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,31}$")
 # Names an alias may never take: the kit itself and the CLIs it launches.
-RESERVED = {"ak", "agentkit", "claude", "codex", "agent", "cursor-agent", "opencode", "pi", "cline", "grok",
+RESERVED = {"ak", "agentkit", "claude", "codex", "agent", "cursor-agent", "opencode", "pi", "cline", "grok", "agy",
             "herdr", "cd", "ls", "rm", "sh", "bash", "zsh", "env", "sudo", "git", "python3"}
 
 
@@ -262,7 +262,7 @@ def cmd_list(state):
 def cmd_add(model, state, args, env):
     if len(args) < 2:
         raise AkError("usage: ak alias add <name> <kind> [@profile] [--ask | --auto]", EXIT_USAGE)
-    name, kind = args[0], args[1]
+    name, kind = args[0], model.canonical(args[1])
     profile = None
     auto = False
     ask = False

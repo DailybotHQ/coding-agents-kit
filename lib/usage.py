@@ -16,6 +16,7 @@ subprocess only; the few OS decisions sit in `Platform`.
 """
 
 import datetime
+import hashlib
 import json
 import math
 import os
@@ -39,6 +40,7 @@ EXIT_NOTHING = 3      # nothing to report for the requested filter
 
 STATUSES = ("ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error")
 PROBLEM_STATUSES = ("expired", "no_login", "no_scope", "rate_limited", "error")
+ROW_EXTRAS = ("resets_available",)   # optional usage-v1 row keys an adapter may add
 
 DEFAULT_TIMEOUT = 10
 MAX_TIMEOUT = 60
@@ -46,9 +48,11 @@ MAX_BODY = 1 << 20    # 1 MiB
 MAX_WORKERS = 8
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1", "[::1]")
 
-USAGE = """usage: ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+USAGE = """usage: ak usage [<kind-or-cli>] [@profile] [-v | --verbose] [--json] [--timeout SECONDS] [--no-color]
 Quota and usage of each account the kit can see (read-only; no token is printed,
 refreshed or written). The sources are vendor-internal and unofficial.
+The table fits the terminal: accounts without a readable quota are folded into
+one n/d line and long notes are shortened; -v lists every row with its full note.
 """
 
 
@@ -58,11 +62,12 @@ class Platform(object):
     """The few OS decisions of the command, injectable so tests can simulate
     Linux, macOS and Windows on any host."""
 
-    def __init__(self, name=None, is_tty=False, encoding="utf-8", env=None):
+    def __init__(self, name=None, is_tty=False, encoding="utf-8", env=None, columns=None):
         self.name = name or common.os_name()
         self.is_tty = is_tty
         self.encoding = (encoding or "ascii").lower()
         self.env = env if env is not None else {}
+        self.columns = columns            # terminal width, or None (no fitting: pipes, files)
 
     @classmethod
     def current(cls, env, stream=None):
@@ -71,7 +76,13 @@ class Platform(object):
             tty = bool(stream.isatty())
         except (AttributeError, ValueError):
             tty = False
-        return cls(common.os_name(), tty, getattr(stream, "encoding", None) or "ascii", env)
+        columns = None
+        if tty:
+            try:
+                columns = int(env.get("COLUMNS") or 0) or os.get_terminal_size(stream.fileno()).columns
+            except (AttributeError, ValueError, OSError):
+                columns = None
+        return cls(common.os_name(), tty, getattr(stream, "encoding", None) or "ascii", env, columns)
 
     def utf8_stdout(self):
         return "utf" in self.encoding
@@ -104,10 +115,11 @@ class Failure(object):
     """A row-level outcome that stops the pipeline: a status and a one-line
     message that never contains a secret."""
 
-    def __init__(self, status, message):
+    def __init__(self, status, message, short=None):
         assert status in STATUSES and status != "ok"
         self.status = status
         self.message = message
+        self.short = short
 
 
 class ShapeError(Exception):
@@ -134,6 +146,12 @@ class Adapter(object):
         """doc: the parsed response. -> (plan or None, [window dict])."""
         raise ShapeError("no parser")
 
+    def extras(self, doc):
+        """Optional row keys of usage-v1 read from the same response (e.g.
+        resets_available). Never raises: an extra that is missing or odd is
+        simply absent."""
+        return {}
+
 
 ADAPTERS = {}
 
@@ -152,16 +170,22 @@ def clean_text(value, limit=60):
     return _CONTROL.sub("", str(value))[:limit]
 
 
-def window(wid, label, used_pct, resets_at, window_seconds):
-    """One window of a row (usage-v1). used_pct is clamped to 0..100."""
+def window(wid, label, used_pct, resets_at, window_seconds, amount=None):
+    """One window of a row (usage-v1). used_pct is clamped to 0..100.
+    amount: optional (used, limit, unit) when the source reports absolute
+    numbers (Z.AI credits); it adds the optional keys used, limit and unit."""
     wid, label = clean_text(wid), clean_text(label)
     if used_pct is not None:
         if not math.isfinite(float(used_pct)):
             raise ShapeError("not a finite number")
         used_pct = max(0.0, min(100.0, float(used_pct)))
         used_pct = int(used_pct) if used_pct == int(used_pct) else round(used_pct, 1)
-    return {"id": wid, "label": label, "used_pct": used_pct, "resets_at": resets_at,
-            "window_seconds": window_seconds}
+    out = {"id": wid, "label": label, "used_pct": used_pct, "resets_at": resets_at,
+           "window_seconds": window_seconds}
+    if amount is not None:
+        used, limit, unit = amount
+        out.update({"used": used, "limit": limit, "unit": clean_text(unit, 16)})
+    return out
 
 
 def iso_utc(epoch_seconds):
@@ -211,7 +235,7 @@ def epoch_of(iso):
 class Row(object):
     """One credential identity to report."""
 
-    def __init__(self, cli, profile, kind_names, spec, source, ctx=None, key_var=None, unsupported=None):
+    def __init__(self, cli, profile, kind_names, spec, source, ctx=None, key_var=None, unsupported=None, short=None):
         self.cli = cli                    # CLI or provider id owning the credential
         self.profile = profile            # '@default' or '@name'
         self.kind_names = kind_names
@@ -220,6 +244,9 @@ class Row(object):
         self.ctx = ctx                    # kinds.Context for file credentials
         self.key_var = key_var            # env var holding the key (provider rows)
         self.unsupported = unsupported    # reason, for n/d rows
+        self.short = short                # the table's few-word form of that reason
+        self.connected = None             # n/d rows: True / False / None (cannot tell)
+        self.how = None                   # ... and how: "logged in" or "<KEY> set"
 
 
 def _cli_order(model):
@@ -256,8 +283,10 @@ def _installed(model, env, cli_name):
 def enumerate_rows(model, env):
     """Every row the kit can see, in the documented order, before filtering."""
     listing = {}
-    for cli_name, name, _directory in profiles.listing(model, env):
+    profile_dirs = {}
+    for cli_name, name, directory in profiles.listing(model, env):
         listing.setdefault(cli_name, []).append(name)
+        profile_dirs.setdefault(cli_name, set()).add(os.path.realpath(directory))
     rows = []
     covered = set()      # (cli, profile label) already reported through a provider key
     # provider-key rows (one per key variable that is set)
@@ -275,7 +304,8 @@ def enumerate_rows(model, env):
                 label = _profile_label(_match_profile_name(listing, suffix))
             kind_names = _kinds_of_provider(model, pname)
             if "unsupported" in table:
-                row = Row(pname, label, kind_names, table, "none", unsupported=table["unsupported"])
+                row = Row(pname, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))
+                row.connected, row.how = True, "%s set" % var
             else:
                 row = Row(pname, label, kind_names, table, table["adapter"], key_var=var)
             provider_rows.append(row)
@@ -285,7 +315,12 @@ def enumerate_rows(model, env):
     for cli_name in _cli_order(model):
         table = model.cli_usage(cli_name)
         installed = _installed(model, env, cli_name)
-        candidates = [None] if installed else []
+        # A default home moved onto a profile directory (CLAUDE_CONFIG_DIR=<profile>)
+        # is that profile's account: one row, so ak pick never counts it twice.
+        home_env = model.clis[cli_name].get("home_env")
+        moved = env.get(home_env) if home_env else None
+        same_as_profile = bool(moved) and os.path.realpath(moved) in profile_dirs.get(cli_name, set())
+        candidates = [None] if installed and not same_as_profile else []
         candidates.extend(sorted(listing.get(cli_name, [])))
         for name in candidates:
             label = _profile_label(name) if name else "@default"
@@ -295,14 +330,28 @@ def enumerate_rows(model, env):
                     continue
                 example = next((k for k in _kinds_of_cli(model, cli_name) if k != cli_name), None)
                 hint = "; its usage shows up under the provider key of a kind such as %s" % example if example else ""
-                rows.append(Row(cli_name, label, [cli_name], None, "none",
-                                unsupported="%s has no usage source of its own%s" % (cli_name, hint)))
+                rows.append(_with_login(model, env, cli_name, name, Row(
+                    cli_name, label, [cli_name], None, "none",
+                    unsupported="%s has no usage source of its own%s" % (cli_name, hint), short="via a provider key")))
             elif "unsupported" in table:
-                rows.append(Row(cli_name, label, kind_names, table, "none", unsupported=table["unsupported"]))
+                rows.append(_with_login(model, env, cli_name, name, Row(
+                    cli_name, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))))
             else:
                 rows.append(Row(cli_name, label, [cli_name], table, table["adapter"],
                                 ctx=_context(model, env, cli_name, name)))
     return _order(rows + provider_rows, model)
+
+
+def _with_login(model, env, cli_name, name, row):
+    """An n/d row still says whether its account is connected: the CLI's
+    login probe (file presence, credential variable names, Keychain item
+    presence; no credential is read)."""
+    try:
+        row.connected = profiles.login_state(model, cli_name, name, env)
+    except Exception:
+        row.connected = None
+    row.how = "logged in" if row.connected else None
+    return row
 
 
 def _match_profile_name(listing, suffix):
@@ -323,6 +372,7 @@ def _order(rows, model):
 
 def filter_rows(model, rows, target, profile):
     if target is not None:
+        target = model.canonical(target)
         if target not in model.kinds and target not in model.clis and target not in model.providers:
             raise AkError("unknown kind, CLI or provider '%s'. Kinds: %s" % (target, " ".join(model.kind_names())))
         rows = [r for r in rows if r.cli == target or target in r.kind_names]
@@ -392,10 +442,12 @@ def http_get(url, headers, timeout):
 
 # ------------------------------------------------------------ evaluation
 
-def _result(row, status, plan=None, windows=None, error=None, reason=None):
+def _result(row, status, plan=None, windows=None, error=None, reason=None, short=None):
+    """A row's result. `_short` is the table's few-word note; keys starting
+    with '_' never reach --json (render_json drops them)."""
     plan = clean_text(plan) if plan is not None else None
     return {"cli": row.cli, "profile": row.profile, "kinds": list(row.kind_names), "plan": plan or None, "status": status,
-            "windows": windows or [], "source": row.source, "error": error, "reason": reason}
+            "windows": windows or [], "source": row.source, "error": error, "reason": reason, "_short": short}
 
 
 def _read_login_file(row):
@@ -429,8 +481,13 @@ def credential_of(row, env, adapter):
         if isinstance(doc, Failure):
             return doc
     if doc is None:
-        return Failure("no_login", "no login found for this profile")
+        return Failure("no_login", "no login found for this profile", short="log in: %s" % _launch_hint(row))
     return adapter.credential_from_file(doc)
+
+
+def _launch_hint(row):
+    """The command that opens this row's account, for a short table note."""
+    return "ak %s" % row.cli if row.profile == "@default" else "ak %s %s" % (row.cli, row.profile)
 
 
 def os_name():
@@ -438,17 +495,38 @@ def os_name():
     return common.os_name()
 
 
-def read_keychain(row, env):
-    """macOS Keychain fallback, only for a spec that names a service and only
-    for the CLI's default home (the per-profile entry name is not verified,
-    so a profile is reported honestly instead of guessed). Returns parsed
-    JSON, None (nothing to read here), or Failure. The secret is parsed and
-    dropped; it is never printed or logged."""
-    service = (row.spec or {}).get("keychain")
-    if not service or os_name() != "macos":
+def keychain_service(row):
+    """The macOS Keychain service holding the row's login, or None. The
+    default home uses the spec's service as is; with `keychain_profile`, a
+    profile directory uses `<service>-<first 8 hex of sha256(directory)>`,
+    the name the CLI itself derives from its config directory."""
+    spec = row.spec or {}
+    service = spec.get("keychain")
+    if not service:
         return None
-    if row.profile != "@default":
-        return Failure("no_login", "the login of this profile is in the macOS Keychain; ak cannot read per-profile entries")
+    if row.profile == "@default":
+        home_env = row.ctx.kind.cli.get("home_env") if row.ctx is not None else None
+        configured = row.ctx.env.get(home_env) if home_env else None
+        return _suffixed(service, configured) if configured and spec.get("keychain_profile") else service
+    if not spec.get("keychain_profile") or row.ctx is None or not row.ctx.profile_dir:
+        return None
+    return _suffixed(service, row.ctx.profile_dir)
+
+
+def _suffixed(service, directory):
+    return "%s-%s" % (service, hashlib.sha256(directory.encode("utf-8")).hexdigest()[:8])
+
+
+def read_keychain(row, env):
+    """macOS Keychain fallback for a spec that names a service (see
+    keychain_service). Returns parsed JSON, None (nothing to read here), or
+    Failure. The secret is parsed and dropped; it is never printed or logged."""
+    if not (row.spec or {}).get("keychain") or os_name() != "macos" or env.get("AGENTKIT_KEYCHAIN") == "off":
+        return None     # AGENTKIT_KEYCHAIN=off: never touch the Keychain (the test suite sets it)
+    service = keychain_service(row)
+    if service is None:
+        return Failure("no_login", "the login of this profile is in the macOS Keychain; ak cannot read per-profile entries",
+                       short="login in the Keychain; not readable")
     security = common.which("security", env)
     if not security:
         return None
@@ -457,13 +535,13 @@ def read_keychain(row, env):
         proc = subprocess.run([security, "find-generic-password", "-s", service, "-w"], stdout=subprocess.PIPE,
                               stderr=subprocess.DEVNULL, stdin=subprocess.DEVNULL, timeout=10, env=clean)
     except subprocess.TimeoutExpired:
-        return Failure("no_login", "the macOS Keychain did not answer; unlock it and retry")
+        return Failure("no_login", "the macOS Keychain did not answer; unlock it and retry", short="unlock the Keychain")
     except OSError:
         return None
     if proc.returncode == 44:       # errSecItemNotFound
         return None
     if proc.returncode != 0:
-        return Failure("no_login", "macOS Keychain access was denied or is unavailable")
+        return Failure("no_login", "macOS Keychain access was denied or is unavailable", short="Keychain access denied")
     try:
         return json.loads(proc.stdout.decode("utf-8-sig"))
     except ValueError:
@@ -473,20 +551,25 @@ def read_keychain(row, env):
 def evaluate(row, env, timeout, now):
     """One row -> its result dict. Never raises for a row-level problem."""
     if row.unsupported:
-        return _result(row, "unsupported", reason=row.unsupported)
+        result = _result(row, "unsupported", reason=row.unsupported, short=row.short)
+        if row.connected is not None:
+            result["connected"] = bool(row.connected)
+            result["_how"] = row.how
+        return result
     adapter = ADAPTERS.get(row.source)
     if adapter is None:
         return _result(row, "error", error="no parser for this source in this version")
     cred = credential_of(row, env, adapter)
     if isinstance(cred, Failure):
         if cred.status == "unsupported":
-            return _result(row, "unsupported", reason=cred.message)
-        return _result(row, cred.status, error=cred.message)
+            return _result(row, "unsupported", reason=cred.message, short=cred.short)
+        return _result(row, cred.status, error=cred.message, short=cred.short)
     if cred.expires_at is not None and cred.expires_at <= now:
-        return _result(row, "expired", error="the login has expired; open this profile once to renew it")
+        return _result(row, "expired", error="the login has expired; open this profile once to renew it",
+                       short="open %s once to renew" % _launch_hint(row))
     if adapter.required_scope and cred.scopes is not None and adapter.required_scope not in cred.scopes:
         return _result(row, "no_scope", error="the login lacks the %s permission; sign in again with a full login"
-                       % adapter.required_scope)
+                       % adapter.required_scope, short="sign in again (full login)")
     url = resolve_url(row, env)
     headers = {k: v.replace("{token}", cred.token) for k, v in row.spec["headers"].items()}
     headers.setdefault("user-agent", "agentkit/%s" % common.VERSION)
@@ -498,9 +581,10 @@ def evaluate(row, env, timeout, now):
     if status in (301, 302, 303, 307, 308):
         return _result(row, "error", error="unexpected redirect")
     if status in (401, 403):
-        return _result(row, "no_scope", error="the login was rejected (HTTP %d); sign in again with a full login" % status)
+        return _result(row, "no_scope", error="the login was rejected (HTTP %d); sign in again with a full login" % status,
+                       short="login rejected; sign in again")
     if status == 429:
-        return _result(row, "rate_limited", error="rate limited (HTTP 429); try again later")
+        return _result(row, "rate_limited", error="rate limited (HTTP 429); try again later", short="try again later")
     if status != 200:
         return _result(row, "error", error="HTTP %d" % status)
     if len(body) > MAX_BODY:
@@ -509,11 +593,16 @@ def evaluate(row, env, timeout, now):
         doc = json.loads(body.decode("utf-8-sig"))
         plan, windows = adapter.parse(doc)
     except NoQuota as exc:
-        return _result(row, "unsupported", reason=str(exc))
+        return _result(row, "unsupported", reason=str(exc), short="no limits reported")
     except (ValueError, ShapeError) as exc:
         detail = " (%s)" % exc.__class__.__name__ if env.get("AGENTKIT_DEBUG") == "1" else ""
         return _result(row, "error", error="unexpected response shape" + detail)
-    return _result(row, "ok", plan=plan or cred.plan, windows=windows)
+    result = _result(row, "ok", plan=plan or cred.plan, windows=windows)
+    try:
+        result.update({k: v for k, v in adapter.extras(doc).items() if k in ROW_EXTRAS and v is not None})
+    except Exception:
+        pass
+    return result
 
 
 def request_timeout(row, override):
@@ -594,9 +683,9 @@ class AnthropicOAuth(Adapter):
     id = "anthropic-oauth"
     required_scope = "user:profile"
     WINDOWS = (("five_hour", "5h", "5-hour", 18000),
-               ("seven_day", "7d", "7-day", 604800),
-               ("seven_day_opus", "7d-opus", "7-day Opus", 604800),
-               ("seven_day_sonnet", "7d-sonnet", "7-day Sonnet", 604800))
+               ("seven_day", "7d", "7-day all models", 604800),
+               ("seven_day_opus", "7d-opus", "7-day Opus only", 604800),
+               ("seven_day_sonnet", "7d-sonnet", "7-day Sonnet only", 604800))
 
     def credential_from_file(self, doc):
         oauth = doc.get("claudeAiOauth") if isinstance(doc, dict) and isinstance(doc.get("claudeAiOauth"), dict) else doc
@@ -621,9 +710,42 @@ class AnthropicOAuth(Adapter):
                 raise ShapeError("window is not an object")
             used = _number(entry.get("utilization"))
             windows.append(window(wid, label, used, parse_time(entry.get("resets_at")), seconds))
+        windows.extend(self._limits(doc.get("limits"), {w["id"] for w in windows}))
         if not windows:
             raise ShapeError("no known window")
         return None, windows
+
+    # An unscoped weekly limit covers every model; a scoped one only its model,
+    # so the labels say which ("7-day all models" next to "7-day Fable only").
+    GROUPS = {"session": ("5h", "5-hour", 18000), "weekly": ("7d", "7-day all models", 604800)}
+
+    def _limits(self, limits, seen):
+        """The newer `limits` list: one entry per limit, with a group
+        (session, weekly), a percent and an optional model scope. A plan
+        without a global weekly cap (Team, Enterprise) reports its per-model
+        weekly limits only here. Entries that repeat a legacy window are
+        skipped; an entry without a percent is not a window."""
+        windows = []
+        for entry in limits if isinstance(limits, list) else []:
+            if not isinstance(entry, dict):
+                continue
+            pct = entry.get("percent")
+            if isinstance(pct, bool) or not isinstance(pct, (int, float)):
+                continue
+            group = str(entry.get("group") or entry.get("kind") or "limit")
+            wid, label, seconds = self.GROUPS.get(group, (None, group.replace("_", " "), None))
+            wid = wid or (re.sub(r"[^a-z0-9]+", "-", group.lower()).strip("-") or "limit")
+            scope = entry.get("scope") if isinstance(entry.get("scope"), dict) else {}
+            model = scope.get("model") if isinstance(scope.get("model"), dict) else {}
+            name = model.get("display_name") or model.get("id")
+            if isinstance(name, str) and name:
+                wid = "%s-%s" % (wid, re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-"))
+                label = "%s %s only" % (label.replace(" all models", ""), clean_text(name, 20))
+            if wid in seen:
+                continue
+            seen.add(wid)
+            windows.append(window(wid, label, pct, parse_time(entry.get("resets_at")), seconds))
+        return windows
 
 
 register(AnthropicOAuth())
@@ -710,6 +832,15 @@ class ChatGPTWham(Adapter):
         plan = doc.get("plan_type")
         return (plan if isinstance(plan, str) and plan else None), windows
 
+    def extras(self, doc):
+        """`rate_limit_reset_credits.available_count`: the limit resets the
+        account holds (Codex spends one with /usage)."""
+        credits = doc.get("rate_limit_reset_credits") if isinstance(doc, dict) else None
+        count = credits.get("available_count") if isinstance(credits, dict) else None
+        if isinstance(count, bool) or not isinstance(count, int) or count < 0:
+            return {}
+        return {"resets_available": count}
+
 
 register(ChatGPTWham())
 
@@ -743,6 +874,28 @@ class ZaiQuota(Adapter):
                 return (total - remaining) * 100.0 / total
         return None
 
+    # `unit` + `number` give a limit's period: unit 3 is hours (number 5 = the
+    # 5-hour window), unit 6 is weeks (number 1 = the weekly window). Other
+    # units are not confirmed, so such a limit keeps its type label.
+    UNITS = {3: (3600, "%dh", "%d-hour", 1), 6: (604800, "%dd", "%d-day", 7)}
+    # The coding-plan windows are named by their period alone, like the other
+    # CLIs' (5-hour, 7-day); any other type keeps its name in front (MCP 1-month).
+    PLAN_TYPES = ("TOKENS_LIMIT", "CREDIT_LIMIT")
+
+    @staticmethod
+    def _whole(value):
+        return isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0
+
+    def _period(self, entry):
+        unit, number = entry.get("unit"), entry.get("number")
+        if isinstance(unit, bool) or not isinstance(number, int) or isinstance(number, bool) or number < 1:
+            return None
+        spec = self.UNITS.get(unit)
+        if spec is None:
+            return None
+        seconds, wid, label, scale = spec
+        return wid % (number * scale), label % (number * scale), seconds * number
+
     def parse(self, doc):
         data = doc.get("data") if isinstance(doc, dict) else None
         if not isinstance(data, dict) or not isinstance(data.get("limits", []), list):
@@ -757,10 +910,22 @@ class ZaiQuota(Adapter):
                 continue
             kind = entry.get("type")
             wid, label = self.TYPES.get(kind, (re.sub(r"[^a-z0-9]+", "-", str(kind).lower()).strip("-") or "limit", str(kind)))
+            unit_name = wid
+            period = self._period(entry)
+            seconds = None
+            if period is not None:
+                pid, plabel, seconds = period
+                if kind in self.PLAN_TYPES:
+                    wid, label = pid, plabel
+                else:
+                    wid, label = "%s-%s" % (wid, pid), "%s %s" % (label, plabel)
             seen[wid] = seen.get(wid, 0) + 1
             if seen[wid] > 1:
                 wid, label = "%s-%d" % (wid, seen[wid]), "%s (%d)" % (label, seen[wid])
-            windows.append(window(wid, label, pct, parse_time(entry.get("nextResetTime")), None))
+            used, limit = entry.get("currentValue"), entry.get("usage")
+            amount = (used, limit, unit_name) if kind in self.PLAN_TYPES and self._whole(used) and self._whole(limit) \
+                and limit > 0 else None
+            windows.append(window(wid, label, pct, parse_time(entry.get("nextResetTime")), seconds, amount))
         if not windows:
             raise NoQuota("the plan reports no limits")
         return plan, windows
@@ -787,40 +952,191 @@ def _relative(iso, now):
     return "in %dm" % max(minutes, 1)
 
 
+def _amount(value):
+    """3265 -> 3.27K, 12000 -> 12K, 1500000 -> 1.5M (the vendor's own style)."""
+    for scale, suffix in ((1e9, "B"), (1e6, "M"), (1e3, "K")):
+        if value >= scale:
+            return ("%.2f" % (value / scale)).rstrip("0").rstrip(".") + suffix
+    return ("%.2f" % value).rstrip("0").rstrip(".")
+
+
+BAR_CELLS = 10
+EIGHTHS = "▏▎▍▌▋▊▉"
+
+
 def _bar(pct, utf8):
-    full, empty = ("█", "░") if utf8 else ("#", "-")
-    filled = int(round(pct / 10.0))
-    return full * filled + empty * (10 - filled)
+    """A fixed-width bar. Any nonzero use is visible (1% is never an empty
+    bar) and anything below 100 is never drawn full. UTF-8 has eighth-cell
+    precision; ASCII has whole cells of '#'."""
+    pct = max(0.0, min(100.0, float(pct)))
+    if not utf8:
+        filled = int(round(pct / 10.0))
+        if pct > 0:
+            filled = max(1, filled)
+        if pct < 100:
+            filled = min(BAR_CELLS - 1, filled)
+        return "#" * filled + "-" * (BAR_CELLS - filled)
+    eighths = int(round(pct * BAR_CELLS * 8 / 100.0))
+    if pct > 0:
+        eighths = max(1, eighths)
+    if pct < 100:
+        eighths = min(BAR_CELLS * 8 - 1, eighths)
+    full, part = divmod(eighths, 8)
+    bar = "█" * full + (EIGHTHS[part - 1] if part else "")
+    return bar + "░" * (BAR_CELLS - len(bar))
 
 
-def render_table(results, platform, color, now):
+STATUS_LABELS = {"expired": "expired", "no_login": "no login", "no_scope": "no access",
+                 "rate_limited": "rate limited", "error": "error"}
+NOTE_MIN = 16         # a note is never squeezed below this many characters
+INDENT = 2            # accounts sit under their CLI's title line
+RESET_HINT = "resets: use one with /usage in codex"
+
+
+def _paint(text, code, color):
+    return "\x1b[%sm%s\x1b[0m" % (code, text) if color and text else text
+
+
+def _fit(text, room):
+    """One line of at most `room` visible characters, with an ellipsis."""
+    if room is None or len(text) <= room:
+        return text
+    return text[:max(room - 1, 1)].rstrip(" ;,") + "\u2026"
+
+
+def _note(r, verbose):
+    full = r["reason"] if r["status"] == "unsupported" else r["error"]
+    return (full or "") if verbose else (r.get("_short") or full or "")
+
+
+def render_table(results, platform, color, now, verbose=False, names=None):
+    """The human table, one block per CLI or provider: a title line
+    (`claude · Claude Code`), its accounts indented under one shared header,
+    and a blank line between blocks. Without -v it fits the terminal: rows
+    with no readable quota (n/d) fold into one closing line grouped by cause,
+    and a problem row shows its status and a few-word note. -v lists every
+    row with its full note. Pipes and files are never cut (no width).
+    names: {cli or provider id: display name} for the titles."""
     utf8 = platform.utf8_stdout()
-    header = ("CLI", "PROFILE", "PLAN", "WINDOW", "USED", "RESET / NOTE")
-    lines = []
+    width = None if verbose else platform.columns
+    names = names or {}
+    every_nd = all(r["status"] == "unsupported" for r in results)
+    fold = not verbose and not every_nd
+    groups, folded = [], []          # [(cli, [(cells, note)], hint)]
+    linked = []                      # n/d but connected: listed at the very end
     for r in results:
-        base = [r["cli"], r["profile"], r["plan"] or "-"]
+        if r["status"] == "unsupported" and fold:
+            (linked if r.get("connected") else folded).append(r)
+            continue
+        if not groups or groups[-1][0] != r["cli"]:
+            groups.append((r["cli"], [], []))
+        lines, hints = groups[-1][1], groups[-1][2]
+        base = [r["profile"], r["plan"] or "-"]
         if r["status"] == "ok" and r["windows"]:
             for i, w in enumerate(r["windows"]):
-                used = "-" if w["used_pct"] is None else "%s %d%%" % (_bar(w["used_pct"], utf8), round(w["used_pct"]))
                 pct = w["used_pct"]
-                if color and pct is not None:
-                    code = "31" if pct >= 90 else ("33" if pct >= 70 else "32")
-                    used = "\x1b[%sm%s\x1b[0m" % (code, used)
-                head = base if i == 0 else ["", "", ""]
-                lines.append(head + [w["label"], used, _relative(w["resets_at"], now)])
+                used = "-" if pct is None else "%s %3d%%" % (_bar(pct, utf8), round(pct))
+                if pct is not None:
+                    used = _paint(used, "31" if pct >= 90 else ("33" if pct >= 70 else "32"), color)
+                head = base if i == 0 else ["", ""]
+                reset = _relative(w["resets_at"], now)
+                if w.get("limit"):
+                    unit = " " + w["unit"] if verbose and w.get("unit") else ""
+                    reset = "%-9s  %s/%s%s" % (reset, _amount(w["used"]), _amount(w["limit"]), unit)
+                lines.append((head + [w["label"], used], reset.rstrip()))
+            if r.get("resets_available"):
+                lines.append((["", "", "resets"], "%d available" % r["resets_available"]))
+                if r["cli"] == "codex" and RESET_HINT not in hints:
+                    hints.append(RESET_HINT)
         elif r["status"] == "ok":
-            lines.append(base + ["-", "no windows reported", ""])
+            lines.append((base + ["-"], "no windows reported"))
         elif r["status"] == "unsupported":
-            lines.append(base + ["n/d", "", r["reason"] or ""])
+            how = (r.get("_how") or "") + (": " if r.get("_how") else "")
+            lines.append((base + [_paint("n/d", "2", color)], how + _note(r, verbose)))
         else:
-            lines.append(base + [r["status"], "", r["error"] or ""])
-    table = [header] + lines
-    widths = [max(len(_visible(c)) for c in col) for col in zip(*table)]
-    out = []
-    for row in table:
-        cells = [c + " " * (w - len(_visible(c))) for c, w in zip(row[:5], widths)]
-        out.append("  ".join(cells + [row[5]]).rstrip())
+            label = STATUS_LABELS.get(r["status"], r["status"])
+            lines.append((base + [_paint(label, "31" if r["status"] == "error" else "33", color)], _note(r, verbose)))
+    header = (["PROFILE", "PLAN", "WINDOW", "USED"], "RESET")
+    rows = [header] + [line for _cli, lines, _h in groups for line in lines]
+    # A row without windows has no USED cell: its note starts in that column.
+    widths = [max(len(_visible(c[i])) for c, _n in rows if len(c) > i) for i in range(4)]
+
+    def render(cells, note):
+        padded = [c + " " * (w - len(_visible(c))) for c, w in zip(cells, widths)]
+        lead = INDENT + sum(widths[:len(cells)]) + 2 * len(cells)
+        room = max(width - lead, NOTE_MIN) if width else None
+        return (" " * INDENT + "  ".join(padded + [_fit(note, room)])).rstrip()
+
+    out = [_paint(render(*header), "2", color)]
+    for cli, lines, hints in groups:
+        out.append("")
+        title = _paint(cli, "1", color)
+        if names.get(cli) and names[cli].lower() != cli:
+            title += _paint((" \u00b7 " if utf8 else " - ") + names[cli], "2", color)
+        if hints:
+            title += _paint("   " + "; ".join(hints), "2", color)
+        out.append(title)
+        out.extend(render(cells, note) for cells, note in lines)
+    if linked:
+        out.append("")
+        out.extend(_linked_lines(linked, width, color, utf8))
+    if folded:
+        out.append("")
+        out.extend(_folded_lines(folded, width, color))
     return "\n".join(out) + "\n"
+
+
+def _linked_lines(rows, width, color, utf8):
+    """The accounts that are connected (a login or a key) but expose no quota
+    to read: still worth seeing, so they close the table in a block of their
+    own — CLI, profile, how it is connected, why there is no number."""
+    sep = " \u00b7 " if utf8 else " - "
+    cells = [(r["cli"], r["profile"], r.get("_how") or "connected", _note(r, False)) for r in rows]
+    widths = [max(len(c[i]) for c in cells) for i in range(3)]
+    out = [_paint("connected", "1", color) + _paint(sep + "no quota to read", "2", color)]
+    for cli, profile, how, note in cells:
+        lead = " " * INDENT + "  ".join(v + " " * (w - len(v)) for v, w in zip((cli, profile, how), widths))
+        room = max(width - len(lead) - 2, NOTE_MIN) if width else None
+        out.append((lead + "  " + _paint(_fit(note, room), "2", color)).rstrip())
+    return out
+
+
+def display_names(model):
+    """{cli or provider id: its human name} for the block titles."""
+    names = {c: d.get("name") for c, d in model.clis.items()}
+    names.update({p: d.get("name") for p, d in model.providers.items()})
+    return {k: v for k, v in names.items() if v}
+
+
+def _folded_lines(rows, width, color):
+    """`n/d  cursor (web session only) · grok (per-session only)`, wrapped
+    to the terminal, grouped by note so CLIs that share a cause share it."""
+    groups = []
+    for r in rows:
+        who = r["cli"] if r["profile"] == "@default" else "%s %s" % (r["cli"], r["profile"])
+        note = _note(r, False)
+        for entry in groups:
+            if entry[0] == note:
+                entry[1].append(who)
+                break
+        else:
+            groups.append([note, [who]])
+    parts = ["%s (%s)" % (", ".join(names), note) if note else ", ".join(names) for note, names in groups]
+    prefix, indent = "n/d  ", "     "
+    lines, current = [], ""
+    limit = width or 0
+    for part in parts:
+        candidate = part if not current else current + " \u00b7 " + part
+        if limit and current and len(prefix) + len(candidate) > limit:
+            lines.append(current)
+            current = part
+        else:
+            current = candidate
+    lines.append(current)
+    lines = [(prefix if i == 0 else indent) + _fit(line, (limit - len(prefix)) if limit else None)
+             for i, line in enumerate(lines)]
+    lines.append(_paint(indent + "ak usage -v for every row and its reason", "2", color))
+    return [_paint(line, "2", color) if i < len(lines) - 1 else line for i, line in enumerate(lines)]
 
 
 def _visible(text):
@@ -829,14 +1145,15 @@ def _visible(text):
 
 def render_json(results, now):
     stamp = iso_utc(now)
-    doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": stamp, "rows": results}
+    rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]   # _short, _how: table only
+    doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": stamp, "rows": rows}
     return json.dumps(doc, indent=2, sort_keys=True) + "\n"
 
 
 # ------------------------------------------------------------------ main
 
 def parse_args(args):
-    opts = {"target": None, "profile": None, "json": False, "timeout": None, "color": True}
+    opts = {"target": None, "profile": None, "json": False, "timeout": None, "color": True, "verbose": False}
     i = 0
     while i < len(args):
         arg = args[i]
@@ -846,12 +1163,14 @@ def parse_args(args):
             opts["json"] = True
         elif arg == "--no-color":
             opts["color"] = False
+        elif arg in ("-v", "--verbose"):
+            opts["verbose"] = True
         elif arg == "--timeout":
             i += 1
             if i >= len(args) or not args[i].isdigit() or not 1 <= int(args[i]) <= MAX_TIMEOUT:
                 raise AkError("--timeout needs a number of seconds from 1 to %d" % MAX_TIMEOUT)
             opts["timeout"] = int(args[i])
-        elif arg.startswith("--"):
+        elif arg.startswith("-"):
             raise AkError("unknown option '%s'. See: ak usage --help" % arg)
         elif arg.startswith("@"):
             if opts["profile"] is not None:
@@ -899,7 +1218,8 @@ def main(model, args, env, now=None, stdout=None, platform=None):
     if opts["json"]:
         emit(stdout, render_json(results, now))
     else:
-        emit(stdout, render_table(results, platform, platform.supports_color(not opts["color"]), now))
+        emit(stdout, render_table(results, platform, platform.supports_color(not opts["color"]), now,
+                                          verbose=opts["verbose"], names=display_names(model)))
     return EXIT_PROBLEM if any(r["status"] in PROBLEM_STATUSES for r in results) else EXIT_OK
 
 

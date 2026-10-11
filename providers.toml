@@ -30,6 +30,10 @@ executable = "claude"
 herdr_kind = "claude"
 isolation = "env"
 home_env = "CLAUDE_CONFIG_DIR"
+# A long-lived login token per account (`claude setup-token`): @default reads
+# CLAUDE_CODE_OAUTH_TOKEN, @name reads CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX> and gets
+# it as CLAUDE_CODE_OAUTH_TOKEN; never a fallback to another account's token.
+profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
 interactive = ["{provider}", "{session}", "{auto}"]
 docs = "https://docs.claude.com/en/docs/claude-code"
@@ -37,6 +41,11 @@ docs = "https://docs.claude.com/en/docs/claude-code"
 [clis.claude.roots]
 home = { default = "{CLAUDE_CONFIG_DIR:-~/.claude}", profile = "{dir}" }
 account = { default = "{CLAUDE_CONFIG_DIR:-~}", profile = "{dir}" }
+
+# `--trust-cwd` (explicit opt-in): where the folder-trust answer lives.
+[clis.claude.trust]
+file = "account:.claude.json"
+format = "claude-json"
 
 [clis.claude.session]
 continue = ["--continue"]
@@ -64,6 +73,8 @@ headers = { authorization = "Bearer {token}", anthropic-beta = "oauth-2025-04-20
 credential = "file"
 files = ["home:.credentials.json"]
 keychain = "Claude Code-credentials"
+# a profile's login is "<keychain>-<first 8 hex of sha256(profile dir)>"
+keychain_profile = true
 timeout_s = 10
 
 [clis.claude.install]
@@ -92,6 +103,10 @@ docs = "https://developers.openai.com/codex/cli"
 
 [clis.codex.roots]
 home = { default = "{CODEX_HOME:-~/.codex}", profile = "{dir}" }
+
+[clis.codex.trust]
+file = "home:config.toml"
+format = "codex-toml"
 
 [clis.codex.session]
 continue = ["resume", "--last"]
@@ -162,9 +177,12 @@ files = ["home:auth.json"]
 env = ["CURSOR_API_KEY"]
 definitive = false
 note = "the default home on macOS keeps the login in the Keychain; profiles use the file store"
+# The default home's Keychain item (presence only; read by nothing).
+keychain = [{ service = "cursor-access-token" }]
 
 [clis.cursor.usage]
 unsupported = "usage is only available through the Cursor web session; not read by ak"
+short = "web session only"
 
 [clis.cursor.install]
 # The versioned package the vendor's installer downloads. The vendor
@@ -333,6 +351,7 @@ definitive = true
 
 [clis.grok.usage]
 unsupported = "grok reports usage per session only (grok usage <session>); no account quota is readable"
+short = "per-session only"
 
 [clis.grok.install]
 # The versioned binary the vendor's installer downloads. The vendor
@@ -346,6 +365,58 @@ sha256 = { linux-x64 = "c80de0155706ff2d995623887b102f2d0abd2c62b2643dea3a0cebaf
 
 [clis.grok.hooks]
 files = ["home:hooks/herdr-agent-state.sh", "home:hooks/herdr.json"]
+
+[clis.antigravity]
+name = "Antigravity CLI"
+executable = "agy"
+# Its Google login sits in one OS-keyring slot per machine, and its state in
+# ~/.gemini with no variable to move it: a profile is a HOME of its own (the
+# rest of the real HOME linked in), and a profile's own account is an API key.
+isolation = "home"
+home_dir = ".gemini"
+auto = ["--dangerously-skip-permissions"]
+interactive = ["{session}", "{auto}"]
+docs = "https://antigravity.google/docs/cli"
+
+[clis.antigravity.roots]
+home = { default = "~/.gemini/antigravity-cli", profile = "{dir}/home/.gemini/antigravity-cli" }
+
+[clis.antigravity.session]
+continue = ["--continue"]
+resume = ["--conversation", "{id}"]
+pick_error = "agy has no conversation picker: resume one by its conversation_id (ak antigravity -r <id>) or the latest with -c"
+
+[clis.antigravity.run]
+argv = ["-p", "{prompt}", "{json}", "{auto}"]
+json = ["--output-format", "json"]
+result = "antigravity-json"
+
+[clis.antigravity.login]
+command = "agy"
+files = []
+env = ["GEMINI_API_KEY"]
+definitive = false
+note = "the Google login is in the OS keyring (one per machine); a profile's own account is GEMINI_API_KEY_<SUFFIX>"
+keychain = [{ service = "gemini", account = "antigravity" }]
+profile_note = "Antigravity keeps its Google login in one OS-keyring slot per machine: signing in here replaces the login of every other Antigravity home. For a separate account set GEMINI_API_KEY_{suffix} in the env file instead (ak writes modelProvider for it)."
+
+[clis.antigravity.usage]
+unsupported = "Antigravity exposes no account quota that ak can read"
+short = "no quota source"
+
+[clis.antigravity.install]
+# The tarball the vendor's installer downloads (its per-platform manifest at
+# antigravity-cli-auto-updater-974169037036.us-central1.run.app/manifests/).
+# The manifest publishes sha512; each download was checked against it and
+# its sha256 recorded here.
+channel = "tarball"
+version = "1.3.3-5524738307653632"
+url = "https://storage.googleapis.com/antigravity-public/antigravity-cli/{version}/{platform}.tar.gz"
+platforms = { linux-x64 = "linux-x64/cli_linux_x64", linux-arm64 = "linux-arm/cli_linux_arm64", macos-x64 = "darwin-x64/cli_mac_x64", macos-arm64 = "darwin-arm/cli_mac_arm64" }
+sha256 = { linux-x64 = "8ee3ca32574c431285efbf4d4732f7f8d53e959370bc4a61646e4fa496f7f2b6", linux-arm64 = "a9d23fe1d7e5c8471881ab37723571a8d3f24e6ecace8fe082f8c0c8d90f41ca", macos-x64 = "78547d90bfd1559a87ba63e941f9332a0d1889d2de415da337dedec8dc9aa239", macos-arm64 = "c39926f3312e87eaa56d750658cf442669d0a716f49319d06369be7fa80520eb" }
+strip = 0
+into = "~/.local/share/antigravity-cli/versions/{version}"
+links = { agy = "antigravity" }
 
 # ----------------------------------------------------------- providers
 # key: the secret variable; a named profile reads <key>_<SUFFIX> instead.
@@ -383,6 +454,7 @@ require = ["AZURE_OPENAI_RESOURCE|AZURE_OPENAI_BASE_URL", "AZURE_OPENAI_MODEL_DA
 
 [providers.azure.usage]
 unsupported = "Azure OpenAI exposes no quota to read; check the Azure portal"
+short = "see the Azure portal"
 
 [providers.azure.vars]
 base = "{AZURE_OPENAI_BASE_URL:-https://{AZURE_OPENAI_RESOURCE}.services.ai.azure.com/openai/v1}"
@@ -398,12 +470,23 @@ require = []
 
 [providers.xai.usage]
 unsupported = "reading an xAI balance needs a separate management key, which ak never asks for"
+short = "needs a management key"
 
 [providers.xai.vars]
 base = "{XAI_BASE_URL:-https://api.x.ai/v1}"
 daily = "{XAI_MODEL_DAILY:-grok-4.3}"
 reasoning = "{XAI_MODEL_REASONING:-grok-4.6}"
 default = "{XAI_DEFAULT_MODEL:-{XAI_MODEL_DAILY:-grok-4.3}}"
+
+[providers.gemini]
+name = "Gemini API (Antigravity)"
+key = "GEMINI_API_KEY"
+companions = ["GOOGLE_GEMINI_BASE_URL"]
+require = []
+
+[providers.gemini.usage]
+unsupported = "a Gemini API key exposes no quota to read; check Google AI Studio"
+short = "see Google AI Studio"
 
 # --------------------------------------------------------------- kinds
 # cli: the canonical CLI. provider: a [providers] id. key_optional: a
@@ -520,3 +603,12 @@ pre = ["auth", "-p", "openai", "-b", "{base}", "-k", "{key}", "-m", "{default}"]
 cli = "grok"
 provider = "xai"
 key_optional = true
+
+[kinds.antigravity]
+cli = "antigravity"
+provider = "gemini"
+key_optional = true
+# With the profile's key, agy needs modelProvider = "gemini" in its
+# settings.json; without it the key must not be named there, or agy refuses
+# to start. The writer keeps that one field in step and nothing else.
+writer = { type = "antigravity", file = "home:settings.json" }

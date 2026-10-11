@@ -35,8 +35,10 @@ when nothing failed.
 | `ak run` (`lib/run.py`) | `run` |
 | `ak setup` (`lib/setup.py`, `docs/schema/setup-*.json`, checks in `tests/py/setup_checks.py`) | `setup` (probe, verify, docker on simulated Linux, macOS, Windows, WSL, musl and container hosts), `security` |
 | `skills/agentkit-setup/` (`tests/py/skill_checks.py agentkit-setup`, `tests/py/skill_scenarios.py`) | `setup-skill` (form, marketplace rules, consent gates, and the documented flows run in sandboxes), `skill` |
+| `skills/agentkit-orchestrate/` (`tests/py/skill_checks.py agentkit-orchestrate`, the scenarios in `tests/py/orchestrate_scenarios.py`) | `orchestrate-skill` (form, marketplace rules, the real `ak pick` grammar of every line, safety rules, `ak --skill orchestrate`, and the taught loop run against fake accounts), `skill` |
 | the container recipes (`ak setup docker`) | `setup`; the opt-in `setup-docker-live` builds one with a real Docker (`AGENTKIT_TEST_LIVE=1`) |
 | `ak usage` (`lib/usage.py`, `docs/schema/usage-v1.json`, the usage tables of `providers.toml`, checks in `tests/py/usage_checks.py`) | `usage` (pipeline, rendering, the launcher), `usage-providers` (one adapter at a time, the end-to-end layout; `tests/py/usage_provider_checks.py`), `kinds` (the tables), `security` (secrecy, read-only, loopback-only) |
+| `ak pick` (`lib/pick.py`, `docs/schema/pick-v1.json`, the policy checks in `tests/py/pick_checks.py`) | `pick` (the policy on fixture rows, the grammar, `pick-v1`, and the real launcher against the fake usage endpoint), `usage` (the shared row pipeline), `security` |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |

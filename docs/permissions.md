@@ -34,9 +34,10 @@ nothing.
 | `pi`, `pi-*` | `--approve` | trust project-local files for this run (Pi has no per-tool approval prompt) |
 | `cline`, `cline-*` | `--yolo` | auto-approve a limited tool set for unsupervised runs |
 | `grok` | `--always-approve` | approve every tool call |
+| `antigravity` | `--dangerously-skip-permissions` | auto-approve every tool permission request |
 
 The flags live only in `providers.toml` (`auto = […]`); no code path spells
-one. For all 19 kinds, the `permissions` test scope proves that a default
+one. For all 20 kinds, the `permissions` test scope proves that a default
 launch carries exactly its own flag and that `--ask` or
 `AGENTKIT_PERMISSIONS=ask` removes it. Listing modes (`ak cursor -l`,
 `ak cline -r`) never carry one.
@@ -55,10 +56,36 @@ opt-out outranks it). When a launch is autonomous, `ak` removes
 `AGENTKIT_PERMISSIONS` from the CLI's environment, and nested launches follow
 the default.
 
+## Trusting the launch folder: `--trust-cwd`
+
+A new account opened in a new folder stops at its CLI's folder-trust screen
+(Claude: "Do you trust the files in this folder?", Codex: "Trust this
+folder?"). `--trust-cwd` on `ak <kind>` or `ak run`, or
+`AGENTKIT_TRUST_CWD=1` in the environment (inherited by nested `ak`), marks
+the launch folder (`--cwd` for `ak run`) as trusted in that profile's own
+config before the CLI starts:
+
+| CLI | File | Change |
+| --- | --- | --- |
+| Claude Code | `.claude.json` at the account root (the profile directory; `CLAUDE_CONFIG_DIR` or `~` for `@default`) | `projects["<folder>"].hasTrustDialogAccepted = true`, every other key kept |
+| Codex | `config.toml` in the profile (`CODEX_HOME`) | `[projects."<folder>"]` `trust_level = "trusted"`, appended only when that table is absent |
+
+Opt-in only: no flag, no write. Idempotent; one stderr line names the file
+it changed. Other CLIs: a note and no write. It answers no other screen and
+does not change the permission posture: trusting a folder is not autonomy.
+Claude's bypass-permissions acknowledgement is a one-time step you take per
+profile, when you create it (open `ak claude @name` once and accept); no
+agent ever answers it.
+
+A symlinked config (a dotfiles repository) is updated where it points, and a
+link that leaves the profile is refused. On Windows the entry is written with
+the folder's native path; whether each CLI looks it up in that form there is
+not verified yet.
+
 ## The `classic` aliases
 
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,
-`opencodex`, `pix`, `clinex` and `grokx` as plain shortcuts for
+`opencodex`, `pix`, `clinex`, `grokx` and `agyx` as plain shortcuts for
 `ak <kind>`, for people migrating from the old wrappers. They follow your
 posture: the default, or the opt-out. It ships **off**. The `providers`
 preset (`ak alias preset providers --on`) does the same for the provider

@@ -14,11 +14,12 @@ scope_oss() {
   # README: the standard sections, in order, and the footer.
   out="$(grep -E '^## ' "${ROOT}/README.md" | tr '\n' '|')"
   expect_eq "README sections in the standard order" "${out}" \
-    "## What it is|## Install|## Quickstart|## Documentation|## Security|## Contributing|## License|"
+    "## What it is|## Install|## Quickstart|## How it fits with DeepWorkPlan|## Part of the DeepWorkPlan ecosystem|## Security|## Documentation|## Contributing|## License|"
   check "README opens with the title and a one-line value" bash -c "head -3 '${ROOT}/README.md' | grep -q '^# coding-agents-kit\$' && sed -n 3p '${ROOT}/README.md' | grep -q '\`ak'"
   for b in 'actions/workflows/ci.yml/badge.svg' 'img.shields.io/github/v/release' 'img.shields.io/github/license'; do
     check "README badge: ${b}" grep -q "${b}" "${ROOT}/README.md"
   done
+  check "README has the shared ecosystem table with this repository marked" bash -c "grep -q '^| \[coding-agents-kit\](https://github.com/DailybotHQ/coding-agents-kit) (this repository) |' '${ROOT}/README.md' && [ \"\$(grep -c '^| \[' '${ROOT}/README.md')\" -ge 8 ]"
   check "README installs a pinned tag" grep -qE -- '--branch v[0-9]+\.[0-9]+\.[0-9]+ ' "${ROOT}/README.md"
   check "README links SECURITY.md and CONTRIBUTING.md" bash -c "grep -q '](SECURITY.md)' '${ROOT}/README.md' && grep -q '](CONTRIBUTING.md)' '${ROOT}/README.md'"
   expect_eq "README ends with the ecosystem footer" "$(tail -1 "${ROOT}/README.md")" \

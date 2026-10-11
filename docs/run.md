@@ -1,13 +1,15 @@
 # `ak run` — one prompt, headless
 
 ```
-ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
+ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
 ```
 
 Runs one prompt non-interactively in `--cwd` (default: the current
 directory) and exits. It is the headless half of interface 1: scripts, CI
 and orchestrators (the DeepWorkPlan `agentkit` addon delegates through it)
-can start any agent the same way and read one result.
+can start any agent the same way and read one result. Running several
+delegates over several accounts (worktrees, `ak pick`, failover on these
+exit codes) is [Orchestration](orchestration.md).
 
 - Words after `--` are joined with spaces into one prompt; `-- -` reads the
   prompt from stdin.
@@ -20,6 +22,10 @@ can start any agent the same way and read one result.
   `--ask` with `--auto` on one command is a usage error.
 - `--timeout SECONDS` kills the whole process tree when it expires (`0` =
   none). Cline also receives it as its own `-t`.
+- `--trust-cwd` (or `AGENTKIT_TRUST_CWD=1`) marks `--cwd` as trusted in the
+  profile's own config first, so a new account does not stop at its CLI's
+  folder-trust screen ([Permissions → Trusting the launch folder](permissions.md#trusting-the-launch-folder---trust-cwd)).
+  Opt-in only.
 
 **Windows:** a program that calls `ak run` must start the python core
 directly — `py -3 <install>\lib\ak.py run …` — not `ak.cmd`. A batch file
@@ -39,6 +45,7 @@ for any other batch target.
 | pi | `pi -p "<prompt>" [--mode json]` |
 | cline | `cline "<prompt>" [--json] -c <cwd> [-t <timeout>]` |
 | grok | `grok -p "<prompt>" [--output-format json] --cwd <cwd>` |
+| antigravity | `agy -p "<prompt>" [--output-format json]` |
 
 The CLI's process always starts in `<cwd>`. Provider kinds add their own
 arguments (`codex exec -p azure …`, `opencode run -m xai/… …`) and
@@ -79,7 +86,7 @@ CLI's own output (its transcript, including its JSON stream) goes to stderr.
 | `kind`, `profile`, `cwd` | what ran, where (`profile` is `@default` or `@name`) |
 | `exit` | the exit code above (same as the process's) |
 | `duration_s` | wall-clock seconds |
-| `result_text` | the agent's final answer, extracted from the CLI's JSON (Claude/Cursor/Grok `result`, Codex's last `agent_message`, OpenCode's last `text` part, Pi's last assistant message, Cline's `completion_result`); the raw output when the shape is not recognised |
+| `result_text` | the agent's final answer, extracted from the CLI's JSON (Claude/Cursor/Grok `result`, Codex's last `agent_message`, OpenCode's last `text` part, Pi's last assistant message, Cline's `completion_result`, Antigravity's `response` — or its `error` when `status` is not `SUCCESS`); the raw output when the shape is not recognised |
 | `cli_exit` | the CLI's own exit status (`null` when it never started; negative = killed by that signal) |
 | `truncated` | `result_text` was cut at 64 KiB, or the CLI's output exceeded the 8 MiB kept for extraction |
 | `error` | present only when the run never started: the one-line reason |

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.4.0/docs/schema/usage-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.0/docs/schema/usage-v1.json",
   "title": "ak usage --json (usage-v1)",
   "description": "Quota and usage of each account the kit can see, one row per credential identity. Never contains a secret value, an account identity (e-mail, organisation, id) or a token. The endpoints behind it are vendor-internal and unofficial: a row whose source changed shape reports status `error`, never a crash. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
@@ -34,13 +34,18 @@
                 "label": { "type": "string" },
                 "used_pct": { "type": ["number", "null"], "description": "0..100, null when unknown." },
                 "resets_at": { "type": ["string", "null"], "description": "ISO-8601 UTC, null when unknown." },
-                "window_seconds": { "type": ["integer", "null"] }
+                "window_seconds": { "type": ["integer", "null"] },
+                "used": { "type": "number", "minimum": 0, "description": "Optional (additive): the absolute amount used, when the source reports it (Z.AI credits)." },
+                "limit": { "type": "number", "minimum": 0, "description": "Optional (additive): the window's absolute limit, in the same unit as used." },
+                "unit": { "type": "string", "description": "Optional (additive): what used and limit count (credits, tokens)." }
               }
             }
           },
           "source": { "type": "string", "description": "The adapter id (anthropic-oauth, chatgpt-wham, zai-quota) or `none`." },
           "error": { "type": ["string", "null"], "description": "One line, never a secret. Set for every status except ok and unsupported." },
-          "reason": { "type": ["string", "null"], "description": "One line explaining an `unsupported` row; null otherwise." }
+          "reason": { "type": ["string", "null"], "description": "One line explaining an `unsupported` row; null otherwise." },
+          "connected": { "type": "boolean", "description": "Optional (additive), unsupported rows only: whether the account is connected anyway — a login found (file, credential variable name or Keychain item presence; nothing is read) or its provider key set. Absent when it cannot be told." },
+          "resets_available": { "type": "integer", "minimum": 0, "description": "Optional (additive): the limit resets the account holds, when the source reports them (Codex: rate_limit_reset_credits.available_count). Absent when not reported." }
         }
       }
     }

@@ -100,7 +100,7 @@ scope_profiles() {
   # --- profile 1 changes nothing --------------------------------------------
   box_new profiles-p1
   box_posture ask  # argv grammar; the permissions scope owns the default
-  for k in claude codex cursor opencode pi cline grok; do
+  for k in claude codex cursor opencode pi cline grok antigravity; do
     out="$(ak -- "${k}" @default)"
     if [[ -z "$(var_of "${out}" CLAUDE_CONFIG_DIR)$(var_of "${out}" CODEX_HOME)$(var_of "${out}" XDG_DATA_HOME)$(var_of "${out}" PI_CODING_AGENT_DIR)$(var_of "${out}" CLINE_DIR)$(var_of "${out}" GROK_HOME)$(var_of "${out}" AGENT_CLI_CREDENTIAL_STORE)$(var_of "${out}" AGENTKIT_ACTIVE_PROFILE)" \
           && "$(var_of "${out}" HOME)" == "${BOX}/home" ]]; then
@@ -113,7 +113,7 @@ scope_profiles() {
   box_new profiles
   box_posture ask  # argv grammar; the permissions scope owns the default
   profiles_env
-  mkdir -p "${root}"/{claude,codex,cursor,opencode,pi,cline,grok}/{2,work}
+  mkdir -p "${root}"/{claude,codex,cursor,opencode,pi,cline,grok,antigravity}/{2,work}
   printf '[{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"}]\n' "${BOX}/work" > "${BOX}/cline-history.json"
   # kind | knob line for profile <P> | continue form
   local -a kinds_table=(
@@ -136,6 +136,7 @@ scope_profiles() {
     "cline-azure|CLINE_DIR=@DIR|-P|openai|-m|dep-daily|-k|fake-azure-@KEY|--id|sess-new"
     "cline-xai|CLINE_DIR=@DIR|-P|openai|-m|grok-4.3|-k|fake-xai-@KEY|--id|sess-new"
     "grok|GROK_HOME=@DIR|--continue"
+    "antigravity|HOME=@DIR/home|--continue"
   )
   for row in "${kinds_table[@]}"; do
     k="${row%%|*}"; row="${row#*|}"
@@ -184,6 +185,31 @@ scope_profiles() {
   expect_has "a set companion follows the profile (AZURE_OPENAI_RESOURCE_2)" "$(cat "${BOX}/auth2.log")" "ARG=https://res-two.services.ai.azure.com/openai/v1"
   out="$(ak FAKE_LOG="${BOX}/auth3.log" -- cline-azure @work)"
   expect_has "an unset companion keeps profile 1's non-secret value" "$(cat "${BOX}/auth3.log")" "ARG=https://res-one.services.ai.azure.com/openai/v1"
+
+  # --- antigravity: a HOME per profile; a profile's own account is its key ---
+  local ag="${root}/antigravity"
+  out="$(ak -- antigravity @2)"
+  if [[ -d "${ag}/2/home/.gemini" && ! -L "${ag}/2/home/.gemini" ]] && grep -qx "HOME=${ag}/2/home" <<<"${out}" \
+      && grep -qx "GEMINI_API_KEY=" <<<"${out}" && [[ ! -e "${ag}/2/home/.gemini/antigravity-cli/settings.json" ]]; then
+    pass "antigravity @2 without a key: its own HOME and .gemini, no key, settings.json untouched (Google login)"
+  else fail "antigravity @2 without a key: ${out}"; fi
+  out="$(ak GEMINI_API_KEY_WORK=planted-gemini-work FAKE_SHOW_SECRETS=1 -- antigravity @work)"
+  local settings="${ag}/work/home/.gemini/antigravity-cli/settings.json"
+  if grep -qx "GEMINI_API_KEY=planted-gemini-work" <<<"${out}" \
+      && [[ "$(json_get "${settings}" 'd.get("modelProvider")')" == gemini ]] && ! grep -q planted-gemini "${settings}"; then
+    pass "antigravity @work with GEMINI_API_KEY_WORK: that key, modelProvider = gemini written, the value never in the file"
+  else fail "antigravity @work with its key: ${out} / $(cat "${settings}" 2>/dev/null)"; fi
+  printf '{"modelProvider":"gemini","trustedWorkspaces":["/w"]}\n' > "${settings}"
+  out="$(ak -- antigravity @work)"
+  if [[ "$(json_get "${settings}" '"modelProvider" not in d and d.get("trustedWorkspaces") == ["/w"]')" == true ]]; then
+    pass "antigravity @work after its key is gone: modelProvider removed (agy would not start), other settings kept"
+  else fail "antigravity @work without its key: $(cat "${settings}")"; fi
+  out="$(ak GEMINI_API_KEY=planted-gemini-one FAKE_SHOW_SECRETS=1 -- antigravity @2)"
+  expect_line "antigravity @2 never borrows profile 1's GEMINI_API_KEY" "${out}" "GEMINI_API_KEY="
+  rm -rf "${root}/antigravity/new"
+  ak_split -- profiles add antigravity @new
+  expect_has "creating an antigravity profile explains the single keyring login and names its key" \
+    "$(cat "${BOX}/err")" "GEMINI_API_KEY_NEW"
 
   # --- isolation layouts ------------------------------------------------------
   mkdir -p "${BOX}/home/.ssh" "${BOX}/home/.config/gh"; printf 'x\n' > "${BOX}/home/.gitconfig"
@@ -286,4 +312,162 @@ scope_profiles() {
   else
     pass "every variable uses the AGENTKIT_ prefix"
   fi
+  profiles_claude_token
+  profiles_json
+  profiles_trust_cwd
+}
+
+# A long-lived Claude token per account (CLAUDE_CODE_OAUTH_TOKEN[_SUFFIX]):
+# each profile gets its own as CLAUDE_CODE_OAUTH_TOKEN, never @default's.
+profiles_claude_token() {
+  local out root
+  box_new profiles-token claude
+  box_posture ask
+  box_env_file CLAUDE_CODE_OAUTH_TOKEN=tok-claude-default CLAUDE_CODE_OAUTH_TOKEN_WORK=tok-claude-work
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/claude/bare"
+
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude @work)"
+  expect_eq "profiles claude token: @work gets its own token as CLAUDE_CODE_OAUTH_TOKEN" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude @bare)"
+  expect_eq "profiles claude token: a profile without its own token never inherits @default's" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" ""
+  out="$(ak FAKE_SHOW_SECRETS=1 -- claude)"
+  expect_eq "profiles claude token: @default keeps CLAUDE_CODE_OAUTH_TOKEN" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-default"
+  out="$(ak FAKE_ENV_NAMES=1 -- claude @work)"
+  expect_lacks "profiles claude token: the suffixed variable never reaches the CLI" "${out}" "ENVNAME=CLAUDE_CODE_OAUTH_TOKEN_WORK"
+
+  : > "${BOX}/fake.log"
+  ak_split FAKE_MODE=headless FAKE_LOG="${BOX}/fake.log" FAKE_SHOW_SECRETS=1 -- run claude @work --output-format json -- "hello"
+  expect_eq "profiles claude token: ak run routes the profile's token too" "$(var_of "$(cat "${BOX}/fake.log")" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+
+  out="$(ak -- env claude @bare)"
+  expect_has "profiles claude token: ak env blanks the token for a profile without one" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_lacks "profiles claude token: ak env never prints a token value" "${out}" "tok-claude"
+
+  out="$(ak FAKE_SHOW_SECRETS=1 -- profiles run claude @work -- claude)"
+  expect_eq "profiles claude token: ak profiles run gives the profile its own token" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+  out="$(ak FAKE_SHOW_SECRETS=1 -- profiles run claude @bare -- claude)"
+  expect_eq "profiles claude token: ak profiles run never hands @default's token to another profile" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" ""
+  out="$(ak -- profiles run claude @work -- claude --json x)"
+  expect_has "profiles claude token: --json after profiles run reaches the command untouched" "${out}" "ARG=--json"
+  ak_split -- env claude @work
+  expect_has "profiles claude token: ak env prints the profile's token empty" "$(cat "${BOX}/out")" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_has "profiles claude token: ... and says to launch the kind in the pane" "$(cat "${BOX}/err")" "ak claude @work"
+  expect_lacks "profiles claude token: ... never the value" "$(cat "${BOX}/out" "${BOX}/err")" "tok-claude-work"
+
+  out="$(ak -- profiles)"
+  expect_has "profiles claude token: ak profiles names the token as set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK=set"
+  expect_has "profiles claude token: ... and unset where it is missing" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_BARE=unset"
+  expect_has "profiles claude token: a profile with a token counts as logged in" "$(printf '%s\n' "${out}" | grep '@work ')" " yes "
+  out="$(ak -- doctor --json)"
+  expect_has "profiles claude token: ak doctor lists the token by name" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK"
+  expect_lacks "profiles claude token: ... never its value" "${out}" "tok-claude"
+}
+
+# `ak profiles --json` (profiles-v1): names and kinds only, portable.
+profiles_json() {
+  local doc root out
+  box_new profiles-json claude codex
+  box_env_file CLAUDE_CODE_OAUTH_TOKEN_WORK=tok-json-work ZAI_CODING_API_KEY_WORK=key-json-work
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/claude/plain" "${root}/codex/work"
+  printf '{"oauthAccount":{"x":1}}' > "${root}/claude/plain/.claude.json"
+  printf '{}' > "${root}/codex/work/auth.json"
+  doc="${BOX}/profiles.json"
+  ak_split -- profiles --json
+  cp "${BOX}/out" "${doc}"
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/profiles-v1.json" "${doc}")"
+  expect_eq "profiles json: ak profiles --json matches docs/schema/profiles-v1.json" "${out}" "valid"
+  expect_eq "profiles json: every account, @default first per CLI" \
+    "$(json_get "${doc}" '[(p["cli"], p["profile"]) for p in d["profiles"]]')" \
+    '[["claude", "@default"], ["claude", "@plain"], ["claude", "@work"], ["codex", "@default"], ["codex", "@work"]]'
+  expect_eq "profiles json: path is relative to the profiles root; null for @default" \
+    "$(json_get "${doc}" '[p["path_relative"] for p in d["profiles"]]')" '[null, "claude/plain", "claude/work", null, "codex/work"]'
+  expect_eq "profiles json: login kind by presence (token-var, file, none)" \
+    "$(json_get "${doc}" '[p["login"] for p in d["profiles"]]')" '["none", "file", "token-var", "none", "file"]'
+  expect_eq "profiles json: key names that are set, never values" \
+    "$(json_get "${doc}" '[p["key_names_set"] for p in d["profiles"] if p["profile"] == "@work" and p["cli"] == "claude"][0]')" \
+    '["CLAUDE_CODE_OAUTH_TOKEN_WORK", "ZAI_CODING_API_KEY_WORK"]'
+  expect_lacks "profiles json: no secret value" "$(cat "${doc}")" "tok-json-work"
+  expect_lacks "profiles json: ... nor a key value" "$(cat "${doc}")" "key-json-work"
+  expect_lacks "profiles json: no absolute path (the sandbox home never appears)" "$(cat "${doc}")" "${BOX}"
+  ak_split -- profiles ls --json
+  check "profiles json: ak profiles ls --json is the same" cmp -s "${BOX}/out" "${doc}"
+  ak_split -- profiles --json add claude @x; expect_eq "profiles json: --json before another subcommand exits 2" "$?" 2
+  ak_split -- profiles
+  expect_has "profiles json: the text listing is unchanged" "$(cat "${BOX}/out")" "PROFILE"
+}
+
+# --trust-cwd / AGENTKIT_TRUST_CWD=1: pre-trust the launch folder in the
+# profile's own CLI config; never without the opt-in.
+profiles_trust_cwd() {
+  local root cj ct wd out sum1 sum2 other status
+  box_new profiles-trust claude codex grok
+  box_posture ask
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/codex/work" "${root}/grok/work"
+  cj="${root}/claude/work/.claude.json"; ct="${root}/codex/work/config.toml"
+  printf '{"oauthAccount":{"x":1},"theme":"dark"}' > "${cj}"; chmod 600 "${cj}"
+  wd="$(cd "${BOX}/work" && pwd -P)"
+
+  ak -- claude @work >/dev/null
+  expect_lacks "profiles trust-cwd: without the opt-in nothing is written" "$(cat "${cj}")" "projects"
+  out="$(ak -- claude @work --trust-cwd)"
+  expect_eq "profiles trust-cwd: claude: the launch folder is trusted in the profile's .claude.json" \
+    "$("${AK_PY}" -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1]))["projects"][sys.argv[2]]["hasTrustDialogAccepted"]))' "${cj}" "${wd}")" "true"
+  expect_eq "profiles trust-cwd: claude: every other key is kept" "$(json_get "${cj}" '[d["theme"], d["oauthAccount"]["x"]]')" '["dark", 1]'
+  expect_eq "profiles trust-cwd: claude: the file mode is kept" "$(file_mode "${cj}")" "600"
+  expect_has "profiles trust-cwd: one line names the file changed" "${out}" "trusted in ${cj}"
+  sum1="$(cksum < "${cj}")"
+  out="$(ak -- claude @work --trust-cwd)"
+  sum2="$(cksum < "${cj}")"
+  expect_eq "profiles trust-cwd: idempotent (a second run changes nothing)" "${sum2}" "${sum1}"
+  expect_lacks "profiles trust-cwd: ... and says nothing" "${out}" "trusted in"
+
+  ak AGENTKIT_TRUST_CWD=1 -- codex @work >/dev/null
+  expect_has "profiles trust-cwd: codex: AGENTKIT_TRUST_CWD=1 appends the project table" "$(cat "${ct}")" "[projects.\"${wd}\"]"
+  expect_has "profiles trust-cwd: codex: ... trusted" "$(cat "${ct}")" 'trust_level = "trusted"'
+  ak AGENTKIT_TRUST_CWD=1 -- codex @work >/dev/null
+  expect_eq "profiles trust-cwd: codex: idempotent (one table)" "$(grep -c '^\[projects\.' "${ct}")" 1
+  other="${BOX}/elsewhere"; mkdir -p "${other}"; other="$(cd "${other}" && pwd -P)"
+  printf '[projects."%s"]\ntrust_level = "untrusted"\n' "${other}" >> "${ct}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by box_run
+  ( BOX_CWD="${other}"; ak -- codex @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: codex: an existing table is the user's and is left alone" "$(grep -c 'trust_level = "untrusted"' "${ct}")" 1
+
+  out="$(ak FAKE_ENV_NAMES=1 -- claude @work --trust-cwd)"
+  expect_has "profiles trust-cwd: the opt-in is inherited by a nested ak" "${out}" "ENVNAME=AGENTKIT_TRUST_CWD"
+
+  mkdir -p "${BOX}/lane"
+  ak_split FAKE_MODE=headless -- run claude @work --cwd "${BOX}/lane" --trust-cwd --output-format json -- "hello"
+  expect_eq "profiles trust-cwd: ak run trusts its --cwd" \
+    "$("${AK_PY}" -c 'import json,sys,os; print(json.load(open(sys.argv[1]))["projects"].get(os.path.realpath(sys.argv[2]), {}).get("hasTrustDialogAccepted"))' "${cj}" "${BOX}/lane")" "True"
+
+  ak -- claude --trust-cwd >/dev/null
+  expect_eq "profiles trust-cwd: @default writes the account root's .claude.json (the CLI's own home)" \
+    "$("${AK_PY}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["projects"][sys.argv[2]]["hasTrustDialogAccepted"])' "${BOX}/home/.claude.json" "${wd}")" "True"
+
+  # A symlinked config (dotfiles) is updated where it points, inside the profile;
+  # a link that leaves the profile is refused.
+  mkdir -p "${root}/claude/linked/real"
+  printf '{"theme":"light"}' > "${root}/claude/linked/real/claude.json"
+  ln -s real/claude.json "${root}/claude/linked/.claude.json"
+  ak -- claude @linked --trust-cwd >/dev/null
+  check "profiles trust-cwd: a symlinked .claude.json stays a symlink" test -L "${root}/claude/linked/.claude.json"
+  expect_has "profiles trust-cwd: ... and its target gets the entry" "$(cat "${root}/claude/linked/real/claude.json")" "hasTrustDialogAccepted"
+  mkdir -p "${root}/claude/escape"
+  printf '{}' > "${BOX}/outside.json"
+  ln -s "${BOX}/outside.json" "${root}/claude/escape/.claude.json"
+  ak_split -- claude @escape --trust-cwd; status=$?
+  expect_eq "profiles trust-cwd: a link that leaves the profile is refused (exit 3)" "${status}" 3
+  expect_eq "profiles trust-cwd: ... and the outside file is untouched" "$(cat "${BOX}/outside.json")" "{}"
+  local nl="${BOX}/bad"$'\n'"name"
+  mkdir -p "${nl}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by ak_split
+  ( BOX_CWD="${nl}"; ak_split -- codex @work --trust-cwd; echo "$?" > "${BOX}/nl-status" )
+  expect_eq "profiles trust-cwd: a folder name with a control character is refused (exit 2)" "$(cat "${BOX}/nl-status")" 2
+
+  out="$(ak -- grok @work --trust-cwd)"
+  expect_has "profiles trust-cwd: a CLI with no known trust screen gets a note" "${out}" "nothing written"
+  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/grok/work" -type f | wc -l | tr -d ' ')" 0
 }

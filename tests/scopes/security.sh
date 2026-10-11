@@ -205,6 +205,9 @@ for c in kinds.load().clis.values():
 
   security_usage
   security_setup
+  security_pick
+  security_claude_token
+  security_trust_cwd
 }
 
 # `ak usage` reads credential content and talks to vendor endpoints: the first
@@ -329,3 +332,96 @@ sys.exit(1 if setup.recipe_problems(setup.render_docker(model, opts), sys.argv[3
     grep -q "type an autonomy flag or remove the user's opt-out" "${ROOT}/skills/agentkit-setup/SKILL.md"
 }
 
+
+# `ak pick` reads what `ak usage` reads; the orchestration skill tells agents
+# to launch agents. Every promise is a failing-if-broken check.
+security_pick() {
+  local tok="sec-pick-claude-7R1" ref="sec-pick-refresh-7R2" before after mode out f
+  box_new security-pick claude
+  sec_env_file
+  mkdir -p "${BOX}/home/.claude"
+  printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' \
+    "${tok}" "${ref}" > "${BOX}/home/.claude/.credentials.json"
+  printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json"
+  usage_server_start "${BOX}/routes.json"
+  : > "${BOX}/pick-output"
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  for mode in ok 401 429 garbage; do
+    case "${mode}" in
+      ok) printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json" ;;
+      401) printf '%s' '{"/claude":{"status":401,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      429) printf '%s' '{"/claude":{"status":429,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      garbage) printf '%s' '{"/claude":{"body":"<html>nope</html>"}}' > "${BOX}/routes.json" ;;
+    esac
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="http://127.0.0.1:${USAGE_PORT}/claude" -- pick claude --json --allow-unknown
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/pick-output"
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="http://127.0.0.1:${USAGE_PORT}/claude" -- pick claude
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/pick-output"
+  done
+  expect_eq "security pick: no key, access token or refresh token in any output, in any failure mode" "$(leaked "${BOX}/pick-output")" ""
+  expect_lacks "security pick: ... the planted access token never appears" "$(cat "${BOX}/pick-output")" "${tok}"
+  expect_lacks "security pick: ... nor the refresh token" "$(cat "${BOX}/pick-output")" "${ref}"
+  expect_eq "security pick: only the usage path was requested (no refresh or token endpoint)" \
+    "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" '
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "security pick: the login and the env file are byte-identical after every run" "${before}" "${after}"
+  usage_server_stop
+
+  # AGENTKIT_KEYCHAIN=off: no Keychain call at all, secret read included (a
+  # profile with no login file would otherwise ask the Keychain on macOS).
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/kc"
+  printf '#!/bin/sh\necho called > "%s/security-called"\nexit 44\n' "${BOX}" > "${BOX}/bin/security"
+  chmod +x "${BOX}/bin/security"
+  ak_split AGENTKIT_KEYCHAIN=off -- pick claude @kc >/dev/null
+  ak_split AGENTKIT_KEYCHAIN=off -- usage claude @kc >/dev/null
+  check "security pick: AGENTKIT_KEYCHAIN=off never runs the Keychain tool" test ! -e "${BOX}/security-called"
+
+  # The skills and the orchestration doc teach the rules (static).
+  for f in "${ROOT}"/skills/*/SKILL.md "${ROOT}"/skills/*/references/*.md "${ROOT}/docs/orchestration.md"; do
+    out="$("${AK_PY}" "${ROOT}/tests/py/skill_rules.py" "${f}")"
+    expect_eq "security pick: ${f#"${ROOT}"/} teaches no opt-out override, usage loop, expanding prompt or secret in a prompt" "${out}" ""
+  done
+}
+
+# The per-profile Claude token is a credential: shown by name only, never
+# printed by any command, and never handed to another profile.
+security_claude_token() {
+  local tok="sec-claude-token-default-7S1" tokw="sec-claude-token-work-7S2" out
+  box_new security-token claude
+  box_env_file "CLAUDE_CODE_OAUTH_TOKEN=${tok}" "CLAUDE_CODE_OAUTH_TOKEN_WORK=${tokw}"
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/work" "${BOX}/home/.local/share/agentkit/profiles/claude/other"
+  : > "${BOX}/token-output"
+  for args in "profiles" "doctor" "doctor --json" "env claude @work" "env claude @other" "env claude" "usage" "usage --json" "pick claude --allow-unknown" "claude @work" "claude @other" "--help"; do
+    # shellcheck disable=SC2086  # args is a fixed word list
+    ak_split -- ${args}
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/token-output"
+  done
+  expect_lacks "security claude token: no command prints the default token" "$(cat "${BOX}/token-output")" "${tok}"
+  expect_lacks "security claude token: no command prints a profile's token" "$(cat "${BOX}/token-output")" "${tokw}"
+  out="$(ak -- claude @other)"
+  expect_has "security claude token: a profile without its own token launches with none (not @default's)" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_lacks "security claude token: ... and the fake saw no token set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN=(set)"
+  expect_eq "security claude token: the env file is untouched (mode 600)" "$(file_mode "${BOX}/home/.config/agentkit/env")" "600"
+}
+
+# --trust-cwd writes one CLI config file, only on request, only inside the
+# profile (or the CLI's own home for @default).
+security_trust_cwd() {
+  local before after out root
+  box_new security-trust claude codex
+  sec_env_file
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/codex/work"
+  before="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  ak -- claude @work >/dev/null; ak -- codex @work >/dev/null; ak -- claude >/dev/null
+  ak_split FAKE_MODE=headless -- run claude @work --output-format json -- "hello"
+  after="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  expect_eq "security trust-cwd: without the opt-in no launch writes a trust entry" "${before}" "${after}"
+  out="$(ak -- claude @work --trust-cwd; ak -- codex @work --trust-cwd)"
+  expect_eq "security trust-cwd: with it, exactly the two profile files change" \
+    "$(cd "${BOX}" && find . -newer "${BOX}/home/.config/agentkit/env" -type f -not -path './out' -not -path './err' | sort | tr '\n' ' ')" \
+    "./home/.local/share/agentkit/profiles/claude/work/.claude.json ./home/.local/share/agentkit/profiles/codex/work/config.toml "
+  expect_eq "security trust-cwd: no key in any output" "$(printf '%s' "${out}" > "${BOX}/trust-out"; leaked "${BOX}/trust-out")" ""
+  expect_eq "security trust-cwd: the files it creates are mode 600" \
+    "$(file_mode "${root}/claude/work/.claude.json") $(file_mode "${root}/codex/work/config.toml")" "600 600"
+}

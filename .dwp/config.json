@@ -8,6 +8,10 @@
     "ai-diff-reviewer": {
       "enabled": true,
       "version": "v3.3.0"
+    },
+    "herdr": {
+      "enabled": true,
+      "version": "v0.1.0"
     }
   },
   "benchmark": {

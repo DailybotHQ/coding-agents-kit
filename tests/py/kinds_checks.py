@@ -77,6 +77,15 @@ for cli, (exe, home_env, variants) in CONTRACT.items():
               str(c.get("home_env")))
 check("cursor isolates with its own HOME", model.clis["cursor"]["isolation"] == "cursor-home")
 check("opencode isolates with the XDG directories", model.clis["opencode"]["isolation"] == "xdg")
+# Antigravity is outside the Herdr contract (Herdr has no agent kind for it):
+# its own HOME per profile, its Google login or the profile's Gemini key.
+expected_kinds.add("antigravity")
+ag = model.kind("antigravity")
+check("kind antigravity runs agy", ag.executable == "agy" and ag.cli_name == "antigravity", ag.executable)
+check("antigravity isolates profiles with a HOME of their own (.gemini)",
+      model.clis["antigravity"]["isolation"] == "home" and model.clis["antigravity"]["home_dir"] == ".gemini")
+check("antigravity's key is GEMINI_API_KEY and optional (its Google login otherwise)",
+      ag.key_var == "GEMINI_API_KEY" and ag.key_optional)
 check("the model has exactly the contract's kinds", set(model.kind_names()) == expected_kinds,
       str(sorted(set(model.kind_names()) ^ expected_kinds)))
 
@@ -266,7 +275,7 @@ home = os.path.join(SCRATCH, "home")
 os.makedirs(home)
 env = {
     "ZAI_CODING_API_KEY": PLANTED, "XAI_API_KEY": PLANTED, "AZURE_OPENAI_API_KEY": PLANTED,
-    "AZURE_OPENAI_RESOURCE": "res", "AZURE_OPENAI_MODEL_DAILY": "my-deployment",
+    "AZURE_OPENAI_RESOURCE": "res", "AZURE_OPENAI_MODEL_DAILY": "my-deployment", "GEMINI_API_KEY": PLANTED,
 }
 written = []
 for name in model.kind_names():
@@ -281,7 +290,7 @@ for dirpath, _dirs, files in os.walk(home):
         with open(os.path.join(dirpath, f), "rb") as h:
             if PLANTED.encode() in h.read():
                 leaks.append(f)
-check("all 9 provider writers run against a sandbox home", len(written) == 9 and all(os.path.exists(x) for x in written),
+check("all 10 provider writers run against a sandbox home", len(written) == 10 and all(os.path.exists(x) for x in written),
       str(written))
 check("no writer persisted the planted key value", not leaks, str(leaks))
 check("writers target each CLI's own default home",
@@ -309,6 +318,11 @@ for prov in ("azure", "xai"):
     check("kinds usage: provider %s is an unsupported table with a reason" % prov,
           bool(model.provider_usage(prov).get("unsupported")))
 check("kinds usage: a harness CLI without a table has none", model.cli_usage("opencode") is None)
+check("kinds usage: every unsupported table carries a short table note within the limit",
+      all(isinstance(t.get("short"), str) and 0 < len(t["short"]) <= kinds.USAGE_SHORT_MAX
+          for t in [model.cli_usage("cursor"), model.cli_usage("grok"), model.provider_usage("azure"), model.provider_usage("xai")]))
+check("kinds usage: a short note longer than the limit is a problem",
+      any("short needs" in p for p in kinds.usage_problems({"unsupported": "why", "short": "x" * 40})))
 
 ROOTS = model.clis["claude"]["roots"]
 GOOD = copy.deepcopy(model.cli_usage("claude"))
@@ -324,6 +338,8 @@ def broken(mutate, provider=False):
 
 CASES = [
     ("unknown key", lambda t: t.update(bogus=1), "unknown key bogus"),
+    ("short without unsupported", lambda t: t.update(short="x"), "short only goes with unsupported"),
+    ("keychain_profile not true", lambda t: t.update(keychain_profile="yes"), "keychain_profile is true or absent"),
     ("non-https url", lambda t: t.update(url="http://api.example.com/x"), "plain https:// URL"),
     ("url with a template", lambda t: t.update(url="https://{host}/x"), "plain https:// URL"),
     ("unknown adapter", lambda t: t.update(adapter="nope"), "adapter must be one of"),

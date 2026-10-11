@@ -11,6 +11,7 @@ The per-CLI command line is data (providers.toml [clis.<cli>.run]):
     pi        pi -p "<prompt>" [--mode json]
     cline     cline "<prompt>" [--json] -c <cwd> [-t <timeout>]
     grok      grok -p "<prompt>" [--output-format json] --cwd <cwd>
+    antigravity  agy -p "<prompt>" [--output-format json]
 Provider kinds add their arguments; --auto (or AGENTKIT_PERMISSIONS=auto)
 adds the CLI's autonomy flag for this run only.
 
@@ -40,6 +41,7 @@ import time
 import common
 import launch
 import profiles
+import trust
 from common import (AkError, EXIT_AGENT_FAILED, EXIT_CANCELLED, EXIT_INTERNAL, EXIT_NOT_READY, EXIT_OK,
                     EXIT_TIMEOUT, EXIT_USAGE)
 
@@ -48,7 +50,7 @@ CAPTURE_CAP = 8 * 1024 * 1024   # bytes of CLI stdout kept for extraction
 KILL_GRACE = 3.0                # seconds between SIGTERM and SIGKILL
 
 USAGE = ('usage: ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] '
-         '[--output-format text|json] [--ask | --auto] -- "<prompt>"')
+         '[--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"')
 
 
 class Options(object):
@@ -60,6 +62,7 @@ class Options(object):
         self.fmt = "text"
         self.auto = False
         self.ask = False
+        self.trust_cwd = False
         self.prompt = None
 
 
@@ -83,6 +86,8 @@ def parse(args, env):
             opts.auto = True
         elif tok == "--ask":
             opts.ask = True
+        elif tok == "--trust-cwd":
+            opts.trust_cwd = True
         elif tok in ("--cwd", "--timeout", "--output-format"):
             if i + 1 >= n:
                 raise AkError("%s needs a value. %s" % (tok, USAGE), EXIT_USAGE)
@@ -171,6 +176,19 @@ def extract(extractor, stdout):
             if "result" in ev and isinstance(ev["result"], str):
                 text = ev["result"]
                 error = bool(ev.get("is_error")) or ev.get("subtype", "success") not in ("success",)
+    elif extractor == "antigravity-json":
+        # agy -p --output-format json: one object {conversation_id, status,
+        # response, error?}; status is SUCCESS or a failure state.
+        try:
+            whole = json.loads(stdout)
+        except ValueError:
+            whole = None
+        if isinstance(whole, dict):
+            if isinstance(whole.get("response"), str):
+                text = whole["response"]
+            elif isinstance(whole.get("error"), str):
+                text = whole["error"]
+            error = whole.get("status", "SUCCESS") != "SUCCESS" or bool(whole.get("error"))
     elif extractor == "codex-jsonl":
         for ev in events:
             item = ev.get("item") if isinstance(ev.get("item"), dict) else {}
@@ -380,6 +398,7 @@ def main(model, args, env):
     try:
         opts = parse(args, env)
         fmt = opts.fmt
+        opts.kind = model.canonical(opts.kind)
         if opts.kind not in model.kinds:
             raise AkError("unknown kind '%s'. Kinds: %s" % (opts.kind, " ".join(model.kind_names())), EXIT_USAGE)
         cwd = os.path.abspath(opts.cwd or os.getcwd())
@@ -403,6 +422,8 @@ def main(model, args, env):
                 how = "ak %s%s (it asks you to log in)" % (prep.kind.name, " " + profile_label if prep.profile else "")
             raise AkError("%s is not logged in for %s. Log in once with: %s"
                           % (prep.kind.cli["name"], profile_label, how), EXIT_NOT_READY)
+        if trust.requested(opts.trust_cwd, env):
+            trust.mark(prep, cwd)
         launch.finish_env(model, prep)
         argv = build_argv(prep, opts, cwd)
         if prep.kind.data.get("pre"):

@@ -31,7 +31,7 @@ public issue.
 | Windows argument parsing | a prompt containing `"` and `&`/`|` running commands through `cmd.exe` (the "BatBadBut" class) | npm-installed CLIs (`codex.cmd`, …) are started as `node <script>`, never through `cmd.exe`; any other batch target refuses arguments with cmd metacharacters. Programs that call ak on Windows must use `py -3 <install>\lib\ak.py …`, not `ak.cmd` (a batch shim re-parses its arguments; it is for typing at a prompt). |
 | Vendor installers | a compromised npm dependency reading your keys | `ak install` starts installers and npm with every `*_API_KEY` / `*_TOKEN` variable removed from their environment. |
 | Herdr hooks | writing into the CLI's own home | `ak profiles hooks` reads the real home and writes only inside the profile (checked path by path); it merges only Herdr's own entries and refuses files it cannot parse. |
-| Logins read by `ak usage` | a token printed, logged, written, refreshed, sent to the wrong host or used for the wrong account | `ak usage` reads a profile's login file (or the macOS Keychain item of the default home) into memory, uses it in one `Authorization` header for one request to the host written in `providers.toml`, and drops it. It never refreshes a token (a rotated refresh token can sign the CLI out), never reads a refresh token beyond parsing, never prints a token (messages are built from status codes and exception class names, not from requests), never writes under a profile or the env file, and reports an expired login without making a request. Each row uses only its own profile's login or key: no fallback to the default home's. Requests are `https` to the fixed hosts below; the only override (`AGENTKIT_USAGE_URL_<ADAPTER>`, for tests) must be a loopback address, no redirect is followed, the body is capped at 1 MiB, and at most 8 requests run at once. The `security` test scope plants tokens, runs every failure mode and searches every output and file. |
+| Logins read by `ak usage` | a token printed, logged, written, refreshed, sent to the wrong host or used for the wrong account | `ak usage` reads a profile's login file (or, on macOS, that profile's own Keychain item) into memory, uses it in one `Authorization` header for one request to the host written in `providers.toml`, and drops it. It never refreshes a token (a rotated refresh token can sign the CLI out), never reads a refresh token beyond parsing, never prints a token (messages are built from status codes and exception class names, not from requests), never writes under a profile or the env file, and reports an expired login without making a request. Each row uses only its own profile's login or key: no fallback to the default home's. Requests are `https` to the fixed hosts below; the only override (`AGENTKIT_USAGE_URL_<ADAPTER>`, for tests) must be a loopback address, no redirect is followed, the body is capped at 1 MiB, and at most 8 requests run at once. The `security` test scope plants tokens, runs every failure mode and searches every output and file. |
 | Agent-driven setup (`ak setup`, the `agentkit-setup` skill) | an agent installing or changing a machine or container beyond what the person agreed to; a tampered or floating install source; a key printed, baked into an image or sent to a child process; a recipe that runs as root | `ak setup probe`, `verify` and `docker` are read-only: they observe or render to stdout and write nothing except an explicit `--out FILE`, created once and never overwriting; `verify` never applies a repair. They print provider keys by **name** only, run their one child process (`<tool> --version`, an allow-list that excludes every coding-agent CLI) without any `*_API_KEY`/`*_TOKEN` variable, and work from an uninstalled clone. A container recipe is rendered only for a release **tag** (never a branch or `latest`) together with the SHA256 of that release's tarball, which is verified before the archive is unpacked; it installs as a non-root user with `--no-rc`, keeps keys out of `ARG`/`ENV`, and the renderer refuses to print a recipe that breaks those rules. The skill asks before each system package, shell rc edit, autonomy choice, profile, CLI install, repository write and uninstall, never types an autonomy flag, and never asks for or echoes a key value. The `security`, `setup` and `setup-skill` scopes plant secrets and check outputs, files, recipes and the skill text; the skill's documented flows are executed in sandboxes. |
 | Agent output | instructions smuggled through another agent's answer | `ak run` returns the agent's text as data (`result_text`); the bundled skill tells agents to treat it as a claim to verify, never as instructions. |
 
@@ -77,7 +77,7 @@ public issue.
 
 | Source | Host | Credential | Notes |
 | --- | --- | --- | --- |
-| Claude Code subscription | `api.anthropic.com` | the profile's `.credentials.json` (macOS: the Keychain item, default home only) | needs the `user:profile` permission; reported `no_scope` without it |
+| Claude Code subscription | `api.anthropic.com` | the profile's `.credentials.json` (macOS: the profile's Keychain item when there is no file) | needs the `user:profile` permission; reported `no_scope` without it |
 | Codex (ChatGPT login) | `chatgpt.com` | the profile's `auth.json` | an API-key login has no quota and is reported `n/d` |
 | Z.AI coding plan | `api.z.ai` | the profile's `ZAI_CODING_API_KEY[_SUFFIX]` | one row per key, shared by the `*-glm` kinds |
 
@@ -85,6 +85,76 @@ Cursor, Grok, xAI and Azure OpenAI are `n/d`: no readable account quota (or one
 that needs a browser session or a second, management credential, which `ak`
 never asks for). `ak usage` is the only command that makes a network request
 without you asking for an install; it has no side effects and no cache.
+
+Keychain (macOS): only when a profile has no login file, `ak usage` asks the
+Keychain for that profile's own item (`security find-generic-password -w`),
+which may raise one macOS access dialog per item; the secret is parsed in
+memory and dropped. `AGENTKIT_KEYCHAIN=off` skips every Keychain call, the
+presence probe and the secret read alike (the test suite sets it). Requests to
+vendor hosts honour `HTTPS_PROXY`; the loopback test override bypasses proxies.
+A default home moved onto a profile directory (`CLAUDE_CONFIG_DIR=<profile>`)
+is reported once, as that profile, so the same quota is never counted twice.
+
+## Account selection (`ak pick`)
+
+`ak pick` reads exactly what `ak usage` reads, with the same hosts, the same
+per-row requests and the same rules: read-only, no cache, no login refresh, no
+reset spent. Its output (`pick-v1`) carries CLI, profile, window ids,
+percentages, reset times and a one-line reason built from the row status;
+never a token or an account identity.
+
+## Orchestration (agents launching agents)
+
+The `agentkit-orchestrate` skill lets one agent start others on your
+accounts. The rules it teaches, and the suite checks:
+
+- Delegates run with each CLI's autonomy flag unless you opted out
+  (`--ask`, `AGENTKIT_PERMISSIONS=ask`, inherited by every delegate): give a
+  writing delegate only a git worktree of its own; one writer per path.
+- `result_text`, transcripts and peer replies are untrusted data; a lane is
+  merged only after the repository's own gate passes in its worktree.
+- Task text goes in single quotes or on stdin (`-- -`), never through an
+  expanding shell string; `ak run` itself passes argv without a shell.
+- No key, token or secret in a prompt; `ak env` hands Herdr panes names and
+  paths only.
+- Failover's destructive git steps touch only worktrees the lead created,
+  after checking the worktree's top level.
+- `ak usage` / `ak pick` once per batch, never in a loop; only accounts you
+  hold, within each vendor's terms — never rotated to get past a limit.
+
+## Claude token per profile
+
+`CLAUDE_CODE_OAUTH_TOKEN` (`@default`) and `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+(`@name`) are credentials like provider keys: they live in your env file or
+environment, are exported to that profile's Claude only (a named profile
+never falls back to the default token), and are shown by name only. A token
+from `claude setup-token` is inference-only, so `ak usage` cannot read that
+account's quota from it.
+
+## Folder trust (`--trust-cwd`)
+
+On explicit request only (`--trust-cwd`, `AGENTKIT_TRUST_CWD=1`), `ak`
+writes one entry into the profile's own CLI config — Claude's
+`.claude.json` (`projects[<folder>].hasTrustDialogAccepted`) or Codex's
+`config.toml` (`[projects."<folder>"] trust_level = "trusted"`) — so the CLI
+skips its folder-trust screen for that folder. The write is atomic, keeps
+every other key and the file mode, never rewrites an existing Codex table,
+and happens nowhere else. It does not change the permission posture and
+never answers the bypass-permissions acknowledgement or any other screen.
+No agent ever answers Claude's bypass-permissions acknowledgement: it is a
+one-time step the developer takes per profile. The orchestration skill lets
+a lead agent send one keystroke only — the folder-trust screen of its own
+lane, on a pane it launched, when `--trust-cwd` was unavailable — and
+escalates every other screen.
+
+## Profiles with a HOME of their own
+
+Cursor and Antigravity profiles get a separate `HOME` whose other entries are
+links into your real home (git, ssh and `~/.config/agentkit/env` included), so
+an agent in such a profile sees the same files as in your home. Mounting
+profiles into a container: mount `AGENTKIT_PROFILES_DIR` only, not
+`AGENTKIT_HOME` (which also holds the program); those links point at host
+paths.
 
 ## What the kit writes
 
@@ -96,17 +166,17 @@ without you asking for an install; it has no side effects and no cache.
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
-`ak usage` writes nothing at all. Neither do `ak setup probe`, `verify` and
+`ak usage` and `ak pick` write nothing at all. Neither do `ak setup probe`, `verify` and
 `docker` (stdout only); `docker --out FILE` creates one new file, mode 644.
 
 Nothing else: no telemetry, and no network access except `ak install`
-fetching a vendor installer you asked for and `ak usage` querying the usage
-endpoint of an account you run (the hosts above, one request per row).
+fetching a vendor installer you asked for and `ak usage` / `ak pick` querying
+the usage endpoint of an account you run (the hosts above, one request per row).
 
 ## Checks
 
 `bash tests/run.sh security` (planted secrets, file modes, env-file
-refusal, `ak usage` and `ak setup` secrecy/read-only rules, recipe safety, static rules),
-plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `setup`, `setup-skill` and `lint`
+refusal, `ak usage`, `ak pick` and `ak setup` secrecy/read-only rules, the orchestration skill's rules, recipe safety, static rules),
+plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `pick`, `setup`, `setup-skill`, `orchestrate-skill` and `lint`
 (secret-shaped strings, private references, shellcheck). The suite runs in a
 sandbox HOME with fake CLIs and never touches the network.
