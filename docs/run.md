@@ -7,7 +7,9 @@ ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|j
 Runs one prompt non-interactively in `--cwd` (default: the current
 directory) and exits. It is the headless half of interface 1: scripts, CI
 and orchestrators (the DeepWorkPlan `agentkit` addon delegates through it)
-can start any agent the same way and read one result.
+can start any agent the same way and read one result. Running several
+delegates over several accounts (worktrees, `ak pick`, failover on these
+exit codes) is [Orchestration](orchestration.md).
 
 - Words after `--` are joined with spaces into one prompt; `-- -` reads the
   prompt from stdin.

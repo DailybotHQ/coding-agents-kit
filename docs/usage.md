@@ -58,6 +58,64 @@ readable quota fold into one closing `n/d` line grouped by cause. Nothing
 wraps; a note too long for the width ends in `…`. `-v` lists every row with
 its full note instead. A pipe or a file gets the whole text (no width).
 
+## Reading the table
+
+A real table with several Claude accounts on two plans, a Codex account with
+resets, a Z.AI coding plan and two connected accounts (profile names are
+generic):
+
+```text
+  PROFILE   PLAN  WINDOW            USED             RESET
+claude · Claude Code
+  @default  max   5-hour            █░░░░░░░░░  10%  in 1h 38m
+                  7-day all models  ████████░░  80%  in 1d 22h
+                  7-day Fable only  ░░░░░░░░░░   0%  in 1d 22h
+  @tribu    team  5-hour            ░░░░░░░░░░   0%  in 4h 8m
+                  7-day all models  ██░░░░░░░░  24%  in 3d 3h
+                  7-day Fable only  █░░░░░░░░░  11%  in 3d 3h
+  @work1    team  5-hour            █░░░░░░░░░  10%  in 38m
+                  7-day Fable only  ░░░░░░░░░░   0%  in 1h 28m
+codex   resets: use one with /usage in codex
+  @default  plus  5-hour            ░░░░░░░░░░   0%  in 4h 59m
+                  7-day             ░░░░░░░░░░   0%  in 6d 23h
+                  resets            3 available
+zai · Z.AI GLM Coding Plan
+  @default  pro   5-hour            ████░░░░░░  36%  in 1h 51m  4.36K/12K
+                  7-day             ██████░░░░  60%  in 5d 3h   36.31K/60K
+connected · no quota to read
+  cursor       @default  logged in        web session only
+  xai          @default  XAI_API_KEY set  needs a management key
+```
+
+| Column | What it says |
+| --- | --- |
+| PROFILE | the account: `@default` is the CLI's own home, `@name` a profile ([Accounts](accounts.md)). Shown once; the lines under it belong to the same account |
+| PLAN | the vendor's own plan label (`max`, `team`, `plus`, `pro`); `-` when not reported |
+| WINDOW | one of the vendor's own limits: `5-hour` (the short rolling window), `7-day all models` (the weekly cap), `7-day Fable only` (a weekly cap that counts one model) |
+| USED | percent of that window already used, as a bar and a number; the room left is 100 minus it |
+| RESET | when that window starts over; after it, Z.AI shows the credits used out of the limit |
+
+What the example says:
+
+- **Plans differ in their windows.** `@default` (Max) has a global weekly
+  cap and is at 80% of it: room for a short task, not a long one. `@tribu`
+  and `@work1` are on Team. `@work1` has no global weekly cap at all: only
+  the 5-hour window and a model-only weekly window, so work that does not
+  use that model is bounded by the 5-hour window alone.
+- **Model-only windows** (`7-day Fable only`) limit work on that model only.
+- **Resets** (`codex … resets  3 available`) are not a window: they are the
+  limit resets the account holds. Only you spend one, with `/usage` inside
+  Codex; the kit never does, and the title line says how.
+- **Credits** (`zai`): Z.AI reports absolute credits; `4.36K/12K` is used
+  out of the limit. Its 5-hour window has 64% left, its week 40%: the week
+  binds.
+- **The `connected` block** lists accounts with no quota to read that work
+  anyway: a login found (`logged in`) or a provider key set
+  (`XAI_API_KEY set`). Their headroom is unknown.
+- **The `n/d` line** (absent here) folds the accounts with no readable quota
+  and no connection, grouped by cause; `ak usage -v` shows each with its
+  reason.
+
 ## What it shows
 
 One **row per credential identity**, not per kind: `claude-glm @2` and
@@ -132,6 +190,108 @@ typing at a prompt).
   "source": "anthropic-oauth", "error": null, "reason": null,
   "windows": [{"id": "5h", "label": "5-hour", "used_pct": 42, "resets_at": "2026-10-10T17:00:00Z", "window_seconds": 18000}]}]}
 ```
+
+## Choosing an account
+
+```
+ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
+        [--count N] [--exclude @profile]... [--allow-unknown] [--json] [--timeout SECONDS]
+```
+
+`ak pick` reads the same rows as `ak usage` — same enumeration, filter and
+parallel requests, equally **read-only** (no login is refreshed, no reset is
+spent, nothing is written) — and returns the account with the most usable
+room for a kind. `<kind-or-cli>` resolves as in `ak usage` (`claude-glm`
+selects the Z.AI rows); `@profile` turns it into a check of one account.
+
+The policy, in plain words:
+
+1. **Only `ok` rows are eligible.** `expired`, `no_login`, `no_scope`,
+   `rate_limited` and `error` rows are left out with that status as the
+   reason. `unsupported` rows are left out (`no readable quota`) unless
+   `--allow-unknown`, which admits the connected ones after every measured
+   account.
+2. **Which windows count.** Every window without a model scope (`5h`, `7d`,
+   the provider's windows). A model-only window (`7d-<model>`) counts only
+   when `--model` names that model. So without `--model`, a Team account
+   with no global weekly cap is bounded by its 5-hour window.
+3. **A window whose reset has passed** counts as unused.
+4. **A reserve on long windows.** Windows of 7 days or more keep
+   `--reserve` percent unused (default 10): a long window's free room is
+   `100 − reserve − used`. The 5-hour window keeps no reserve. A window with
+   unknown usage makes the headroom unknown.
+5. **Headroom** is the smallest free room over the windows that count; that
+   window is the **binding** one. `--need WIN:PCT` also requires `PCT`
+   percent free in the window whose id is exactly `WIN` (`5h`, `7d`,
+   `7d-fable`); an account without that window does not qualify.
+6. **Ranking.** Most headroom first; on a tie, the account whose long window
+   resets first (room that resets soon is lost if unused); then the order of
+   `providers.toml` and the profiles (`@default` first). Resets available
+   never count as headroom.
+
+| Option | |
+| --- | --- |
+| `--model NAME` | model-scoped weekly windows of that model also count (`fable`, `opus`, …) |
+| `--need WIN:PCT` | the window `WIN` must keep `PCT`% free (1-100); repeatable |
+| `--reserve PCT` | percent kept unused on windows of 7 days or more (0-50, default 10) |
+| `--count N` | up to N distinct accounts, best first (1-16, default 1); a warning when fewer qualify |
+| `--exclude @name` | leave an account out (repeatable), e.g. one already busy |
+| `--allow-unknown` | connected accounts with no readable quota may be chosen, last |
+| `--json` | one object, schema `pick-v1` ([`schema/pick-v1.json`](schema/pick-v1.json)) |
+| `--timeout SECONDS` | per request, as `ak usage` |
+
+The text output is one line per chosen account:
+
+```text
+claude @work2  headroom 100%  binding 5h  resets in 3h 48m
+```
+
+| Exit | Meaning |
+| --- | --- |
+| 0 | at least one account chosen |
+| 1 | no account qualifies; stderr gives the reasons and the soonest reset among the measured accounts |
+| 2 | usage error |
+| 3 | nothing matches the filter (no profile or login) |
+| ≥ 64 | kit internal error |
+
+### Worked examples
+
+The example table above, plus two more Claude Team accounts, `@work2` and
+`@work3` (5-hour 0%, 7-day Fable only 0%, resetting in 18h 28m and 2d 13h),
+and four Codex accounts, all at 0%, whose 7-day windows reset in 6d 20h
+(`@work1`), 6d 23h (`@default`, `@work2`) and 7d 0h (`@work3`). Reserve 10%.
+
+| # | Command | Result | Why |
+| --- | --- | --- | --- |
+| E1 | `ak pick claude` | `@work2`, headroom 100 | default 10 (90−80), tribu 66 (90−24), work1 90, work2 and work3 100 (no weekly cap counts); tie → profile order |
+| E2 | `ak pick claude --model fable` | `@work1` | the Fable window now counts, with its reserve: work1, work2, work3 all 90; tie → work1's Fable window resets first |
+| E3 | `ak pick claude --count 3` | `@work2`, `@work3`, `@work1` | 100, 100, 90; tribu (66) and default (10) rank after |
+| E4 | `ak pick claude --need 7d:30` | `@tribu` | only default and tribu report `7d`: default has 10 free, tribu 66 |
+| E5 | `ak pick claude-glm` | `zai @default`, headroom 30 | 5-hour 64 free, 7-day 90−60 = 30; binding `7d` |
+| E6 | `ak pick codex` | `@work1` | all four at 90 (the 7-day reserve binds); tie → earliest 7-day reset; resets never count |
+| E7 | `ak pick cursor` | exit 1, `no readable quota` | connected only; with `--allow-unknown` → `@default`, headroom unknown |
+| E8 | `ak pick claude @default --need 5h:95` | exit 1 | 5-hour free 90 < 95; stderr names the soonest reset |
+
+### `pick-v1`
+
+`ak pick --json` is a versioned, additive surface like `usage-v1`: check
+`schema` before reading anything else. `chosen[]` holds the accounts picked;
+`candidates[]` every evaluated row, eligible ones first, each excluded one
+with its `excluded_reason`.
+
+```json
+{"schema": "pick-v1", "interface": 1, "generated_at": "2026-10-11T12:00:00Z",
+ "target": "claude-glm", "model": null, "reserve_pct": 10, "need": [], "count": 1,
+ "chosen": [{"cli": "zai", "profile": "@default", "kinds": ["claude-glm", "codex-glm"], "status": "ok",
+   "eligible": true, "headroom_pct": 30, "binding_window": "7d",
+   "resets_at": "2026-10-16T15:00:00Z", "excluded_reason": null}],
+ "candidates": ["… the same object, then every other evaluated row …"],
+ "soonest_reset": "2026-10-16T15:00:00Z"}
+```
+
+Run it once before a batch of work, never in a loop: each call asks every
+vendor, as `ak usage` does. Using several accounts at once:
+[Orchestration](orchestration.md).
 
 ## Windows, macOS and Linux
 

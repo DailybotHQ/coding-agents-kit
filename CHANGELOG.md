@@ -14,6 +14,28 @@ permission posture changes.
 
 ### Added
 
+- **`ak pick`**: the account(s) with the most usable headroom for a kind,
+  from the same rows as `ak usage` and equally read-only (no login refreshed,
+  no reset spent). One documented policy: `ok` rows only, model-scoped
+  windows only with `--model`, a reserve on windows of 7 days or more
+  (`--reserve`, default 10), `--need WIN:PCT`, `--count N` for parallel
+  work, `--exclude`, `--allow-unknown`. Exit 0 chosen, 1 none qualifies
+  (the soonest reset is named), 2 usage, 3 nothing matches. `--json` is the
+  new additive schema `pick-v1` (`docs/schema/pick-v1.json`); interface 1
+  and `usage-v1` are unchanged.
+- **`agentkit` skill references**: `references/accounts.md` (the account
+  model, lifecycle, keys by name, platforms) and `references/usage.md`
+  (reading the table, an action per status, plan-specific windows,
+  `ak pick`), loaded only when the task needs them.
+- **`agentkit-orchestrate` skill** (`ak --skill orchestrate`): several agents
+  over several accounts and vendors — inventory once per batch,
+  `ak pick --count`, one worktree per writing delegate, `ak run`, failover,
+  verification and a spend report.
+- **Docs**: [Accounts](docs/accounts.md) (the account model end to end),
+  [Orchestration](docs/orchestration.md) (the loop, patterns, failover,
+  Herdr lanes, Deep Work Plans, safety), and "Reading the table" and
+  "Choosing an account" in [`ak usage`](docs/usage.md).
+
 - **Antigravity CLI (`ak antigravity`)**: Google's `agy` as the eighth kind.
   Autonomy is `--dangerously-skip-permissions`; `-c` is `--continue`,
   `-r <id>` is `--conversation <id>` (agy has no picker, so `-r` alone is a

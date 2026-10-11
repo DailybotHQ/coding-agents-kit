@@ -5,6 +5,11 @@ a separate account: its own login, sessions, history and settings. Run
 `ak claude` with your work account in one terminal and `ak claude @2` with a
 second account in another, at the same time.
 
+This page is the command reference. The account model end to end (what a
+profile isolates per CLI, the lifecycle, keys, macOS and Windows,
+troubleshooting) is [Accounts](accounts.md); which account has room is
+[`ak usage` and `ak pick`](usage.md#choosing-an-account).
+
 ```bash
 ak claude              # the CLI's own home, exactly as `claude`
 ak claude @2           # a second Claude account
@@ -201,7 +206,8 @@ its screen). `ak doctor` shows `herdr_hooks` per profile.
 ## Limits
 
 - Whether running several subscriptions of one provider at once is allowed
-  is the provider's terms, and yours to check.
+  is the provider's terms, and yours to check. Spreading work over your
+  accounts: [Orchestration](orchestration.md).
 - A profile directory holds that account's tokens (Codex, Cursor, OpenCode,
   Pi, Cline and Grok keep them in files). It is mode 700; do not sync it to a
   shared drive.

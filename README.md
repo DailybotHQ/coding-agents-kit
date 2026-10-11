@@ -30,7 +30,11 @@ grammar over all of them:
   name only, consent before every change).
 - **Quota of every account** — `ak usage` lists the 5-hour and weekly windows
   of each Claude, Codex and Z.AI account in one table (`--json` for tools),
-  read-only, with `n/d` rows where no quota can be read.
+  read-only, with `n/d` rows where no quota can be read; `ak pick` names the
+  account with the most room for a kind.
+- **Several agents, several accounts** — `ak pick --count N` plus `ak run`
+  in one git worktree per delegate; the `agentkit-orchestrate` skill teaches
+  an agent the loop.
 - **Keys stay in one file** — provider keys never land in a config file.
 
 Requirements: bash (macOS, Linux, WSL) or PowerShell (Windows), and
@@ -65,6 +69,30 @@ ak usage                   # quota and usage of every account, one row each
 ak run codex --cwd ~/src/api --timeout 900 --output-format json -- "fix the failing test"
 ```
 
+### Several accounts
+
+```bash
+ak profiles add claude @work      # a second Claude account
+ak claude @work                   # log in AS the profile (the first launch asks)
+ak usage                          # every account's windows, read-only
+ak pick claude                    # the Claude account with the most room
+ak run claude @work --cwd ~/src/api --output-format json -- "fix the failing test"
+```
+
+A named profile reads its own keys (`ZAI_CODING_API_KEY_WORK` for
+`claude-glm @work`) and never falls back to the default key. See
+[Accounts](docs/accounts.md) and [Orchestration](docs/orchestration.md).
+
+### Skills for agents
+
+| Skill | For | Install |
+| --- | --- | --- |
+| `agentkit` | launching kinds, accounts, `ak run`, `ak usage`, `ak pick` (`ak --skill`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit` |
+| `agentkit-setup` | installing, configuring and repairing the kit (`ak --skill setup`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-setup` |
+| `agentkit-orchestrate` | several agents over several accounts and vendors (`ak --skill orchestrate`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-orchestrate` |
+
+### The grammar
+
 The grammar is the same for every kind:
 
 ```
@@ -86,23 +114,25 @@ agent itself.
 ## Documentation
 
 - [Kinds and providers](docs/kinds.md) — the data model, provider keys, adding a kind
+- [Accounts](docs/accounts.md) — the account model: per-CLI table, lifecycle, keys, macOS and Windows, troubleshooting
 - [Profiles](docs/profiles.md) — accounts per CLI, keys per profile, Herdr hooks
 - [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` and `providers` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
 - [Set up on any machine or container](docs/setup.md) — `ak setup`, the `agentkit-setup` skill, container recipes
-- [`ak usage`](docs/usage.md) — quota per account, `--json` ([schema](docs/schema/usage-v1.json))
+- [`ak usage` and `ak pick`](docs/usage.md) — quota per account, reading the table, choosing an account ([usage-v1](docs/schema/usage-v1.json), [pick-v1](docs/schema/pick-v1.json))
+- [Orchestration](docs/orchestration.md) — several agents over several accounts: worktrees, failover, Herdr, Deep Work Plans
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)
 - [Threat model](docs/SECURITY.md) · [Testing](docs/TESTING_GUIDE.md) · [Changelog](CHANGELOG.md)
-- For agents: `ak --skill` prints the bundled skill; install it with
-  `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit`.
+- For agents: `ak --skill` prints the bundled skill (`ak --skill setup`, `ak --skill orchestrate` the others);
+  install lines in [Skills for agents](#skills-for-agents).
 
 ## Security
 
 Autonomy by default with an always-effective opt-out (`--ask`,
 `AGENTKIT_PERMISSIONS=ask`), keys only in `~/.config/agentkit/env` (mode 600),
 no network except `ak install` fetching a pinned vendor installer you asked
-for and `ak usage` querying the usage endpoint of an account you run (one
+for and `ak usage` / `ak pick` querying the usage endpoint of an account you run (one
 request per account, read-only). Report vulnerabilities privately — see [SECURITY.md](SECURITY.md);
 the threat model is [docs/SECURITY.md](docs/SECURITY.md).
 
