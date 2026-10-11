@@ -283,8 +283,10 @@ def _installed(model, env, cli_name):
 def enumerate_rows(model, env):
     """Every row the kit can see, in the documented order, before filtering."""
     listing = {}
-    for cli_name, name, _directory in profiles.listing(model, env):
+    profile_dirs = {}
+    for cli_name, name, directory in profiles.listing(model, env):
         listing.setdefault(cli_name, []).append(name)
+        profile_dirs.setdefault(cli_name, set()).add(os.path.realpath(directory))
     rows = []
     covered = set()      # (cli, profile label) already reported through a provider key
     # provider-key rows (one per key variable that is set)
@@ -313,7 +315,12 @@ def enumerate_rows(model, env):
     for cli_name in _cli_order(model):
         table = model.cli_usage(cli_name)
         installed = _installed(model, env, cli_name)
-        candidates = [None] if installed else []
+        # A default home moved onto a profile directory (CLAUDE_CONFIG_DIR=<profile>)
+        # is that profile's account: one row, so ak pick never counts it twice.
+        home_env = model.clis[cli_name].get("home_env")
+        moved = env.get(home_env) if home_env else None
+        same_as_profile = bool(moved) and os.path.realpath(moved) in profile_dirs.get(cli_name, set())
+        candidates = [None] if installed and not same_as_profile else []
         candidates.extend(sorted(listing.get(cli_name, [])))
         for name in candidates:
             label = _profile_label(name) if name else "@default"
@@ -514,8 +521,8 @@ def read_keychain(row, env):
     """macOS Keychain fallback for a spec that names a service (see
     keychain_service). Returns parsed JSON, None (nothing to read here), or
     Failure. The secret is parsed and dropped; it is never printed or logged."""
-    if not (row.spec or {}).get("keychain") or os_name() != "macos":
-        return None
+    if not (row.spec or {}).get("keychain") or os_name() != "macos" or env.get("AGENTKIT_KEYCHAIN") == "off":
+        return None     # AGENTKIT_KEYCHAIN=off: never touch the Keychain (the test suite sets it)
     service = keychain_service(row)
     if service is None:
         return Failure("no_login", "the login of this profile is in the macOS Keychain; ak cannot read per-profile entries",

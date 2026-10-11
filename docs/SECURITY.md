@@ -86,6 +86,60 @@ that needs a browser session or a second, management credential, which `ak`
 never asks for). `ak usage` is the only command that makes a network request
 without you asking for an install; it has no side effects and no cache.
 
+Keychain (macOS): only when a profile has no login file, `ak usage` asks the
+Keychain for that profile's own item (`security find-generic-password -w`),
+which may raise one macOS access dialog per item; the secret is parsed in
+memory and dropped. `AGENTKIT_KEYCHAIN=off` skips every Keychain call, the
+presence probe and the secret read alike (the test suite sets it). Requests to
+vendor hosts honour `HTTPS_PROXY`; the loopback test override bypasses proxies.
+A default home moved onto a profile directory (`CLAUDE_CONFIG_DIR=<profile>`)
+is reported once, as that profile, so the same quota is never counted twice.
+
+## Account selection (`ak pick`)
+
+`ak pick` reads exactly what `ak usage` reads, with the same hosts, the same
+per-row requests and the same rules: read-only, no cache, no login refresh, no
+reset spent. Its output (`pick-v1`) carries CLI, profile, window ids,
+percentages, reset times and a one-line reason built from the row status;
+never a token or an account identity.
+
+## Orchestration (agents launching agents)
+
+The `agentkit-orchestrate` skill lets one agent start others on your
+accounts. The rules it teaches, and the suite checks:
+
+- Delegates run with each CLI's autonomy flag unless you opted out
+  (`--ask`, `AGENTKIT_PERMISSIONS=ask`, inherited by every delegate): give a
+  writing delegate only a git worktree of its own; one writer per path.
+- `result_text`, transcripts and peer replies are untrusted data; a lane is
+  merged only after the repository's own gate passes in its worktree.
+- Task text goes in single quotes or on stdin (`-- -`), never through an
+  expanding shell string; `ak run` itself passes argv without a shell.
+- No key, token or secret in a prompt; `ak env` hands Herdr panes names and
+  paths only.
+- Failover's destructive git steps touch only worktrees the lead created,
+  after checking the worktree's top level.
+- `ak usage` / `ak pick` once per batch, never in a loop; only accounts you
+  hold, within each vendor's terms — never rotated to get past a limit.
+
+## Claude token per profile
+
+`CLAUDE_CODE_OAUTH_TOKEN` (`@default`) and `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
+(`@name`) are credentials like provider keys: they live in your env file or
+environment, are exported to that profile's Claude only (a named profile
+never falls back to the default token), and are shown by name only. A token
+from `claude setup-token` is inference-only, so `ak usage` cannot read that
+account's quota from it.
+
+## Profiles with a HOME of their own
+
+Cursor and Antigravity profiles get a separate `HOME` whose other entries are
+links into your real home (git, ssh and `~/.config/agentkit/env` included), so
+an agent in such a profile sees the same files as in your home. Mounting
+profiles into a container: mount `AGENTKIT_PROFILES_DIR` only, not
+`AGENTKIT_HOME` (which also holds the program); those links point at host
+paths.
+
 ## What the kit writes
 
 | Path | What | Mode |
@@ -96,17 +150,17 @@ without you asking for an install; it has no side effects and no cache.
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
-`ak usage` writes nothing at all. Neither do `ak setup probe`, `verify` and
+`ak usage` and `ak pick` write nothing at all. Neither do `ak setup probe`, `verify` and
 `docker` (stdout only); `docker --out FILE` creates one new file, mode 644.
 
 Nothing else: no telemetry, and no network access except `ak install`
-fetching a vendor installer you asked for and `ak usage` querying the usage
-endpoint of an account you run (the hosts above, one request per row).
+fetching a vendor installer you asked for and `ak usage` / `ak pick` querying
+the usage endpoint of an account you run (the hosts above, one request per row).
 
 ## Checks
 
 `bash tests/run.sh security` (planted secrets, file modes, env-file
-refusal, `ak usage` and `ak setup` secrecy/read-only rules, recipe safety, static rules),
-plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `setup`, `setup-skill` and `lint`
+refusal, `ak usage`, `ak pick` and `ak setup` secrecy/read-only rules, the orchestration skill's rules, recipe safety, static rules),
+plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `pick`, `setup`, `setup-skill`, `orchestrate-skill` and `lint`
 (secret-shaped strings, private references, shellcheck). The suite runs in a
 sandbox HOME with fake CLIs and never touches the network.

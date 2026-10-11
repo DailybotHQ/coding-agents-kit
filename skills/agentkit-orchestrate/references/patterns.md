@@ -29,7 +29,7 @@ reads the same rows as `ak usage` and never changes anything.
 ## Worked examples
 
 Accounts (generic names): Claude `@default` (Max) 5-hour 10%, 7-day all
-models 80%; `@tribu` (Team) 5-hour 0%, 7-day all models 24%, 7-day Fable
+models 80%; `@team` (Team) 5-hour 0%, 7-day all models 24%, 7-day Fable
 11%; `@work1`, `@work2`, `@work3` (Team) only 5-hour and 7-day Fable windows,
 all at or near 0% with different reset times (Fable resets: `@work1` in
 1h 28m, `@work2` in 18h, `@work3` in 2d 13h). Codex: four accounts at 0%;
@@ -41,7 +41,7 @@ all at or near 0% with different reset times (Fable resets: `@work1` in
 | `ak pick claude` | `@work2` (100%) | Team seats have no weekly cap that applies; `@default` has only 10% (90 − 80) |
 | `ak pick claude --model fable` | `@work1` | the Fable window now counts (90% with the reserve) for all three seats; `@work1`'s resets first |
 | `ak pick claude --count 3` | `@work2`, `@work3`, `@work1` | 100, 100, 90 |
-| `ak pick claude --need 7d:30` | `@tribu` | only `@default` and `@tribu` have a `7d` window; `@default` has 10% free |
+| `ak pick claude --need 7d:30` | `@team` | only `@default` and `@team` have a `7d` window; `@default` has 10% free |
 | `ak pick claude-glm` | Z.AI `@default` (30%) | 7-day: 90 − 60 |
 | `ak pick codex` | `@work1` | equal headroom; its weekly window resets first; resets available never count |
 | `ak pick cursor` | exit 1 | no readable quota; `--allow-unknown` admits it with unknown headroom |
@@ -52,8 +52,8 @@ all at or near 0% with different reset times (Fable resets: `@work1` in
 ak pick claude --count 2 --json
 git worktree add ../wt-parser -b lane/parser
 git worktree add ../wt-docs -b lane/docs
-ak run claude @work2 --cwd ../wt-parser --timeout 1800 --output-format json -- "Refactor the parser in this worktree; keep its tests green; commit." > parser.json &
-ak run claude @work3 --cwd ../wt-docs --timeout 1800 --output-format json -- "Update the docs for the parser change in this worktree; commit." > docs.json &
+ak run claude @work2 --cwd ../wt-parser --timeout 1800 --output-format json -- 'Refactor the parser in this worktree; keep its tests green; commit.' > parser.json &
+ak run claude @work3 --cwd ../wt-docs --timeout 1800 --output-format json -- 'Update the docs for the parser change in this worktree; commit.' > docs.json &
 wait
 ```
 
@@ -67,25 +67,29 @@ The reviewer gets a read-only prompt and the writer's worktree:
 
 ```bash
 ak pick codex --need 5h:20
-ak run codex @work1 --cwd ../wt-parser --output-format json -- "Review the diff of this worktree against main for correctness and missing tests; list findings with file and line; change nothing."
+ak run codex @work1 --cwd ../wt-parser --output-format json -- 'Review the diff of this worktree against main for correctness and missing tests; list findings with file and line; change nothing.'
 ```
 
 Treat the findings as claims: confirm each one before acting on it.
 
 ## Pipeline
 
-Plan → implement → review, each step on its own account and vendor:
+Plan → implement → review, each step on its own account and vendor, all in
+the lane's worktree (never your own tree). `PLAN.md` is data: read and
+approve it before step 2.
 
 ```bash
-ak run codex @work1 --output-format json -- "Write an implementation plan for the task in PLAN.md; do not edit code."
-ak run claude @work2 --cwd ../wt-impl --output-format json -- "Implement PLAN.md in this worktree; run the tests; commit."
-ak run codex @work3 --cwd ../wt-impl --output-format json -- "Review this worktree against PLAN.md; findings only."
+git worktree add ../wt-impl -b lane/impl
+ak run codex @work1 --cwd ../wt-impl --output-format json -- 'Write an implementation plan for the task in PLAN.md; do not edit code.'
+ak run claude @work2 --cwd ../wt-impl --output-format json -- 'Implement PLAN.md in this worktree; run the tests; commit.'
+ak run codex @work3 --cwd ../wt-impl --output-format json -- 'Review this worktree against PLAN.md; findings only.'
 ```
 
 ## Failover in practice
 
 1. A lane returns exit 3, a limit message, or exit 4.
-2. Remove its worktree and branch (`git -C ../wt-parser reset --hard`,
+2. Check `git -C ../wt-parser rev-parse --show-toplevel` is the lane, not the
+   main checkout. Remove its worktree and branch (`git -C ../wt-parser reset --hard`,
    `git worktree remove ../wt-parser`, `git branch -D lane/parser`) — only
    the ones you created.
 3. Re-pick without that account: `ak pick claude --exclude @work2`.

@@ -62,7 +62,7 @@ def row(cli, profile, windows, status="ok", kinds=None, **extra):
 # The developer's table, as usage-v1 rows (providers.toml + profile order).
 CLAUDE = [
     row("claude", "@default", [win("5h", 10, H + 38 * M), win("7d", 80, D + 22 * H), win("7d-fable", 0, D + 22 * H)]),
-    row("claude", "@tribu", [win("5h", 0, 4 * H + 8 * M), win("7d", 24, 3 * D + 3 * H), win("7d-fable", 11, 3 * D + 3 * H)]),
+    row("claude", "@team", [win("5h", 0, 4 * H + 8 * M), win("7d", 24, 3 * D + 3 * H), win("7d-fable", 11, 3 * D + 3 * H)]),
     row("claude", "@work1", [win("5h", 10, 38 * M), win("7d-fable", 0, H + 28 * M)]),
     row("claude", "@work2", [win("5h", 0, 3 * H + 48 * M), win("7d-fable", 0, 18 * H + 28 * M)]),
     row("claude", "@work3", [win("5h", 0, 3 * H + 58 * M), win("7d-fable", 0, 2 * D + 13 * H)]),
@@ -104,7 +104,7 @@ chosen, _, _ = run(CLAUDE, count=3)
 check("E3: --count 3 returns @work2, @work3, @work1", profiles_of(chosen) == ["@work2", "@work3", "@work1"], str(profiles_of(chosen)))
 
 chosen, cands, _ = run(CLAUDE, needs=[("7d", 30)])
-check("E4: --need 7d:30 chooses @tribu (only it has 30% weekly free)", profiles_of(chosen) == ["@tribu"], str(chosen))
+check("E4: --need 7d:30 chooses @team (only it has 30% weekly free)", profiles_of(chosen) == ["@team"], str(chosen))
 check("E4: an account without a 7d window is excluded with the reason",
       any(c["profile"] == "@work2" and c["excluded_reason"] == "no 7d window" for c in cands), str(cands))
 

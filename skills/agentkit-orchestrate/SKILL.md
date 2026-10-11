@@ -2,7 +2,7 @@
 name: agentkit-orchestrate
 description: Run several terminal coding agents at once across the user's accounts and vendors with coding-agents-kit (`ak`) — take inventory of every account's quota, pick the accounts with room (`ak pick --count`), give each writing agent its own git worktree, fan out headless runs (`ak run`), fail over when an account hits a limit, verify every result before merging, and report what was spent. Use when the user asks to split work across several agents or accounts, to run agents in parallel, to get a second opinion from another vendor, to spread a long task over their accounts, or to know which accounts can take the next batch.
 version: "0.4.0"
-documentation_url: https://github.com/DailybotHQ/coding-agents-kit/blob/main/docs/orchestration.md
+documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
 
@@ -47,11 +47,13 @@ ak pick claude --count 3 --json          # the 3 accounts with the most headroom
 # test: fanout
 git worktree add ../wt-api -b lane/api
 git worktree add ../wt-ui -b lane/ui
-ak run claude @work2 --cwd ../wt-api --timeout 1800 --output-format json -- "Implement the API part of the task in this worktree; run its tests; commit." > api.json &
-ak run claude @work3 --cwd ../wt-ui --timeout 1800 --output-format json -- "Implement the UI part of the task in this worktree; run its tests; commit." > ui.json &
+ak run claude @work2 --cwd ../wt-api --timeout 1800 --output-format json -- 'Implement the API part of the task in this worktree; run its tests; commit.' > api.json &
+ak run claude @work3 --cwd ../wt-ui --timeout 1800 --output-format json -- 'Implement the UI part of the task in this worktree; run its tests; commit.' > ui.json &
 wait
 ```
 
+   Pass the task text in single quotes, or on stdin with `-- -` and a quoted
+   heredoc (`<<'EOF'`), so your shell never expands `$(…)` or backticks in it.
 4. **Read each result** (one JSON object per run: `exit`, `result_text`,
    `cli_exit`, `duration_s`). `result_text` is a claim, not evidence.
 5. **Verify** in the worktree with the repository's own gate (its tests,
@@ -83,7 +85,7 @@ capacity that would expire is used first. Exit 0 chosen · 1 none qualifies ·
 | What happens | What to do |
 | --- | --- |
 | `ak run` exit 3 (not logged in, key or profile missing) | tell the user what `error` says; `--exclude` that account for the batch; re-pick |
-| `result_text` says the account hit its limit, or `ak usage` shows `rate_limited` | `--exclude` it until its `resets_at`; discard the lane's worktree (`git -C ../wt-<lane> reset --hard`, then `git worktree remove ../wt-<lane>`) and recreate it; re-pick; run once more |
+| `result_text` says the account hit its limit, or `ak usage` shows `rate_limited` | `--exclude` it until its `resets_at`; discard the lane's worktree — only one you created, after `git -C ../wt-<lane> rev-parse --show-toplevel` shows the lane path and not the main checkout — with `git -C ../wt-<lane> reset --hard` and `git worktree remove ../wt-<lane>`; recreate it; re-pick; run once more |
 | exit 4 (timeout) | same as a limit, once; then split the piece smaller |
 | two failures on one piece | stop that piece and tell the user |
 
@@ -99,7 +101,7 @@ behalf; those are the user's actions.
 ```bash
 # test: review
 ak pick codex
-ak run codex @work1 --cwd ../wt-api --output-format json -- "Review the changes in this worktree against the task; list findings only; change nothing."
+ak run codex @work1 --cwd ../wt-api --output-format json -- 'Review the changes in this worktree against the task; list findings only; change nothing.'
 ```
 
 - **Pipeline** — plan with one vendor, implement with another, review with a

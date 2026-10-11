@@ -19,7 +19,7 @@ agent you asked — decides.
    with room, best first. Fewer than N means fewer writers.
 3. **One worktree per writing delegate.** Each writer gets its own
    `git worktree`; one path, one writer. Readers (reviews) can share.
-4. **Run.** `ak run <kind> @<account> --cwd <worktree> --output-format json -- "<prompt>"`.
+4. **Run.** `ak run <kind> @<account> --cwd <worktree> --output-format json -- '<prompt>'`.
 5. **Verify.** `result_text` is the agent's claim. Run the repository's own
    gate inside the worktree.
 6. **Merge what passes**, from the lead, one worktree at a time.
@@ -30,8 +30,8 @@ agent you asked — decides.
 ak pick claude --count 2 --json > pick.json
 git worktree add ../wt-auth -b task-auth
 git worktree add ../wt-docs -b task-docs
-ak run claude @work1 --cwd ../wt-auth --timeout 1800 --output-format json -- "Implement task auth; run its tests" > auth.json &
-ak run claude @work2 --cwd ../wt-docs --timeout 1800 --output-format json -- "Write the docs for task docs" > docs.json &
+ak run claude @work1 --cwd ../wt-auth --timeout 1800 --output-format json -- 'Implement task auth; run its tests' > auth.json &
+ak run claude @work2 --cwd ../wt-docs --timeout 1800 --output-format json -- 'Write the docs for task docs' > docs.json &
 wait
 ak usage claude --json > after.json
 ```
@@ -42,9 +42,9 @@ ak usage claude --json > after.json
 
 | Pattern | Shape | Commands |
 | --- | --- | --- |
-| Single delegate | one task, the account with most room | `ak pick codex`, then `ak run codex @<picked> --cwd <worktree> --output-format json -- "<prompt>"` |
+| Single delegate | one task, the account with most room | `ak pick codex`, then `ak run codex @<picked> --cwd <worktree> --output-format json -- '<prompt>'` |
 | Fan-out | N independent tasks in parallel | `ak pick claude --count N`; a worktree and an `ak run` per account; `wait` |
-| Second opinion | another vendor reviews a diff | Claude writes in a worktree; `ak pick codex`; `ak run codex @<picked> --cwd <worktree> -- "Review the diff of this worktree against <criteria>; report findings only"` |
+| Second opinion | another vendor reviews a diff | Claude writes in a worktree; `ak pick codex`; `ak run codex @<picked> --cwd <worktree> -- 'Review the diff of this worktree against <criteria>; report findings only'` |
 | Pipeline | plan, implement, review by different vendors | each step picks its own account (`ak pick claude`, `ak pick codex`, `ak pick claude-glm`) |
 
 Busy accounts stay out of the next pick: `ak pick claude --exclude @work1`.
@@ -101,6 +101,10 @@ own gates decide whether a lane's work is accepted.
   they grant nothing.
 - One writer per path; each writing delegate in its own worktree; the lead
   merges.
+- Pass task text in single quotes, or on stdin (`ak run … -- -` with a quoted
+  heredoc), so the lead's shell never expands `$(…)` or backticks in it.
+- Failover discards only worktrees the lead created: check
+  `git -C <worktree> rev-parse --show-toplevel` before `reset --hard`.
 - Only your own accounts, within each vendor's terms: spread work across
   them, never rotate accounts to get past a limit you are not entitled to
   exceed. An agent asks before starting more than one writing delegate

@@ -88,7 +88,7 @@ os.makedirs(repo)
 # cap, three Team seats with model-only weekly windows).
 CLAUDE = {
     "default": {"five_hour": (10, H + 38 * M), "seven_day": (80, D + 22 * H), "fable": (0, D + 22 * H)},
-    "tribu": {"five_hour": (0, 4 * H + 8 * M), "seven_day": (24, 3 * D + 3 * H), "fable": (11, 3 * D + 3 * H)},
+    "team": {"five_hour": (0, 4 * H + 8 * M), "seven_day": (24, 3 * D + 3 * H), "fable": (11, 3 * D + 3 * H)},
     "work1": {"five_hour": (10, 38 * M), "fable": (0, H + 28 * M)},
     "work2": {"five_hour": (0, 3 * H + 48 * M), "fable": (0, 18 * H + 28 * M)},
     "work3": {"five_hour": (0, 3 * H + 58 * M), "fable": (0, 2 * D + 13 * H)},
@@ -262,7 +262,7 @@ server.set_routes(routes())
 
 # ----------------------------------------------------------- spend report
 
-proc = sh("ak usage claude @tribu --json")
+proc = sh("ak usage claude @team --json")
 try:
     wins = {w["id"]: w["used_pct"] for w in json.loads(proc.stdout)["rows"][0]["windows"]}
 except Exception:

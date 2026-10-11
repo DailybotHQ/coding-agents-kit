@@ -225,7 +225,8 @@ if os.name != "nt":
 
     import shutil  # noqa: E402
     shutil.rmtree(os.path.join(HOME, ".claude"))
-    kenv = env_for({"PATH": bindir + os.pathsep + os.environ.get("PATH", "")})
+    # The suite runs with AGENTKIT_KEYCHAIN=off; these checks opt back in, against the fake `security` only.
+    kenv = env_for({"PATH": bindir + os.pathsep + os.environ.get("PATH", ""), "AGENTKIT_KEYCHAIN": "on"})
     usage.os_name = lambda: "macos"
     fake_security(0, keychain_json)
     r = rows_of(["claude", "@default"], kenv)[1][0]
@@ -256,12 +257,18 @@ if os.name != "nt":
     check("usage claude: a profile whose Keychain entry is missing is no_login with the login command",
           r["status"] == "no_login" and r["profile"] == "@kc", str(r))
     fake_security(0, keychain_json)
-    r = rows_of(["claude", "@default"], env_for({"PATH": kenv["PATH"], "CLAUDE_CONFIG_DIR": os.path.join(TMP, "cfgdir")}))[1][0]
+    r = rows_of(["claude", "@default"], env_for({"PATH": kenv["PATH"], "AGENTKIT_KEYCHAIN": "on", "CLAUDE_CONFIG_DIR": os.path.join(TMP, "cfgdir")}))[1][0]
     with open(argv_log) as handle:
         asked = handle.read().split("\n")
     check("usage claude: a default home moved by CLAUDE_CONFIG_DIR reads that directory's Keychain entry",
           r["status"] == "ok" and "Claude Code-credentials-" + hashlib.sha256(
               os.path.join(TMP, "cfgdir").encode("utf-8")).hexdigest()[:8] in asked, "%s %s" % (r, asked))
+    if os.path.exists(argv_log):
+        os.remove(argv_log)
+    fake_security(0, keychain_json)
+    r = rows_of(["claude", "@kc"], dict(kenv, AGENTKIT_KEYCHAIN="off"))[1][0]
+    check("usage claude: AGENTKIT_KEYCHAIN=off never reads a Keychain secret (security is not run)",
+          r["status"] != "ok" and not os.path.exists(argv_log), "%s %s" % (r, os.path.exists(argv_log)))
     usage.os_name = lambda: "linux"
     r = rows_of(["claude", "@default"], kenv)[1][0]
     check("usage claude: the Keychain is not consulted off macOS", r["status"] == "no_login", str(r))

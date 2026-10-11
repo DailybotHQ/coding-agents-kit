@@ -70,7 +70,7 @@ claude · Claude Code
   @default  max   5-hour            █░░░░░░░░░  10%  in 1h 38m
                   7-day all models  ████████░░  80%  in 1d 22h
                   7-day Fable only  ░░░░░░░░░░   0%  in 1d 22h
-  @tribu    team  5-hour            ░░░░░░░░░░   0%  in 4h 8m
+  @team    team  5-hour            ░░░░░░░░░░   0%  in 4h 8m
                   7-day all models  ██░░░░░░░░  24%  in 3d 3h
                   7-day Fable only  █░░░░░░░░░  11%  in 3d 3h
   @work1    team  5-hour            █░░░░░░░░░  10%  in 38m
@@ -98,7 +98,7 @@ connected · no quota to read
 What the example says:
 
 - **Plans differ in their windows.** `@default` (Max) has a global weekly
-  cap and is at 80% of it: room for a short task, not a long one. `@tribu`
+  cap and is at 80% of it: room for a short task, not a long one. `@team`
   and `@work1` are on Team. `@work1` has no global weekly cap at all: only
   the 5-hour window and a model-only weekly window, so work that does not
   use that model is bounded by the 5-hour window alone.
@@ -263,10 +263,10 @@ and four Codex accounts, all at 0%, whose 7-day windows reset in 6d 20h
 
 | # | Command | Result | Why |
 | --- | --- | --- | --- |
-| E1 | `ak pick claude` | `@work2`, headroom 100 | default 10 (90−80), tribu 66 (90−24), work1 90, work2 and work3 100 (no weekly cap counts); tie → profile order |
+| E1 | `ak pick claude` | `@work2`, headroom 100 | default 10 (90−80), team 66 (90−24), work1 90, work2 and work3 100 (no weekly cap counts); tie → profile order |
 | E2 | `ak pick claude --model fable` | `@work1` | the Fable window now counts, with its reserve: work1, work2, work3 all 90; tie → work1's Fable window resets first |
-| E3 | `ak pick claude --count 3` | `@work2`, `@work3`, `@work1` | 100, 100, 90; tribu (66) and default (10) rank after |
-| E4 | `ak pick claude --need 7d:30` | `@tribu` | only default and tribu report `7d`: default has 10 free, tribu 66 |
+| E3 | `ak pick claude --count 3` | `@work2`, `@work3`, `@work1` | 100, 100, 90; team (66) and default (10) rank after |
+| E4 | `ak pick claude --need 7d:30` | `@team` | only default and team report `7d`: default has 10 free, team 66 |
 | E5 | `ak pick claude-glm` | `zai @default`, headroom 30 | 5-hour 64 free, 7-day 90−60 = 30; binding `7d` |
 | E6 | `ak pick codex` | `@work1` | all four at 90 (the 7-day reserve binds); tie → earliest 7-day reset; resets never count |
 | E7 | `ak pick cursor` | exit 1, `no readable quota` | connected only; with `--allow-unknown` → `@default`, headroom unknown |

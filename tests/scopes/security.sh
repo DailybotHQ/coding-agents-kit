@@ -205,6 +205,7 @@ for c in kinds.load().clis.values():
 
   security_usage
   security_setup
+  security_pick
 }
 
 # `ak usage` reads credential content and talks to vendor endpoints: the first
@@ -329,3 +330,53 @@ sys.exit(1 if setup.recipe_problems(setup.render_docker(model, opts), sys.argv[3
     grep -q "type an autonomy flag or remove the user's opt-out" "${ROOT}/skills/agentkit-setup/SKILL.md"
 }
 
+
+# `ak pick` reads what `ak usage` reads; the orchestration skill tells agents
+# to launch agents. Every promise is a failing-if-broken check.
+security_pick() {
+  local tok="sec-pick-claude-7R1" ref="sec-pick-refresh-7R2" before after mode out f
+  box_new security-pick claude
+  sec_env_file
+  mkdir -p "${BOX}/home/.claude"
+  printf '{"claudeAiOauth":{"accessToken":"%s","refreshToken":"%s","expiresAt":99999999999999,"scopes":["user:profile"],"subscriptionType":"max"}}' \
+    "${tok}" "${ref}" > "${BOX}/home/.claude/.credentials.json"
+  printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json"
+  usage_server_start "${BOX}/routes.json"
+  : > "${BOX}/pick-output"
+  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  for mode in ok 401 429 garbage; do
+    case "${mode}" in
+      ok) printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json" ;;
+      401) printf '%s' '{"/claude":{"status":401,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      429) printf '%s' '{"/claude":{"status":429,"body":"{}"}}' > "${BOX}/routes.json" ;;
+      garbage) printf '%s' '{"/claude":{"body":"<html>nope</html>"}}' > "${BOX}/routes.json" ;;
+    esac
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="http://127.0.0.1:${USAGE_PORT}/claude" -- pick claude --json --allow-unknown
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/pick-output"
+    ak_split AGENTKIT_DEBUG=1 AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="http://127.0.0.1:${USAGE_PORT}/claude" -- pick claude
+    cat "${BOX}/out" "${BOX}/err" >> "${BOX}/pick-output"
+  done
+  expect_eq "security pick: no key, access token or refresh token in any output, in any failure mode" "$(leaked "${BOX}/pick-output")" ""
+  expect_lacks "security pick: ... the planted access token never appears" "$(cat "${BOX}/pick-output")" "${tok}"
+  expect_lacks "security pick: ... nor the refresh token" "$(cat "${BOX}/pick-output")" "${ref}"
+  expect_eq "security pick: only the usage path was requested (no refresh or token endpoint)" \
+    "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" '
+  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  expect_eq "security pick: the login and the env file are byte-identical after every run" "${before}" "${after}"
+  usage_server_stop
+
+  # AGENTKIT_KEYCHAIN=off: no Keychain call at all, secret read included (a
+  # profile with no login file would otherwise ask the Keychain on macOS).
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/kc"
+  printf '#!/bin/sh\necho called > "%s/security-called"\nexit 44\n' "${BOX}" > "${BOX}/bin/security"
+  chmod +x "${BOX}/bin/security"
+  ak_split AGENTKIT_KEYCHAIN=off -- pick claude @kc >/dev/null
+  ak_split AGENTKIT_KEYCHAIN=off -- usage claude @kc >/dev/null
+  check "security pick: AGENTKIT_KEYCHAIN=off never runs the Keychain tool" test ! -e "${BOX}/security-called"
+
+  # The skills and the orchestration doc teach the rules (static).
+  for f in "${ROOT}"/skills/*/SKILL.md "${ROOT}"/skills/*/references/*.md "${ROOT}/docs/orchestration.md"; do
+    out="$("${AK_PY}" "${ROOT}/tests/py/skill_rules.py" "${f}")"
+    expect_eq "security pick: ${f#"${ROOT}"/} teaches no opt-out override, usage loop, expanding prompt or secret in a prompt" "${out}" ""
+  done
+}

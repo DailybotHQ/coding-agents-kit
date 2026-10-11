@@ -174,6 +174,10 @@ order = [(r["cli"], r["profile"]) for r in rows]
 check("usage core: one row per credential identity in the documented order",
       order == [("claude", "@default"), ("claude", "@2"), ("claude", "@work"), ("codex", "@default"), ("codex", "@work"),
                 ("cursor", "@default"), ("cursor", "@work"), ("zai", "@default"), ("zai", "@2")], str(order))
+moved = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "CLAUDE_CONFIG_DIR": os.path.join(PROFILES, "claude", "work")})
+_c, moved_rows = rows_of(["claude"], moved)
+check("usage core: a default home moved onto a profile directory is one account (no @default row twice)",
+      [r["profile"] for r in moved_rows] == ["@2", "@work"], str([r["profile"] for r in moved_rows]))
 zai = [r for r in rows if r["cli"] == "zai"]
 check("usage core: four glm kinds of one key collapse into one row",
       len(zai) == 2 and zai[0]["kinds"] == ["claude-glm", "codex-glm", "opencode-glm", "pi-glm"], str(zai))
