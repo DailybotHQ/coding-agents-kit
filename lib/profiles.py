@@ -212,7 +212,7 @@ def token_var(cli, name):
     """The per-profile login token variable of a CLI for profile `name`
     (CLAUDE_CODE_OAUTH_TOKEN for @default, CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>
     for @name), or None when the CLI declares none."""
-    base = cli.get("profile_token")
+    base = cli.get("profile_token_var")
     if not base:
         return None
     return "%s_%s" % (base, suffix(name)) if name else base
@@ -221,7 +221,7 @@ def token_var(cli, name):
 def apply_token(cli, name, env):
     """A named profile gets its own token as the CLI's variable, or none at
     all: it never inherits @default's token. @default is left as it is."""
-    base = cli.get("profile_token")
+    base = cli.get("profile_token_var")
     if not base or not name:
         return
     own = env.get(token_var(cli, name))
@@ -235,7 +235,7 @@ def strip_profile_keys(model, env, keep=()):
     """Remove every <KEY>_<SUFFIX> of the known providers: those are the
     kit's per-profile variables and never meaningful to a CLI."""
     keys = [p["key"] for p in model.providers.values()]
-    keys += [c["profile_token"] for c in model.clis.values() if c.get("profile_token")]
+    keys += [c["profile_token_var"] for c in model.clis.values() if c.get("profile_token_var")]
     for name in list(env):
         if name in keep:
             continue

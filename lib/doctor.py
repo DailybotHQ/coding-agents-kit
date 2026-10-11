@@ -42,7 +42,7 @@ def _env_file_state():
 
 def _provider_key_names(model, env):
     bases = sorted(set(p["key"] for p in model.providers.values())
-                   | set(c["profile_token"] for c in model.clis.values() if c.get("profile_token")))
+                   | set(c["profile_token_var"] for c in model.clis.values() if c.get("profile_token_var")))
     names = []
     for name in sorted(env):
         if not env.get(name):

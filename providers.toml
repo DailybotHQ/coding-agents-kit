@@ -33,7 +33,7 @@ home_env = "CLAUDE_CONFIG_DIR"
 # A long-lived login token per account (`claude setup-token`): @default reads
 # CLAUDE_CODE_OAUTH_TOKEN, @name reads CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX> and gets
 # it as CLAUDE_CODE_OAUTH_TOKEN; never a fallback to another account's token.
-profile_token = "CLAUDE_CODE_OAUTH_TOKEN"
+profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
 interactive = ["{provider}", "{session}", "{auto}"]
 docs = "https://docs.claude.com/en/docs/claude-code"

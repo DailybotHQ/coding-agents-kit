@@ -38,7 +38,7 @@ def compute(model, kind_name, head, env):
     # it removed one (optional key, named profile), print it empty so the
     # pane cannot inherit profile 1's key.
     blank = []
-    token = prep.kind.cli.get("profile_token")
+    token = prep.kind.cli.get("profile_token_var")
     if token and before.get(token) and token not in prep.env:
         blank.append(token)      # a named profile without its own token: never inherit @default's
     if prep.kind.key_var:

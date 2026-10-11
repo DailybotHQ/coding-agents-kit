@@ -176,9 +176,9 @@ class Model(object):
                     bad("%s: missing %s" % (where, field))
             if cli.get("isolation") not in ISOLATIONS:
                 bad("%s: isolation must be one of %s" % (where, ", ".join(ISOLATIONS)))
-            token = cli.get("profile_token")
+            token = cli.get("profile_token_var")
             if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", token)):
-                bad("%s: profile_token must be an UPPER_CASE variable name" % where)
+                bad("%s: profile_token_var must be an UPPER_CASE variable name" % where)
             if cli.get("isolation") == "env" and not cli.get("home_env"):
                 bad("%s: isolation 'env' needs home_env" % where)
             home_dir = cli.get("home_dir")
