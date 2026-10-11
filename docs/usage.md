@@ -305,8 +305,9 @@ One code path everywhere; only where a login lives differs.
 
 A login kept in an OS credential store that the kit cannot read (a Codex
 keyring, Windows Credential Manager) is reported
-as `no_login` with that cause, never guessed. The bar uses block characters on
-a UTF-8 console and `#`/`-` otherwise; colour needs a terminal (on Windows one
+as `no_login` with that cause, never guessed. The bar is ten cells wide: block
+characters with eighth-cell precision on a UTF-8 console, `#`/`-` otherwise;
+any nonzero use shows at least one mark and only 100% is full; colour needs a terminal (on Windows one
 that announces itself) and is never written into pipes or `--json`.
 
 ## Safety, in short
