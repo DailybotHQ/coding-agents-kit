@@ -96,6 +96,13 @@ A profile never inherits another's token. It gives no readable quota (`ak
 usage` shows that account as needing a full login). Tell the user where it
 goes; never ask for it or read it.
 
+### The whole set, portable
+
+`ak profiles --json` (schema `profiles-v1`) lists every account by name:
+CLI, profile, relative path, isolation, login kind and the key names that
+are set. Use it to recreate the accounts on another host; it never carries
+a value.
+
 ## Platforms
 
 - **macOS:** Claude Code keeps a profile's login in the Keychain item

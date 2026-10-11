@@ -150,6 +150,23 @@ logs a named Claude profile in without the browser login; `@default` reads
 `CLAUDE_CODE_OAUTH_TOKEN`. A profile never inherits another's token. See
 [Accounts → A Claude login token per account](accounts.md#a-claude-login-token-per-account).
 
+## A portable listing: `ak profiles --json`
+
+`ak profiles --json` (also `ak profiles ls --json`) prints one object, schema
+`profiles-v1` ([`schema/profiles-v1.json`](schema/profiles-v1.json)): every
+account with its CLI, profile, path relative to the profiles root (`null` for
+`@default`), isolation, how it is logged in (`file`, `keychain`, `token-var`,
+`none` or `unknown`, by presence only) and the names of the keys it reads that
+are set. No value, no identity, no absolute path: another host (a container,
+a second machine) recreates the same set with `ak profiles add <cli> @<name>`
+and logs each one in. Additive surface; interface 1 is unchanged.
+
+```json
+{"schema": "profiles-v1", "interface": 1, "profiles": [
+ {"cli": "claude", "profile": "@work", "path_relative": "claude/work", "isolation": "env",
+  "login": "token-var", "key_names_set": ["CLAUDE_CODE_OAUTH_TOKEN_WORK"]}]}
+```
+
 ## Managing profiles
 
 ```bash

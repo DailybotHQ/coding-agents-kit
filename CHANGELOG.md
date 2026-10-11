@@ -14,6 +14,10 @@ permission posture changes.
 
 ### Added
 
+- **`ak profiles --json`** (schema `profiles-v1`, additive): every account
+  by name — CLI, profile, path relative to the profiles root, isolation,
+  login kind by presence and the key names that are set — with no value and
+  no absolute path, so another host can recreate the same accounts.
 - **A Claude login token per account**: `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
   (from `claude setup-token`) logs a named Claude profile in;
   `ak claude @name`, `ak run` and `ak env` hand it to that profile as

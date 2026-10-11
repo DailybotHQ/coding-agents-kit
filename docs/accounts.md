@@ -123,6 +123,13 @@ Linux container cannot read), or a second machine. The token is
 inference-only: `ak usage` / `ak pick` cannot read that account's quota from
 it, so query quota on a host that has the browser login.
 
+## Another host
+
+To reuse the same set of accounts elsewhere, read `ak profiles --json`
+(schema `profiles-v1`: names and kinds only) and recreate each with
+`ak profiles add`; log each in there, or give Claude profiles a login token
+(above). See [Profiles → A portable listing](profiles.md#a-portable-listing-ak-profiles---json).
+
 ## Platforms
 
 - **macOS:** Claude Code keeps a profile's login in the Keychain item

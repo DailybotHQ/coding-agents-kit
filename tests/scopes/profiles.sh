@@ -313,6 +313,7 @@ scope_profiles() {
     pass "every variable uses the AGENTKIT_ prefix"
   fi
   profiles_claude_token
+  profiles_json
 }
 
 # A long-lived Claude token per account (CLAUDE_CODE_OAUTH_TOKEN[_SUFFIX]):
@@ -349,4 +350,38 @@ profiles_claude_token() {
   out="$(ak -- doctor --json)"
   expect_has "profiles claude token: ak doctor lists the token by name" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK"
   expect_lacks "profiles claude token: ... never its value" "${out}" "tok-claude"
+}
+
+# `ak profiles --json` (profiles-v1): names and kinds only, portable.
+profiles_json() {
+  local doc root out
+  box_new profiles-json claude codex
+  box_env_file CLAUDE_CODE_OAUTH_TOKEN_WORK=tok-json-work ZAI_CODING_API_KEY_WORK=key-json-work
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/claude/plain" "${root}/codex/work"
+  printf '{"oauthAccount":{"x":1}}' > "${root}/claude/plain/.claude.json"
+  printf '{}' > "${root}/codex/work/auth.json"
+  doc="${BOX}/profiles.json"
+  ak_split -- profiles --json
+  cp "${BOX}/out" "${doc}"
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/profiles-v1.json" "${doc}")"
+  expect_eq "profiles json: ak profiles --json matches docs/schema/profiles-v1.json" "${out}" "valid"
+  expect_eq "profiles json: every account, @default first per CLI" \
+    "$(json_get "${doc}" '[(p["cli"], p["profile"]) for p in d["profiles"]]')" \
+    '[["claude", "@default"], ["claude", "@plain"], ["claude", "@work"], ["codex", "@default"], ["codex", "@work"]]'
+  expect_eq "profiles json: path is relative to the profiles root; null for @default" \
+    "$(json_get "${doc}" '[p["path_relative"] for p in d["profiles"]]')" '[null, "claude/plain", "claude/work", null, "codex/work"]'
+  expect_eq "profiles json: login kind by presence (token-var, file, none)" \
+    "$(json_get "${doc}" '[p["login"] for p in d["profiles"]]')" '["none", "file", "token-var", "none", "file"]'
+  expect_eq "profiles json: key names that are set, never values" \
+    "$(json_get "${doc}" '[p["key_names_set"] for p in d["profiles"] if p["profile"] == "@work" and p["cli"] == "claude"][0]')" \
+    '["CLAUDE_CODE_OAUTH_TOKEN_WORK", "ZAI_CODING_API_KEY_WORK"]'
+  expect_lacks "profiles json: no secret value" "$(cat "${doc}")" "tok-json-work"
+  expect_lacks "profiles json: ... nor a key value" "$(cat "${doc}")" "key-json-work"
+  expect_lacks "profiles json: no absolute path (the sandbox home never appears)" "$(cat "${doc}")" "${BOX}"
+  ak_split -- profiles ls --json
+  check "profiles json: ak profiles ls --json is the same" cmp -s "${BOX}/out" "${doc}"
+  ak_split -- profiles add claude @x --json; expect_eq "profiles json: --json on another subcommand exits 2" "$?" 2
+  ak_split -- profiles
+  expect_has "profiles json: the text listing is unchanged" "$(cat "${BOX}/out")" "PROFILE"
 }

@@ -7,7 +7,7 @@
     ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
     ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
     ak setup probe [--json] | ak setup verify [--json] [...] | ak setup docker --ref TAG --sha256 HEX [...]
-    ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
+    ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
     ak --skill [setup | orchestrate] | --version | --help
@@ -30,7 +30,7 @@ USAGE = """usage:
   ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
   ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
   ak setup probe [--json] | ak setup verify [--json] [--cli LIST] [--profile CLI=@a,@b] [--keys NAMES] [--expect-posture auto|ask]
-  ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
+  ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
   ak --skill [setup | orchestrate] | --version | --help

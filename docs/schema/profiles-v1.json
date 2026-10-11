@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.0/docs/schema/profiles-v1.json",
+  "title": "ak profiles --json (profiles-v1)",
+  "description": "Every account the kit knows, portable to another host: names and kinds only. Never contains a secret value, an account identity or an absolute path. Another host recreates the set with `ak profiles add <cli> @<name>` and logs each one in. Consumers check `schema` and `interface` first; additional keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "profiles"],
+  "properties": {
+    "schema": { "const": "profiles-v1" },
+    "interface": { "const": 1 },
+    "profiles": {
+      "type": "array",
+      "description": "Ordered: CLI order of providers.toml, then @default, then profile names.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["cli", "profile", "path_relative", "isolation", "login", "key_names_set"],
+        "properties": {
+          "cli": { "type": "string" },
+          "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
+          "path_relative": { "type": ["string", "null"], "pattern": "^[a-z0-9-]+/[a-z0-9._-]+$", "description": "<cli>/<name> under the profiles root (AGENTKIT_PROFILES_DIR); null for @default, which is the CLI's own home." },
+          "isolation": { "enum": ["env", "xdg", "cursor-home", "home"] },
+          "login": { "enum": ["file", "keychain", "token-var", "none", "unknown"], "description": "How the account is logged in, by presence only; unknown when the CLI keeps no detectable login." },
+          "key_names_set": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "Names (never values) of the provider keys and login token this account reads that are set." }
+        }
+      }
+    }
+  }
+}

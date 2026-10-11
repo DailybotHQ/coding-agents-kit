@@ -360,7 +360,60 @@ def listing(model, env):
     return rows
 
 
-def cmd_ls(model, env):
+def login_kind(model, cli_name, name, env):
+    """How an account is logged in, by presence only (no credential is read):
+    token-var, file, keychain, none, or unknown when the CLI cannot tell."""
+    import kinds
+    cli = model.clis[cli_name]
+    login = cli.get("login", {})
+    if env.get(token_var(cli, name) or "") or (not name and any(env.get(v) for v in login.get("env", []))):
+        return "token-var"
+    kind = model.kind(cli_name)
+    ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=path(cli_name, name) if name else None)
+    for ref in login.get("files", []):
+        p = ctx.ref_path(ref)
+        if os.path.isfile(p):
+            marker = login.get("marker")
+            try:
+                with open(p, "rb") as handle:
+                    if not marker or marker.encode() in handle.read():
+                        return "file"
+            except OSError:
+                pass
+    if not name and keychain_has(login.get("keychain"), env):
+        return "keychain"
+    return "none" if login.get("definitive") else "unknown"
+
+
+def set_names(model, cli_name, name, env):
+    """The NAMES of the provider keys and login token this account would read
+    that are set (never a value)."""
+    return sorted(entry.split("=", 1)[0] for entry in keys_by_name(model, cli_name, name, env) if entry.endswith("=set"))
+
+
+def portable(model, env):
+    """profiles-v1: every account, names and kinds only, no absolute path."""
+    out = []
+    for cli_name in model.cli_names():
+        cli = model.clis[cli_name]
+        if common.resolve_executable(cli, env):
+            out.append({"cli": cli_name, "profile": "@default", "path_relative": None, "isolation": cli["isolation"],
+                        "login": login_kind(model, cli_name, "", env), "key_names_set": set_names(model, cli_name, "", env)})
+    for cli_name, name, _directory in listing(model, env):
+        cli = model.clis[cli_name]
+        out.append({"cli": cli_name, "profile": "@" + name, "path_relative": "%s/%s" % (cli_name, name),
+                    "isolation": cli["isolation"], "login": login_kind(model, cli_name, name, env),
+                    "key_names_set": set_names(model, cli_name, name, env)})
+    order = {c: i for i, c in enumerate(model.cli_names())}
+    out.sort(key=lambda r: (order[r["cli"]], r["profile"] != "@default", r["profile"]))
+    return {"schema": "profiles-v1", "interface": common.INTERFACE, "profiles": out}
+
+
+def cmd_ls(model, env, as_json=False):
+    if as_json:
+        import json
+        sys.stdout.write(json.dumps(portable(model, env), indent=2, sort_keys=True) + "\n")
+        return 0
     rows = listing(model, env)
     print("%-9s %-14s %-6s %-40s %s" % ("CLI", "PROFILE", "LOGIN", "KEYS", "PATH"))
     for cli_name, name, directory in rows:
@@ -458,10 +511,16 @@ def exec_command(argv, env):
 
 
 def main(model, args, env):
+    as_json = "--json" in args
+    args = [a for a in args if a != "--json"]
     sub = args[0] if args else "ls"
     rest = args[1:]
     if sub in ("ls", "list"):
-        return cmd_ls(model, env)
+        if rest:
+            raise AkError("ak profiles ls takes no arguments (only --json)", EXIT_USAGE)
+        return cmd_ls(model, env, as_json)
+    if as_json:
+        raise AkError("--json applies to ak profiles [ls] only", EXIT_USAGE)
     if sub == "add":
         return cmd_add(model, rest, env)
     if sub == "path":
