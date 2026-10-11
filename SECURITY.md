@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | --- | --- |
-| 0.4.0 (latest) | yes |
+| 0.5.0 (latest) | yes |
+| 0.4.0 | yes |
 | 0.3.0 | yes |
 | 0.2.2 | yes |
 | 0.2.1 | no — upgrade: `ak env import` could still import shell code (fixed in 0.2.2) |

@@ -12,6 +12,15 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-11
+
+Interface stays **1**. Accounts and quota for agents and humans: `ak pick`
+chooses the account with room, the `agentkit-orchestrate` skill runs several
+agents over several accounts and vendors, `ak profiles --json` and a Claude
+login token per account let another host reuse the same accounts,
+`--trust-cwd` lets new accounts start without the folder-trust screen, and
+`ak usage` is redesigned. Antigravity is the eighth kind.
+
 ### Added
 
 - **`--trust-cwd`** on `ak <kind>` and `ak run` (or `AGENTKIT_TRUST_CWD=1`,
@@ -350,7 +359,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0
 [0.2.2]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.2.2

@@ -43,14 +43,14 @@ python3 ≥ 3.9. Nothing else.
 ## Install
 
 ```bash
-git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.5.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 `./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
 [docs/install.md](docs/install.md).
 
-Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-setup`, then ask it
+Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.0 --skill agentkit-setup`, then ask it
 to set the kit up on this machine or to write a container recipe ([setup](docs/setup.md)).
 
 ## Quickstart
@@ -87,9 +87,9 @@ A named profile reads its own keys (`ZAI_CODING_API_KEY_WORK` for
 
 | Skill | For | Install |
 | --- | --- | --- |
-| `agentkit` | launching kinds, accounts, `ak run`, `ak usage`, `ak pick` (`ak --skill`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit` |
-| `agentkit-setup` | installing, configuring and repairing the kit (`ak --skill setup`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-setup` |
-| `agentkit-orchestrate` | several agents over several accounts and vendors (`ak --skill orchestrate`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.4.0 --skill agentkit-orchestrate` |
+| `agentkit` | launching kinds, accounts, `ak run`, `ak usage`, `ak pick` (`ak --skill`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.0 --skill agentkit` |
+| `agentkit-setup` | installing, configuring and repairing the kit (`ak --skill setup`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.0 --skill agentkit-setup` |
+| `agentkit-orchestrate` | several agents over several accounts and vendors (`ak --skill orchestrate`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.0 --skill agentkit-orchestrate` |
 
 ### The grammar
 
