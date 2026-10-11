@@ -82,11 +82,11 @@ jobs:
           & "$prefix\bin\ak.cmd" env claude
           ./install.ps1 -NoPath -Uninstall -Prefix $prefix -EnvFile $envFile
           if (Test-Path "$prefix\lib") { throw 'uninstall left lib behind' }
-      - name: ak usage checks run natively (no bash)
+      - name: ak usage and ak pick checks run natively (no bash)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('tests/py/usage_checks.py', 'tests/py/usage_provider_checks.py')) {
+          foreach ($script in @('tests/py/usage_checks.py', 'tests/py/usage_provider_checks.py', 'tests/py/pick_checks.py')) {
             $out = & python $script
             if ($LASTEXITCODE -ne 0) { throw "$script failed: $($out | Select-String '^FAIL')" }
             Write-Output "$script : $(@($out | Select-String '^ok').Count) checks ok"

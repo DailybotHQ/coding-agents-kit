@@ -1,6 +1,6 @@
 """Validate a JSON document against the subset of JSON Schema the kit's
 schemas use (type, const, enum, pattern, required, properties,
-additionalProperties, items). Stdlib only.
+additionalProperties, items, local $ref to #/$defs/...). Stdlib only.
 
 usage: python3 schema_check.py <schema.json> <document.json|->
 Exit 0 and prints "valid", or exit 1 with one line per violation.
@@ -24,7 +24,18 @@ def type_ok(value, wanted):
     return False
 
 
-def validate(value, schema, path, errors):
+def validate(value, schema, path, errors, root=None):
+    root = schema if root is None else root
+    if "$ref" in schema:
+        ref = schema["$ref"]
+        if not ref.startswith("#/"):
+            errors.append("%s: unsupported $ref %r" % (path, ref))
+            return
+        target = root
+        for part in ref[2:].split("/"):
+            target = target[part]
+        validate(value, target, path, errors, root)
+        return
     if "const" in schema and value != schema["const"]:
         errors.append("%s: expected %r, got %r" % (path, schema["const"], value))
     if "enum" in schema and value not in schema["enum"]:
@@ -42,14 +53,14 @@ def validate(value, schema, path, errors):
         extra = schema.get("additionalProperties", True)
         for key, sub in value.items():
             if key in props:
-                validate(sub, props[key], "%s.%s" % (path, key), errors)
+                validate(sub, props[key], "%s.%s" % (path, key), errors, root)
             elif extra is False:
                 errors.append("%s: unexpected key %r" % (path, key))
             elif isinstance(extra, dict):
-                validate(sub, extra, "%s.%s" % (path, key), errors)
+                validate(sub, extra, "%s.%s" % (path, key), errors, root)
     if isinstance(value, list) and "items" in schema:
         for i, item in enumerate(value):
-            validate(item, schema["items"], "%s[%d]" % (path, i), errors)
+            validate(item, schema["items"], "%s[%d]" % (path, i), errors, root)
 
 
 def main():
