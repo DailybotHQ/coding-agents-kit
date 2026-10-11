@@ -175,12 +175,16 @@ usage_server_start() {
   "${AK_PY}" "${ROOT}/tests/py/fake_usage_server.py" --routes "${routes}" --port-file "${portfile}" --log "${BOX}/server.log" \
     >/dev/null 2>&1 &
   USAGE_PID=$!
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+  # A cold python start on a CI runner can take seconds: wait up to 30s, and
+  # say so plainly when the endpoint never came up instead of failing later.
+  local _
+  for _ in $(seq 1 120); do
     [[ -s "${portfile}" ]] && break
     sleep 0.25
   done
   USAGE_PORT="$(cat "${portfile}" 2>/dev/null)"
+  export USAGE_PORT
+  [[ -n "${USAGE_PORT}" ]] || fail "the fake usage endpoint did not start (no port after 30s)"
 }
 
 usage_server_stop() {

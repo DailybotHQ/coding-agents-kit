@@ -143,7 +143,7 @@ scope_install() {
   out="$(ak -- install --bogus)"; status=$?
   expect_eq "ak install with an unknown flag is a usage error" "${status}" 2
   check "no vendor install script is ever run (no script channel)" bash -c "! grep -q 'channel = \"script\"' '${ROOT}/providers.toml'"
-  if grep -rnE '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/lib" "${ROOT}/install.sh" "${ROOT}/install.ps1" >/dev/null; then
+  if grep -rnIE --exclude-dir=__pycache__ '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/lib" "${ROOT}/install.sh" "${ROOT}/install.ps1" >/dev/null; then
     fail "a fetch-piped-to-shell line exists in the kit"
   else pass "no fetch-piped-to-shell line anywhere in the installers"; fi
 
@@ -179,7 +179,7 @@ install_setup_contract() {
   out="$(box_run AGENTKIT_ASSUME_TTY=0 -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
   expect_eq "install setup: --no-rc with no TTY and stdin closed never prompts (exit 0)" "${status}" 0
   expect_has "install setup: ... and says no shell rc was touched" "${out}" "no shell rc touched (--no-rc)"
-  expect_eq "install setup: the rc files stay absent" "$(ls -A "${BOX}/home" | grep -c '^\.\(bashrc\|zshrc\|profile\|bash_profile\)$')" 0
+  expect_eq "install setup: the rc files stay absent" "$(find "${BOX}/home" -maxdepth 1 \( -name .bashrc -o -name .zshrc -o -name .profile -o -name .bash_profile \) | wc -l | tr -d ' ')" 0
   expect_eq "install setup: the install is marked as made with --no-rc" "$([[ -f "${dest}/.no-rc" ]] && echo yes)" yes
   out="$(box_run -- bash "${ROOT}/install.sh" --no-rc)"; status=$?
   expect_eq "install setup: a second run is idempotent (exit 0)" "${status}" 0

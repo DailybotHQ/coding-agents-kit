@@ -54,6 +54,10 @@ trap 'rm -rf "${SANDBOX}"' EXIT
 SYSBIN="${SANDBOX}/sysbin"
 mkdir -p "${SYSBIN}"
 ln -s "${AK_PY}" "${SYSBIN}/python3"
+# macOS ships /usr/bin/security, which reads the real login Keychain: shadow it
+# with a stub that finds nothing, so `ak usage` never sees a developer's real
+# Claude login during the suite (Keychain tests plant their own fake first).
+ln -s "${ROOT}/tests/fakes-host/security" "${SYSBIN}/security"
 BASE_PATH="${SYSBIN}:/usr/bin:/bin:/usr/sbin:/sbin"
 export BASE_PATH  # read by tests/lib.sh and the scopes
 

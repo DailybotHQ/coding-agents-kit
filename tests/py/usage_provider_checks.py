@@ -167,7 +167,10 @@ r = [x for x in rows_of(["claude", "@api"])[1]][0]
 check("usage claude: a login file without a subscription token is no_login", r["status"] == "no_login", str(r))
 os.makedirs(os.path.join(PROFILES, "claude", "empty"))
 r = rows_of(["claude", "@empty"])[1][0]
-check("usage claude: a profile with no login file is no_login", r["status"] == "no_login" and "no login" in r["error"], str(r))
+# On macOS a profile's Claude login lives in the Keychain, which ak does not read per profile: the
+# row says so instead of "no login" (usage.read_keychain); elsewhere there is simply no login.
+expected_hint = "Keychain" if usage.os_name() == "macos" else "no login"
+check("usage claude: a profile with no login file is no_login", r["status"] == "no_login" and expected_hint in r["error"], str(r))
 check("usage claude: the default home follows CLAUDE_CONFIG_DIR",
       (claude_login(os.path.join(TMP, "elsewhere"), subscriptionType="team"), rows_of(["claude", "@default"],
        env_for({"CLAUDE_CONFIG_DIR": os.path.join(TMP, "elsewhere")}))[1][0]["plan"])[1] == "team")

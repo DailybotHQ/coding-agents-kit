@@ -486,11 +486,12 @@ if os.name != "nt":
           seen == "unset|unset|visible", seen)
 
 # review hardening: repair commands are built from environment paths and must not be injectable
-evil = os.path.join(TMP, 'we"ird $(touch pwned) `id` ; dir')
-os.makedirs(evil, exist_ok=True)
-evil_env = os.path.join(evil, "env")
-open(evil_env, "w").close()
+# (POSIX only: Windows forbids '"' in a file name, and the repair there is PowerShell, checked below)
 if os.name != "nt":
+    evil = os.path.join(TMP, 'we"ird $(touch pwned) `id` ; dir')
+    os.makedirs(evil, exist_ok=True)
+    evil_env = os.path.join(evil, "env")
+    open(evil_env, "w").close()
     os.chmod(evil_env, 0o644)
     cmd = by_id(verify([], {}, env_for({"AGENTKIT_ENV": evil_env})))["envfile.mode"]["repair"]
     check("setup review: a path with quotes, $(), backticks and ; is one shell word in the repair command",

@@ -26,6 +26,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import tempfile
 
 import common
 import doctor
@@ -118,11 +119,19 @@ class Host(object):
 
     def version_of(self, path):
         """First line of `<tool> --version`. The child gets the environment
-        without any *_API_KEY / *_TOKEN variable, so no key ever reaches it."""
+        without any *_API_KEY / *_TOKEN variable, so no key ever reaches it,
+        and a throwaway home: some tools write caches or config at start even
+        for --version (pwsh creates ~/.cache/powershell, docker ~/.docker), and
+        the probe promises to leave the real home untouched."""
         clean = {k: v for k, v in self.env.items() if not common.secret_like(k)}
         try:
-            proc = subprocess.run([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                  stdin=subprocess.DEVNULL, timeout=5, env=clean)
+            with tempfile.TemporaryDirectory(prefix="ak-probe-") as scratch:
+                for var in ("HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "XDG_CACHE_HOME",
+                            "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "DOCKER_CONFIG"):
+                    clean[var] = scratch
+                clean["POWERSHELL_TELEMETRY_OPTOUT"] = "1"
+                proc = subprocess.run([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                      stdin=subprocess.DEVNULL, timeout=5, env=clean)
         except (OSError, subprocess.SubprocessError):
             return None
         out = proc.stdout.decode("utf-8", "replace").strip().splitlines()
@@ -207,7 +216,9 @@ def _env_file(host, env, model):
     path = env.get("AGENTKIT_ENV") or os.path.join(host.home(), ".config", "agentkit", "env")
     exists = host.exists(path)
     mode = None
-    if exists and host.os_name() != "windows":
+    # File modes mean nothing on Windows (os.stat reports 666 or 444 from the
+    # read-only bit alone), whatever the simulated host says.
+    if exists and host.os_name() != "windows" and os.name != "nt":
         try:
             mode = "%03o" % stat.S_IMODE(os.stat(path).st_mode)
         except OSError:

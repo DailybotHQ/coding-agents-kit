@@ -118,7 +118,9 @@ assert argv_key == ["cline-azure", "cline-xai"], argv_key' "${ROOT}"
   if grep -rnE '\beval\b' "${ROOT}/bin" "${ROOT}/lib"/*.sh "${ROOT}/install.sh" >/dev/null; then
     fail "a shell script uses eval"
   else pass "no eval in the shell launchers or the installer"; fi
-  if grep -rnE '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/bin" "${ROOT}/lib" "${ROOT}/skills" "${ROOT}/install.sh" \
+  # Text only (-I) and no bytecode: a .pyc marshals unrelated constants next to
+  # each other, so "curl" ... "|" ... "sh" can line up in binary data.
+  if grep -rnIE --exclude-dir=__pycache__ '(curl|wget)[^|]*\|[[:space:]]*(ba|z)?sh' "${ROOT}/bin" "${ROOT}/lib" "${ROOT}/skills" "${ROOT}/install.sh" \
       "${ROOT}/install.ps1" "${ROOT}/docs" "${ROOT}/README.md" >/dev/null; then
     fail "a fetch-piped-to-shell line is spelled somewhere in the product"
   else pass "no fetch-piped-to-shell line anywhere in the product or its docs"; fi

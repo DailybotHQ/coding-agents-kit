@@ -1,0 +1,5 @@
+#!/bin/sh
+# Stand-in for macOS `security` during the suite: the Keychain item is never
+# found (errSecItemNotFound = 44), so no test ever reads the developer's real
+# Keychain. Tests that exercise the Keychain path plant their own fake first.
+exit 44
