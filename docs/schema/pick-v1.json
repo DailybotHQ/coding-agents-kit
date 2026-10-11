@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.0/docs/schema/pick-v1.json",
+  "title": "ak pick --json (pick-v1)",
+  "description": "The account(s) with the most usable headroom for a kind, chosen from the same rows as `ak usage` by one documented policy (docs/usage.md#choosing-an-account). Read-only: no login is refreshed, no reset is spent. Never contains a secret value or an account identity. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "generated_at", "target", "model", "reserve_pct", "need", "count", "chosen", "candidates", "soonest_reset"],
+  "properties": {
+    "schema": { "const": "pick-v1" },
+    "interface": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "target": { "type": "string", "description": "The kind, CLI or provider asked for." },
+    "model": { "type": ["string", "null"], "description": "--model: model-scoped windows that match it also govern." },
+    "reserve_pct": { "type": "number", "minimum": 0, "maximum": 50, "description": "Percent kept unused on windows of 7 days or more." },
+    "need": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["window", "min_free_pct"],
+        "properties": {
+          "window": { "type": "string" },
+          "min_free_pct": { "type": "number", "minimum": 1, "maximum": 100 }
+        }
+      }
+    },
+    "count": { "type": "integer", "minimum": 1, "maximum": 16 },
+    "chosen": {
+      "type": "array",
+      "description": "Best first; at most `count`; empty when no account qualifies (exit 1).",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "candidates": {
+      "type": "array",
+      "description": "Every evaluated row, ranked: eligible ones first by the policy, then the excluded ones with their reason.",
+      "items": { "$ref": "#/$defs/candidate" }
+    },
+    "soonest_reset": { "type": ["string", "null"], "description": "ISO-8601 UTC: the earliest reset among the measured accounts' binding windows; null when none is known." }
+  },
+  "$defs": {
+    "candidate": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cli", "profile", "kinds", "status", "eligible", "headroom_pct", "binding_window", "resets_at", "excluded_reason"],
+      "properties": {
+        "cli": { "type": "string" },
+        "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
+        "kinds": { "type": "array", "items": { "type": "string" } },
+        "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"] },
+        "eligible": { "type": "boolean" },
+        "headroom_pct": { "type": ["number", "null"], "description": "Minimum free percent over the governing windows (reserve applied); null when unknown." },
+        "binding_window": { "type": ["string", "null"], "description": "Id of the window that gives the headroom." },
+        "resets_at": { "type": ["string", "null"], "description": "When the binding window resets (ISO-8601 UTC)." },
+        "excluded_reason": { "type": ["string", "null"], "description": "One line; null for an eligible account." }
+      }
+    }
+  }
+}
