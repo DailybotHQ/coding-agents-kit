@@ -39,10 +39,12 @@ with open(PATH) as h:
 # The marketplace rules apply to the whole skill: SKILL.md and its references.
 alltext = text
 refs_dir = os.path.join(SKILL_DIR, "references")
+ref_texts = {}  # "references/<name>" -> text
 if os.path.isdir(refs_dir):
     for ref_name in sorted(os.listdir(refs_dir)):
         with open(os.path.join(refs_dir, ref_name)) as h:
-            alltext += "\n" + h.read()
+            ref_texts["references/" + ref_name] = h.read()
+        alltext += "\n" + ref_texts["references/" + ref_name]
 
 # --- frontmatter (the YAML subset skills use: key: value lines) -----------
 m = re.match(r"^---\n(.*?)\n---\n", text, re.S)
@@ -96,13 +98,24 @@ check("works alone: no dependency on another skill or DeepWorkPlan",
       "deepworkplan" not in alltext.lower() and ".dwp" not in alltext)
 
 # --- every taught `ak` command is valid grammar --------------------------------
-verbs = {"run", "env", "doctor", "usage", "setup", "profiles", "alias", "install", "--skill", "--version", "--help"}
+verbs = {"run", "env", "doctor", "usage", "pick", "setup", "profiles", "alias", "install", "--skill", "--version",
+         "--help"}
 commands = []
-for block in re.findall(r"```(?:bash|sh)?\n(.*?)```", alltext, re.S):
+# A fence with any info string opens a block; only bash, sh and bare blocks hold commands (a closing fence of a
+# ```text block must never be taken for an opening one).
+for lang, block in re.findall(r"```([A-Za-z]*)\n(.*?)```", alltext, re.S):
+    if lang not in ("", "bash", "sh"):
+        continue
     for line in block.splitlines():
         line = line.split("#", 1)[0].strip()
         if line.startswith("ak"):
             commands.append(line)
+# Inline `ak …` spans in the references (tables, prose) follow the same rule; a placeholder (`ak <kind>`) is not
+# a command.
+for body in ref_texts.values():
+    for span in re.findall(r"`(ak [^`\n]+)`", body):
+        if not span.split()[1].startswith("<"):
+            commands.append(span)
 bad = []
 for cmd in commands:
     words = cmd.split()
@@ -113,6 +126,34 @@ for cmd in commands:
         bad.append(cmd)
 check("every ak command in the examples names a real verb or kind (%d checked)" % len(commands),
       commands and not bad, str(bad))
+
+# --- every relative link in SKILL.md and the references resolves -------------
+link_bad = []
+for rel, body in [("SKILL.md", text)] + sorted(ref_texts.items()):
+    base = os.path.dirname(os.path.join(SKILL_DIR, rel))
+    for target in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", body):
+        if re.match(r"[a-z]+:", target):
+            continue
+        if not os.path.exists(os.path.normpath(os.path.join(base, target))):
+            link_bad.append("%s -> %s" % (rel, target))
+check("every relative link in SKILL.md and its references resolves", not link_bad, str(link_bad))
+
+if not SETUP:
+    for ref in ("references/accounts.md", "references/usage.md"):
+        check("skill references: %s exists and is linked from SKILL.md" % ref,
+              ref in ref_texts and "](%s)" % ref in text)
+    usage_ref = ref_texts.get("references/usage.md", "")
+    statuses = ("ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error")
+    check("skill references: usage.md gives an action for every usage-v1 status",
+          all(re.search(r"^\| `%s` \|" % st, usage_ref, re.M) for st in statuses),
+          str([st for st in statuses if not re.search(r"^\| `%s` \|" % st, usage_ref, re.M)]))
+    pick_exits = re.findall(r"^\| (0|1|2|3|≥ 64) \|", usage_ref.split("## Choosing an account", 1)[-1], re.M)
+    check("skill references: usage.md names the ak pick exit codes 0, 1, 2, 3 and >= 64",
+          pick_exits[:5] == ["0", "1", "2", "3", "≥ 64"], str(pick_exits))
+    check("skill references: usage.md carries the worked examples E1-E8",
+          all("| E%d | `ak pick " % i in usage_ref for i in range(1, 9)))
+    check("skill references: SKILL.md puts ak pick in the trust boundary",
+          "`ak pick`" in text.split("## Trust boundary (write scope)", 1)[-1])
 
 if not SETUP:
     kinds_in_table = set(re.findall(r"^\| `([a-z-]+)` \|", text, re.M))

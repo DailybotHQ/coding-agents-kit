@@ -12,6 +12,10 @@ scope_skill() {
   box_run -- bash "${ROOT}/install.sh" --no-rc >/dev/null
   dest="${BOX}/home/.local/share/agentkit"
   check "install.sh ships the skill" test -f "${dest}/skills/agentkit/SKILL.md"
+  check "skill references: install.sh ships references/accounts.md" \
+    cmp -s "${dest}/skills/agentkit/references/accounts.md" "${ROOT}/skills/agentkit/references/accounts.md"
+  check "skill references: install.sh ships references/usage.md" \
+    cmp -s "${dest}/skills/agentkit/references/usage.md" "${ROOT}/skills/agentkit/references/usage.md"
   out="$(box_run -- "${dest}/bin/ak" --skill)"
   expect_has "the installed ak --skill prints the installed copy" "${out}" "name: agentkit"
   out="$(box_run -- "${dest}/bin/agentkit" --skill | head -2)"
