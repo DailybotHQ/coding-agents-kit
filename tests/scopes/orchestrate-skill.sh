@@ -28,3 +28,19 @@ scope_orchestrate_skill() {
     orchestrate_skill_scenarios
   fi
 }
+
+# Executable documentation: the loop the skill teaches runs against fake
+# accounts (tests/py/orchestrate_scenarios.py); then deliberate drifts of the
+# words prove the suite notices when the skill and the tool disagree.
+orchestrate_skill_scenarios() {
+  local drift copy out
+  py_checks orchestrate_scenarios.py "${ROOT}"
+  for drift in "--count 3 --json|--cnt 3 --json" "claude @work2 --cwd ../wt-api|claude @work9 --cwd ../wt-api" "--model fable|--model fabel"; do
+    copy="${SANDBOX}/orchestrate-drift"
+    rm -rf "${copy}"
+    cp -R "${ROOT}/skills/agentkit-orchestrate" "${copy}"
+    sed -e "s|${drift%%|*}|${drift##*|}|g" "${copy}/SKILL.md" > "${copy}/SKILL.md.new" && mv "${copy}/SKILL.md.new" "${copy}/SKILL.md"
+    out="$(cd "${SANDBOX}" && env -i HOME="${HOME}" PATH="${BASE_PATH}" "${AK_PY}" "${ROOT}/tests/py/orchestrate_scenarios.py" "${ROOT}" --skill-dir "${copy}" 2>&1)"
+    expect_has "orchestrate-skill scenario: a drift of the words (${drift%%|*}) fails the scenarios" "${out}" "FAIL "
+  done
+}
