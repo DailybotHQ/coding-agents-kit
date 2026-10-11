@@ -1,7 +1,7 @@
 # `ak usage` — quota and usage of every account
 
 ```
-ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+ak usage [<kind-or-cli>] [@profile] [-v | --verbose] [--json] [--timeout SECONDS] [--no-color]
 ```
 
 One command, one list: the quota windows of every account the kit can see —
@@ -11,17 +11,52 @@ cache, and **read-only** (it never refreshes a login, never prints a token and
 never writes under a profile or the env file).
 
 ```text
-CLI     PROFILE   PLAN             WINDOW  USED            RESET / NOTE
-claude  @default  max              5-hour  ████░░░░░░ 42%  in 2h 14m
-                                   7-day   █░░░░░░░░░ 13%  in 4d 1h
-claude  @work     pro              5-hour  ██████████ 97%  in 38m
-                                   7-day   ███████░░░ 70%  in 1d 3h
-codex   @default  plus             5-hour  ████░░░░░░ 35%  in 1h 20m
-                                   7-day   █░░░░░░░░░ 14%  in 4d 9h
-cursor  @default  -                n/d                     usage is only available through the Cursor web session; not read by ak
-grok    @default  -                n/d                     grok reports usage per session only (grok usage <session>); no account quota is readable
-zai     @default  GLM Coding Lite  Tokens  █████░░░░░ 48%  in 1h 20m
+  PROFILE   PLAN             WINDOW            USED             RESET
+
+claude · Claude Code
+  @default  max              5-hour            ████░░░░░░  42%  in 2h 14m
+                             7-day all models  █░░░░░░░░░  13%  in 4d 1h
+                             7-day Fable only  ███░░░░░░░  31%  in 4d 1h
+  @work     team             5-hour            ██████████  97%  in 38m
+                             7-day Fable only  ███████░░░  70%  in 1d 3h
+  @old      -                expired           open ak claude @old once to renew
+
+codex   resets: use one with /usage in codex
+  @default  plus             5-hour            ████░░░░░░  35%  in 1h 20m
+                             7-day             █░░░░░░░░░  14%  in 4d 9h
+                             resets            3 available
+
+zai · Z.AI GLM Coding Plan
+  @default  pro              5-hour            ███░░░░░░░  27%  in 3h 28m  3.27K/12K
+                             7-day             ██████░░░░  58%  in 5d 4h   35.22K/60K
+
+connected · no quota to read
+  grok         @default  logged in        per-session only
+  antigravity  @default  logged in        no quota source
+  xai          @default  XAI_API_KEY set  needs a management key
+
+n/d  cursor (web session only) · opencode, pi, cline (via a provider key)
+     ak usage -v for every row and its reason
 ```
+
+One block per CLI or provider: its id and name on a title line, its
+accounts indented under one shared header, a blank line between blocks. A
+tip that applies to the whole block (how to spend a Codex reset) is said
+once, on the title line.
+
+An account with no quota to read still matters when it is **connected**: a
+login found for it (a login file, a credential variable, or — on macOS, for
+the CLI's default home — its Keychain item, of which only the presence is
+asked) or its provider key set. Those close the table in a `connected` block
+that says how each is connected; the rest fold into the `n/d` line. In
+`--json` such a row carries `"connected": true` (or `false`; the key is
+absent when it cannot be told).
+
+On a terminal the table fits its width: a row with a problem shows its status
+and a few-word note (`log in: ak claude @work`), and the accounts with no
+readable quota fold into one closing `n/d` line grouped by cause. Nothing
+wraps; a note too long for the width ends in `…`. `-v` lists every row with
+its full note instead. A pipe or a file gets the whole text (no width).
 
 ## What it shows
 
@@ -38,10 +73,10 @@ Order: the CLI order of `providers.toml`, then `@default`, then profile names.
 
 | Source | Where the number comes from | Notes |
 | --- | --- | --- |
-| Claude Code subscription | `api.anthropic.com` usage endpoint, with the profile's login (`.credentials.json`; on macOS the Keychain for the default home) | needs the `user:profile` permission; per-profile Keychain entries are not read |
-| Codex (ChatGPT login) | `chatgpt.com` usage endpoint, with the profile's `auth.json` | an API-key login has no quota: `n/d` |
-| Z.AI coding plan | `api.z.ai` quota endpoint, with the profile's `ZAI_CODING_API_KEY[_SUFFIX]` | global host only |
-| Cursor, Grok, xAI, Azure OpenAI | — | `n/d` with the reason (browser session only, per-session usage only, needs a management key, nothing to read) |
+| Claude Code subscription | `api.anthropic.com` usage endpoint, with the profile's login (`.credentials.json`; on macOS the profile's Keychain item) | needs the `user:profile` permission; a plan without a global weekly cap (Team) shows its per-model weekly windows only; each window is its own line: `5-hour`, `7-day all models`, `7-day <model> only` |
+| Codex (ChatGPT login) | `chatgpt.com` usage endpoint, with the profile's `auth.json` | an API-key login has no quota: `n/d`; the limit resets the account holds show as a `resets` line (`resets_available` in `--json`) |
+| Z.AI coding plan | `api.z.ai` quota endpoint, with the profile's `ZAI_CODING_API_KEY[_SUFFIX]` | global host only; the windows are named by their period (`5-hour`, `7-day`) and show the credits used out of the limit |
+| Cursor, Grok, Antigravity, xAI, Azure OpenAI, Gemini API | — | `n/d` with the reason (browser session only, per-session usage only, needs a management key, nothing to read) |
 | OpenCode, Pi, Cline | the provider behind the kind (`opencode-glm` → Z.AI, `pi-xai` → xAI) | an `n/d` row only when no provider key covers the profile |
 
 **These endpoints are vendor-internal and unofficial.** They can change
@@ -54,6 +89,7 @@ shape` and the rest of the list is unaffected.
 | --- | --- |
 | `<kind-or-cli>` | only the rows of a CLI (`claude`), a kind (`claude-glm` selects the Z.AI rows) or a provider (`zai`) |
 | `@profile` | only that profile (`@default` and `@1` are the CLI's own home) |
+| `-v`, `--verbose` | one line per row, n/d rows included, with the full reason or error |
 | `--json` | exactly one JSON object, schema `usage-v1` ([`schema/usage-v1.json`](schema/usage-v1.json)), no ANSI |
 | `--timeout SECONDS` | per request, 1-60 (default 10) |
 | `--no-color` | and `NO_COLOR`; colour is also off when stdout is not a terminal |
@@ -103,12 +139,12 @@ One code path everywhere; only where a login lives differs.
 
 | Login | Linux | macOS | Windows |
 | --- | --- | --- | --- |
-| Claude Code | `.credentials.json` in the config directory | the Keychain item for the default home; a file for profiles | the file in `%USERPROFILE%\.claude` (or the profile) |
+| Claude Code | `.credentials.json` in the config directory | a file if there is one, else the Keychain item: `Claude Code-credentials` for the default home, `Claude Code-credentials-<8 hex>` for a profile (the first 8 hex of the sha256 of its directory, the name Claude Code derives) | the file in `%USERPROFILE%\.claude` (or the profile) |
 | Codex | `auth.json` in `CODEX_HOME` | `auth.json` | `auth.json` |
 | Z.AI | `ZAI_CODING_API_KEY[_SUFFIX]` from the environment or the env file | same | same (the env file is read as `KEY=value` lines) |
 
 A login kept in an OS credential store that the kit cannot read (a Codex
-keyring, Windows Credential Manager, a per-profile Keychain entry) is reported
+keyring, Windows Credential Manager) is reported
 as `no_login` with that cause, never guessed. The bar uses block characters on
 a UTF-8 console and `#`/`-` otherwise; colour needs a terminal (on Windows one
 that announces itself) and is never written into pipes or `--json`.
@@ -126,6 +162,6 @@ stay `n/d` rather than asking for a second credential.
 
 A watch mode, token totals from local transcripts, Cursor (browser cookies are
 never read), Azure quota, account identity, a cache, alert thresholds,
-Windows Credential Manager, per-profile Keychain entries and the China host of
+Windows Credential Manager and the China host of
 Z.AI. Adding a source: a parser in `lib/usage.py`, its table in
 `providers.toml` ([kinds](kinds.md#usage-sources)), a fixture and a test.

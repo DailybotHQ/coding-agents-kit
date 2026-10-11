@@ -21,11 +21,11 @@ scope_usage() {
   expect_eq "usage json: ak usage --json matches docs/schema/usage-v1.json" "${out}" "valid"
   expect_eq "usage json: schema and interface" "$(json_get "${doc}" '[d["schema"], d["interface"]]')" '["usage-v1", 1]'
   expect_eq "usage core: unsupported sources are listed with a reason, not hidden" \
-    "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["cline", "cursor", "grok", "opencode", "pi"]'
+    "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["antigravity", "cline", "cursor", "grok", "opencode", "pi"]'
 
   out="$(ak -- usage --no-color)"; status=$?
   expect_eq "usage core: the table exits like the JSON" "${status}" 1
-  expect_has "usage core: the table has a header" "${out}" "CLI"
+  expect_has "usage core: the table has a header" "${out}" "PROFILE"
   expect_has "usage core: unsupported rows print n/d" "${out}" "n/d"
 
   out="$(ak -- usage nope)"; status=$?

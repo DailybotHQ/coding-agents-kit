@@ -14,7 +14,7 @@ way to keep a second account apart, its own headless mode and its own
 grammar over all of them:
 
 - **Kinds** — `claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`,
-  `grok`, plus provider routes (`claude-glm`, `codex-azure`,
+  `grok`, `antigravity` (Google's `agy`), plus provider routes (`claude-glm`, `codex-azure`,
   `opencode-xai`, …). Kinds are data in [`providers.toml`](providers.toml).
 - **Profiles** — several accounts per CLI (`ak claude @work`), each with its
   own login, sessions and provider keys.
@@ -71,12 +71,12 @@ The grammar is the same for every kind:
 ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]
 ```
 
-| Flag | claude | codex | cursor | opencode | pi | cline | grok |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| `-c` | `--continue` | `resume --last` | `--continue` | `--continue` | `--continue` | newest session here → `--id <id>` | `--continue` |
-| `-r <id>` | `--resume <id>` | `resume <id>` | `--resume=<id>` | `--session <id>` | `--session <id>` | `--id <id>` | `--resume <id>` |
-| `-r` | `--resume` (picker) | `resume --all` | `--resume` | refused: run `opencode session list` | `--resume` | `history` | `--resume` |
-| `-l` | (passed through) | `resume --last` | `ls` | (passed through) | (passed through) | (passed through) | (passed through) |
+| Flag | claude | codex | cursor | opencode | pi | cline | grok | antigravity |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `-c` | `--continue` | `resume --last` | `--continue` | `--continue` | `--continue` | newest session here → `--id <id>` | `--continue` | `--continue` |
+| `-r <id>` | `--resume <id>` | `resume <id>` | `--resume=<id>` | `--session <id>` | `--session <id>` | `--id <id>` | `--resume <id>` | `--conversation <id>` |
+| `-r` | `--resume` (picker) | `resume --all` | `--resume` | refused: run `opencode session list` | `--resume` | `history` | `--resume` | refused: no picker (`-r <conversation_id>` or `-c`) |
+| `-l` | (passed through) | `resume --last` | `ls` | (passed through) | (passed through) | (passed through) | (passed through) | (passed through) |
 
 Only the head of the arguments belongs to `ak`; the first token it does not
 recognise, and everything after it, reaches the CLI unchanged. `ak`

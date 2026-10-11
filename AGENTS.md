@@ -4,7 +4,7 @@ Entry point for AI agents working **on** this repository.
 
 ## Purpose
 
-Install and launch every terminal coding agent with one command surface: `ak <kind> [@profile]`. Canonical kinds (claude, codex, cursor, opencode, pi, cline, grok) plus provider variants (glm, azure, xai), multiple accounts per CLI through profiles, the same session flags everywhere, headless runs (`ak run`) and a doctor. Autonomy by default (each CLI's own flag), with an opt-out that always wins: `--ask` or `AGENTKIT_PERMISSIONS=ask`. API keys never land in config files.
+Install and launch every terminal coding agent with one command surface: `ak <kind> [@profile]`. Canonical kinds (claude, codex, cursor, opencode, pi, cline, grok, antigravity) plus provider variants (glm, azure, xai), multiple accounts per CLI through profiles, the same session flags everywhere, headless runs (`ak run`) and a doctor. Autonomy by default (each CLI's own flag), with an opt-out that always wins: `--ask` or `AGENTKIT_PERMISSIONS=ask`. API keys never land in config files.
 
 ## Command / skill
 

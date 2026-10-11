@@ -9,7 +9,7 @@
 # Commands run under `env -i`: nothing from the developer's environment
 # (real keys, real CLI homes, real PATH) can reach the kit or a fake.
 
-ALL_CLIS="claude codex agent opencode pi cline grok"
+ALL_CLIS="claude codex agent opencode pi cline grok agy"
 
 # box_new <name> [cli...] — a fresh box; the named fakes (default: all).
 box_new() {
@@ -58,7 +58,7 @@ box_run() {
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" </dev/null 2>&1 )
+      TMPDIR="${BOX}/tmp" AGENTKIT_KEYCHAIN=off ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" </dev/null 2>&1 )
 }
 
 # box_pipe [VAR=value...] -- <command...> — like box_run, but stdin is the
@@ -69,7 +69,7 @@ box_pipe() {
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" 2>&1 )
+      TMPDIR="${BOX}/tmp" AGENTKIT_KEYCHAIN=off ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} "$@" 2>&1 )
 }
 
 # ak [VAR=value...] -- <ak args...> — runs bin/ak in the box (merged output).
@@ -88,7 +88,7 @@ ak_split() {
   while [[ $# -gt 0 && "$1" != "--" ]]; do envs+=("$1"); shift; done
   [[ "${1:-}" == "--" ]] && shift
   ( cd "${BOX_CWD:-${BOX}/work}" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" \
-      TMPDIR="${BOX}/tmp" ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} bash "${ROOT}/bin/ak" "$@" \
+      TMPDIR="${BOX}/tmp" AGENTKIT_KEYCHAIN=off ${POSTURE[@]+"${POSTURE[@]}"} ${envs[@]+"${envs[@]}"} bash "${ROOT}/bin/ak" "$@" \
       </dev/null >"${BOX}/out" 2>"${BOX}/err" )
 }
 
@@ -154,7 +154,7 @@ print(json.dumps(v) if not isinstance(v, str) else v)' "${src}" "${expr}"
 py_checks() {
   local script="$1" out line status
   shift
-  out="$(cd "${SANDBOX}" && env -i HOME="${HOME}" PATH="${BASE_PATH}" "${AK_PY}" "${ROOT}/tests/py/${script}" "$@" 2>&1)"
+  out="$(cd "${SANDBOX}" && env -i HOME="${HOME}" PATH="${BASE_PATH}" AGENTKIT_KEYCHAIN=off "${AK_PY}" "${ROOT}/tests/py/${script}" "$@" 2>&1)"
   status=$?
   while IFS= read -r line; do
     case "${line}" in

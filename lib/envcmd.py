@@ -61,7 +61,10 @@ def compute(model, kind_name, head, env):
     extra = []
     if prep.kind.data.get("args"):
         extra.append("its arguments (%s)" % " ".join(a for a in prep.kind.data["args"] if "{key}" not in a))
-    if prep.kind.data.get("writer"):
+    writer = prep.kind.data.get("writer")
+    # The antigravity writer only acts with a key (modelProvider); without one
+    # an environment carries everything the launch needs.
+    if writer and not (writer.get("type") == "antigravity" and not prep.env.get(prep.kind.key_var or "")):
         extra.append("the provider config ak writes before launch")
     if prep.kind.data.get("pre"):
         extra.append("`%s %s` before launch" % (prep.kind.executable, prep.kind.data["pre"][0]))
@@ -189,7 +192,7 @@ def main(model, args, env):
         return main_import(args[1:], env)
     if not args or args[0].startswith("-"):
         raise AkError("usage: ak env <kind> [@profile]", EXIT_USAGE)
-    kind_name = args[0]
+    kind_name = model.canonical(args[0])
     if kind_name not in model.kinds:
         raise AkError("unknown kind '%s'. Kinds: %s" % (kind_name, " ".join(model.kind_names())), EXIT_USAGE)
     rest = args[1:]

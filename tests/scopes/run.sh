@@ -48,6 +48,8 @@ scope_run() {
     "cline|json|do it|--json|-c|@P"
     "grok|text|-p|do it|--cwd|@P"
     "grok|json|-p|do it|--output-format|json|--cwd|@P"
+    "antigravity|text|-p|do it"
+    "antigravity|json|-p|do it|--output-format|json"
   )
   for row in "${table[@]}"; do
     k="${row%%|*}"; row="${row#*|}"
@@ -110,7 +112,7 @@ scope_run() {
   expect_eq "the run's CLI does not inherit AGENTKIT_PERMISSIONS" "$(logged_field AGENTKIT_PERMISSIONS)" ""
 
   # --- the JSON envelope -----------------------------------------------------------
-  for k in claude codex cursor opencode pi cline grok; do
+  for k in claude codex cursor opencode pi cline grok antigravity; do
     ak_split FAKE_MODE=headless FAKE_RESULT="answer from ${k}" -- run "${k}" --cwd "${p}" --output-format json -- "q"
     status=$?
     if [[ "${status}" -eq 0 && "$(wc -l < "${BOX}/out" | tr -d ' ')" == 1 ]] \
@@ -142,6 +144,9 @@ scope_run() {
   expect_eq "exit 1 when the CLI reports an error in its JSON" "${status}:$(envelope_field 'd["exit"]')" "1:1"
   ak_split FAKE_MODE=headless FAKE_IS_ERROR=1 -- run codex --output-format json -- "q"; status=$?
   expect_eq "exit 1 when codex reports turn.failed" "${status}" 1
+  ak_split FAKE_MODE=headless FAKE_IS_ERROR=1 FAKE_RESULT="quota exhausted" -- run antigravity --output-format json -- "q"; status=$?
+  expect_eq "exit 1 when agy reports a non-SUCCESS status, its error as result_text" \
+    "${status}:$(envelope_field 'd["result_text"]')" "1:quota exhausted"
   ak_split FAKE_EXIT=4 -- run claude -- "q"; status=$?
   expect_eq "text mode: a failing CLI is exit 1" "${status}" 1
   for args in "claude" "claude -- " "claude --output-format yaml -- x" "claude --timeout soon -- x" "claude --bogus -- x" \

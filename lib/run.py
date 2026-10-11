@@ -11,6 +11,7 @@ The per-CLI command line is data (providers.toml [clis.<cli>.run]):
     pi        pi -p "<prompt>" [--mode json]
     cline     cline "<prompt>" [--json] -c <cwd> [-t <timeout>]
     grok      grok -p "<prompt>" [--output-format json] --cwd <cwd>
+    antigravity  agy -p "<prompt>" [--output-format json]
 Provider kinds add their arguments; --auto (or AGENTKIT_PERMISSIONS=auto)
 adds the CLI's autonomy flag for this run only.
 
@@ -171,6 +172,19 @@ def extract(extractor, stdout):
             if "result" in ev and isinstance(ev["result"], str):
                 text = ev["result"]
                 error = bool(ev.get("is_error")) or ev.get("subtype", "success") not in ("success",)
+    elif extractor == "antigravity-json":
+        # agy -p --output-format json: one object {conversation_id, status,
+        # response, error?}; status is SUCCESS or a failure state.
+        try:
+            whole = json.loads(stdout)
+        except ValueError:
+            whole = None
+        if isinstance(whole, dict):
+            if isinstance(whole.get("response"), str):
+                text = whole["response"]
+            elif isinstance(whole.get("error"), str):
+                text = whole["error"]
+            error = whole.get("status", "SUCCESS") != "SUCCESS" or bool(whole.get("error"))
     elif extractor == "codex-jsonl":
         for ev in events:
             item = ev.get("item") if isinstance(ev.get("item"), dict) else {}
@@ -380,6 +394,7 @@ def main(model, args, env):
     try:
         opts = parse(args, env)
         fmt = opts.fmt
+        opts.kind = model.canonical(opts.kind)
         if opts.kind not in model.kinds:
             raise AkError("unknown kind '%s'. Kinds: %s" % (opts.kind, " ".join(model.kind_names())), EXIT_USAGE)
         cwd = os.path.abspath(opts.cwd or os.getcwd())

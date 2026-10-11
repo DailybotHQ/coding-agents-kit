@@ -101,6 +101,7 @@ removed); one failure never stops the others (exit 1 at the end).
 | pi | npm tarball, `--ignore-scripts` | `0.85.1` | registry `integrity` |
 | cline | npm tarball | `3.0.70` | registry `integrity` |
 | grok | native binary → `~/.local/bin/grok` | `1.0.50` | sha256 per platform, recorded when the pin was taken (the vendor publishes none) |
+| antigravity | package tarball → `~/.local/share/antigravity-cli/versions/<v>`, linked as `agy` | `1.3.3-5524738307653632` | sha256 per platform, recorded from downloads checked against the sha512 of the vendor's release manifest |
 
 Downloads go over HTTPS only (`curl --proto =https --tlsv1.2`, or python's
 `urllib` without curl) into a private temporary directory. A digest that
@@ -151,7 +152,7 @@ ak alias add w claude @work          # w  -> ak claude @work
 ak alias add careful codex --ask     # careful -> ak codex --ask (always asks)
 ak alias rm w
 ak alias                             # list
-ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx
+ak alias preset classic --on         # claudex codexx cursorx opencodex pix clinex grokx agyx
 ak alias preset providers --on       # claude-glm codex-glm codex-azure … (bash and zsh)
 ```
 

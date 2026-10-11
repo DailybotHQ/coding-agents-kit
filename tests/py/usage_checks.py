@@ -131,7 +131,7 @@ MODEL = fake_model()
 
 
 def env_for(extra=None):
-    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", ""),
+    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", ""), "AGENTKIT_KEYCHAIN": "off",
            "AGENTKIT_USAGE_URL_FAKE_OAUTH": server.base + "/claude",
            "AGENTKIT_USAGE_URL_FAKE_KEY": server.base + "/zai"}
     env.update(extra or {})
@@ -189,9 +189,26 @@ check("usage core: exit 0 when every row is ok or unsupported", code == 0, str(c
 
 text = run([], ENV)[1]
 check("usage core: the table names the columns and a bar with its percent",
-      text.startswith("CLI") and "5-hour" in text and "42%" in text and "in 2h 14m" in text, text[:300])
+      text.startswith("  PROFILE") and "5-hour" in text and "42%" in text and "in 2h 14m" in text, text[:300])
 check("usage core: unsupported rows print n/d with the reason", "n/d" in text and "web session" in text)
 check("usage core: a second run is byte-identical", run([], ENV)[1] == text)
+lines = text.splitlines()
+titles = [line for line in lines if line and not line.startswith(" ") and not line.startswith("n/d")]
+check("usage core: one titled block per CLI or provider, in row order, the human name next to the id",
+      [t.split()[0] for t in titles] == ["claude", "codex", "zai"] and "Claude Code" in titles[0], str(titles))
+check("usage core: a blank line separates the blocks and every account sits indented under its title",
+      all(lines[lines.index(t) - 1] == "" for t in titles)
+      and all(line.startswith("  @") for line in lines if "@" in line and not line.startswith("n/d")), text)
+check("usage core: the id of the CLI is not repeated on its account rows", not any(line.startswith("claude  @") for line in lines))
+fit = usage.Platform("linux", True, "utf-8", {"TERM": "xterm"}, 60)
+narrow = run([], ENV, platform=fit)[1]
+check("usage core: on a terminal every line fits its width (notes are shortened, never wrapped)",
+      all(len(usage._visible(line)) <= 60 for line in narrow.splitlines()), narrow)
+check("usage core: -v keeps every note whole, even on a narrow terminal",
+      "usage is only available through the Cursor web session" in run(["-v"], ENV, platform=fit)[1])
+check("usage core: -v and --verbose are the same option", run(["-v"], ENV)[1] == run(["--verbose"], ENV)[1])
+check("usage core: the table's short notes never reach --json", "_short" not in run(["--json"], ENV)[1])
+
 
 # --json against the schema
 code, out, _ = run(["--json"], ENV)

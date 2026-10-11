@@ -157,7 +157,7 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
                       % (kind.cli["name"], kind.executable, kind.cli_name), EXIT_NOT_READY)
     name = profile_name(head)
     if purpose == "launch":
-        directory = profiles.ensure(kind.cli_name, name)
+        directory = profiles.ensure(kind.cli_name, name, note=kind.cli.get("login", {}).get("profile_note"))
     else:
         directory = profiles.existing(kind.cli_name, name)
     if purpose == "print":

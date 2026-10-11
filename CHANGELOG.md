@@ -12,6 +12,89 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Antigravity CLI (`ak antigravity`)**: Google's `agy` as the eighth kind.
+  Autonomy is `--dangerously-skip-permissions`; `-c` is `--continue`,
+  `-r <id>` is `--conversation <id>` (agy has no picker, so `-r` alone is a
+  usage error that says so); `ak run antigravity` runs `agy -p` and reads
+  `response` (or `error`) from its JSON. `ak install antigravity` installs the
+  pinned `1.3.3` tarball (sha256 recorded from downloads checked against the
+  sha512 of Google's release manifest). The `classic` alias preset gains
+  `agyx`.
+- **Antigravity profiles**: a profile is a `HOME` of its own (new
+  `isolation = "home"`, with the rest of the real HOME linked in, as Cursor).
+  agy keeps its Google login in one OS-keyring slot per machine, so a
+  profile's own account is its key, `GEMINI_API_KEY_<SUFFIX>` (new `gemini`
+  provider, key optional like `grok`): with it `ak` writes
+  `"modelProvider": "gemini"` into that home's `settings.json`, and removes it
+  when the key is gone (agy refuses to start with the field and no key). The
+  value is never written. `ak profiles add antigravity @name` explains this.
+- `ak usage` lists Antigravity and a Gemini key as `n/d` (no readable quota).
+
+### Changed
+
+- `ak` (the kinds list) sizes its columns to the longest kind and CLI name,
+  and names a CLI's command when it differs: `antigravity (agy)`, `cursor (agent)`.
+- A CLI's command names its kind everywhere a kind or CLI is expected: `ak agy`
+  is `ak antigravity`, `ak agent` / `ak cursor-agent` is `ak cursor` (also in
+  `ak run`, `ak env`, `ak usage`, `ak profiles`, `ak alias add`, `ak install`).
+
+- **`ak usage` lists connected accounts it cannot measure.** Cursor, Grok,
+  Antigravity, xAI and the like have no quota to read, but an account with a
+  login (or its key) is still shown, in a closing `connected` block that says
+  how it is connected (`logged in`, `XAI_API_KEY set`); only the rest fold
+  into the `n/d` line. `--json` rows gain the optional `connected` key.
+- **Keychain logins are detected.** `login.keychain` in `providers.toml`
+  names a CLI's macOS Keychain item (Cursor, Antigravity); `ak doctor` and
+  `ak usage` ask only whether it exists — `security` without `-w`, the
+  secret is never returned. `AGENTKIT_KEYCHAIN=off` skips it (the test suite
+  sets it, so it never touches a real Keychain).
+- **`ak doctor`**: the CLI column fits the longest name, and a provider key
+  shows `set` only when the key itself is set (an optional-key kind logged in
+  through its CLI no longer reads as a set key).
+- **`ak usage` groups by CLI.** One block per CLI or provider, with a title
+  line (`claude · Claude Code`), its accounts indented under one shared
+  header and a blank line between blocks; the CLI id is no longer repeated
+  on every row, and the Codex reset tip is said once per block.
+- **`ak usage` fits the terminal.** A row with a problem shows its status and
+  a few-word note (`log in: ak claude @work`) starting under USED; the
+  accounts with no readable quota fold into one closing `n/d` line grouped by
+  cause; nothing wraps, and a note too long for the width ends in `…`.
+  `-v`/`--verbose` lists every row with its full reason. Pipes, files and
+  `--json` are unchanged (the `usage-v1` rows carry no new key).
+- **Claude Code: per-model weekly windows.** A plan without a global weekly
+  cap (Team) reports its weekly limits per model in the endpoint's newer
+  `limits` list; `ak usage` now shows them. Every Claude window is its own
+  line with an unambiguous label: `5-hour`, `7-day all models`,
+  `7-day <model> only` (window ids are unchanged).
+- **Claude Code: per-profile Keychain logins on macOS.** A profile without a
+  `.credentials.json` is read from its own Keychain item,
+  `Claude Code-credentials-<first 8 hex of sha256(profile directory)>`, the
+  name Claude Code derives; a default home moved by `CLAUDE_CONFIG_DIR` uses
+  the same rule. Before, such a profile was reported `no_login`.
+- **Codex: limit resets.** The limit resets a ChatGPT account holds (the ones
+  Codex spends with `/usage`) show as a `resets  3 available` line, and as the
+  optional row key `resets_available` in `--json` (additive; `usage-v1`
+  documents it).
+- **Z.AI: named windows and credits.** The two `CREDIT_LIMIT` entries of a
+  coding plan were shown as `Credits` and `Credits (2)`; their `unit` +
+  `number` now name them `5-hour` and `7-day` (window ids `5h`, `7d`), and the
+  credits used out of the limit show next to the reset (`35.22K/60K`; `-v`
+  adds the unit). `--json` windows gain the optional keys `used`, `limit` and
+  `unit` (additive; `usage-v1` documents them).
+- **`ak doctor`**: the "Provider kinds" section is one line per key with the
+  kinds it serves (an unset key no longer prints one "not ready" line per
+  kind). `ak doctor --json` is unchanged.
+- `providers.toml` usage tables accept `short` (the table note of an
+  `unsupported` source) and `keychain_profile`.
+
+### Fixed
+
+- The fake usage endpoint of the test suite accepts the 8 parallel
+  connections `ak usage` opens; its default listen backlog of 5 made macOS
+  refuse some, which showed up as a flaky scenario check.
+
 ## [0.4.0] - 2026-10-10
 
 Interface stays **1**. `ak usage`, and the `agentkit-setup` skill with `ak setup`.

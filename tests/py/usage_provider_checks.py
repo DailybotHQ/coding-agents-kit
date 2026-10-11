@@ -79,7 +79,7 @@ URLS = {"ANTHROPIC_OAUTH": "/claude", "CHATGPT_WHAM": "/codex", "ZAI_QUOTA": "/z
 
 
 def env_for(extra=None):
-    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", "")}
+    env = {"HOME": HOME, "USERPROFILE": HOME, "PATH": os.environ.get("PATH", ""), "AGENTKIT_KEYCHAIN": "off"}
     for adapter, path in URLS.items():
         env["AGENTKIT_USAGE_URL_" + adapter] = server.base + path
     env.update(extra or {})
@@ -157,6 +157,29 @@ check("usage claude: the beta header and accept header are sent",
       "anthropic-beta" in server.requests[-1]["headers"] and "accept" in server.requests[-1]["headers"])
 server.set_routes({"/claude": {"status": 401, "body": "{}"}})
 check("usage claude: a 401 is no_scope with guidance", rows_of(["claude", "@default"])[1][0]["status"] == "no_scope")
+# A Team plan has no global weekly cap: its weekly limits come per model, in the newer `limits` list.
+CLAUDE_TEAM = {"five_hour": {"utilization": 7.0, "resets_at": "2026-10-10T17:00:00Z"}, "seven_day": None,
+               "limits": [{"kind": "session", "group": "session", "percent": 7, "resets_at": "2026-10-10T17:00:00Z", "scope": None},
+                          {"kind": "weekly_scoped", "group": "weekly", "percent": 31, "resets_at": "2026-10-14T00:00:00Z",
+                           "scope": {"model": {"id": None, "display_name": "Fable"}, "surface": None}},
+                          {"kind": "weekly", "group": "weekly", "percent": None, "resets_at": None, "scope": None},
+                          "not-an-object"]}
+server.set_routes({"/claude": {"json": CLAUDE_TEAM}})
+d = rows_of(["claude", "@default"])[1][0]
+check("usage claude: per-model weekly limits from the limits list become windows (Team plans)",
+      d["status"] == "ok" and [(w["id"], w["label"], w["used_pct"]) for w in d["windows"]]
+      == [("5h", "5-hour", 7), ("7d-fable", "7-day Fable only", 31)] and d["windows"][1]["window_seconds"] == 604800, str(d))
+server.set_routes({"/claude": {"json": {"limits": [
+    {"group": "session", "percent": 12, "resets_at": "2026-10-10T17:00:00Z", "scope": None},
+    {"group": "weekly", "percent": 40, "resets_at": "2026-10-14T00:00:00Z", "scope": None},
+    {"group": "weekly", "percent": 55, "resets_at": "2026-10-14T00:00:00Z", "scope": {"model": {"display_name": "Fable"}}}]}}})
+d = rows_of(["claude", "@default"])[1][0]
+check("usage claude: 5-hour, all-models weekly and a model-only weekly are three separate windows",
+      [(w["id"], w["label"], w["used_pct"]) for w in d["windows"]]
+      == [("5h", "5-hour", 12), ("7d", "7-day all models", 40), ("7d-fable", "7-day Fable only", 55)], str(d))
+server.set_routes({"/claude": {"json": {"limits": [{"group": "session", "percent": 12, "resets_at": "2026-10-10T17:00:00Z"}]}}})
+d = rows_of(["claude", "@default"])[1][0]
+check("usage claude: a response with only the limits list is read", [w["id"] for w in d["windows"]] == ["5h"], str(d))
 server.set_routes({"/claude": {"json": {"five_hour": {"utilization": "lots"}}}})
 check("usage claude: a non-numeric utilization is an unexpected shape", rows_of(["claude", "@default"])[1][0]["error"] == "unexpected response shape")
 server.set_routes({"/claude": {"json": {"somethingnew": {}}}})
@@ -166,11 +189,10 @@ write(os.path.join(PROFILES, "claude", "api", ".credentials.json"), json.dumps({
 r = [x for x in rows_of(["claude", "@api"])[1]][0]
 check("usage claude: a login file without a subscription token is no_login", r["status"] == "no_login", str(r))
 os.makedirs(os.path.join(PROFILES, "claude", "empty"))
+usage.os_name = lambda: "linux"      # never consult the real Keychain of the machine running the suite
 r = rows_of(["claude", "@empty"])[1][0]
-# On macOS a profile's Claude login lives in the Keychain, which ak does not read per profile: the
-# row says so instead of "no login" (usage.read_keychain); elsewhere there is simply no login.
-expected_hint = "Keychain" if usage.os_name() == "macos" else "no login"
-check("usage claude: a profile with no login file is no_login", r["status"] == "no_login" and expected_hint in r["error"], str(r))
+usage.os_name = common.os_name
+check("usage claude: a profile with no login file is no_login", r["status"] == "no_login" and "no login" in r["error"], str(r))
 check("usage claude: the default home follows CLAUDE_CONFIG_DIR",
       (claude_login(os.path.join(TMP, "elsewhere"), subscriptionType="team"), rows_of(["claude", "@default"],
        env_for({"CLAUDE_CONFIG_DIR": os.path.join(TMP, "elsewhere")}))[1][0]["plan"])[1] == "team")
@@ -194,9 +216,11 @@ if os.name != "nt":
     keychain_json = json.dumps({"claudeAiOauth": {"accessToken": PLANTED_LOGIN, "expiresAt": int((NOW + 3600) * 1000),
                                                   "scopes": ["user:profile"], "subscriptionType": "max"}})
 
+    argv_log = os.path.join(TMP, "security.argv")
+
     def fake_security(code, payload=""):
         with open(fake, "w") as handle:
-            handle.write("#!/bin/sh\nprintf '%s' '" + payload + "'\nexit " + str(code) + "\n")
+            handle.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + argv_log + "'\nprintf '%s' '" + payload + "'\nexit " + str(code) + "\n")
         os.chmod(fake, os.stat(fake).st_mode | stat.S_IXUSR)
 
     import shutil  # noqa: E402
@@ -221,8 +245,23 @@ if os.name != "nt":
           r["status"] == "ok", str(r))  # @work has its own credentials file: the file wins
     os.makedirs(os.path.join(PROFILES, "claude", "kc"))
     r = rows_of(["claude", "@kc"], kenv)[1][0]
-    check("usage claude: a profile without a file does not guess a Keychain entry",
-          r["status"] == "no_login" and "per-profile" in r["error"], str(r))
+    with open(argv_log) as handle:
+        asked = handle.read().split("\n")
+    expected_service = "Claude Code-credentials-" + hashlib.sha256(
+        os.path.join(PROFILES, "claude", "kc").encode("utf-8")).hexdigest()[:8]
+    check("usage claude: a profile without a file reads its own Keychain entry (service + sha256 of its directory)",
+          r["status"] == "ok" and expected_service in asked, "%s %s" % (r, asked))
+    fake_security(44)
+    r = rows_of(["claude", "@kc"], kenv)[1][0]
+    check("usage claude: a profile whose Keychain entry is missing is no_login with the login command",
+          r["status"] == "no_login" and r["profile"] == "@kc", str(r))
+    fake_security(0, keychain_json)
+    r = rows_of(["claude", "@default"], env_for({"PATH": kenv["PATH"], "CLAUDE_CONFIG_DIR": os.path.join(TMP, "cfgdir")}))[1][0]
+    with open(argv_log) as handle:
+        asked = handle.read().split("\n")
+    check("usage claude: a default home moved by CLAUDE_CONFIG_DIR reads that directory's Keychain entry",
+          r["status"] == "ok" and "Claude Code-credentials-" + hashlib.sha256(
+              os.path.join(TMP, "cfgdir").encode("utf-8")).hexdigest()[:8] in asked, "%s %s" % (r, asked))
     usage.os_name = lambda: "linux"
     r = rows_of(["claude", "@default"], kenv)[1][0]
     check("usage claude: the Keychain is not consulted off macOS", r["status"] == "no_login", str(r))
@@ -285,6 +324,19 @@ _, rows2, _ = rows_of(["codex"])
 by2 = {r["profile"]: r for r in rows2}
 check("usage codex: otherwise the plan comes from the login's plan claim",
       by2["@default"]["plan"] == "plus" and by2["@client"]["plan"] == "team" and by2["@2"]["plan"] == "pro")
+check("usage codex: a response without reset credits has no resets_available key", "resets_available" not in d, str(d))
+for credits, expected in (({"available_count": 3, "applicable_available_count": 0}, 3), ({"available_count": "3"}, None),
+                          ({"available_count": -1}, None), ("odd", None)):
+    server.set_routes({"/codex": {"json": dict(CODEX_OK, rate_limit_reset_credits=credits)}})
+    r = rows_of(["codex", "@default"])[1][0]
+    check("usage codex: reset credits %r -> resets_available %r (an odd value is absent, never an error)" % (credits, expected),
+          r["status"] == "ok" and r.get("resets_available") == expected, str(r))
+server.set_routes({"/codex": {"json": dict(CODEX_OK, rate_limit_reset_credits={"available_count": 3})}})
+text = run(["codex", "@default"])[1]
+check("usage codex: the table shows the resets under the windows", "resets" in text and "3 available" in text, text)
+text = run(["codex"])[1]
+check("usage codex: the /usage tip is said once, on the codex title line, not on every account",
+      text.count("/usage in codex") == 1 and [l for l in text.splitlines() if "/usage in codex" in l][0].startswith("codex"), text)
 server.set_routes({"/codex": {"json": CODEX_OK}})
 check("usage codex: an API-key login is unsupported with a reason, not an error",
       by["@apikey"]["status"] == "unsupported" and "API-key" in by["@apikey"]["reason"] and by["@apikey"]["error"] is None, str(by["@apikey"]))
@@ -344,10 +396,31 @@ check("usage zai: one row per key, the four glm kinds collapsed into each",
 check("usage zai: every profile used only its own key (hashed in the endpoint's log)",
       sorted(sent) == sorted([hashlib.sha256(("Bearer " + k).encode()).hexdigest()[:12] for k in (key_default, key_two)]))
 w = rows[0]["windows"]
-check("usage zai: each limit entry becomes a window with a unique id", [x["id"] for x in w] == ["tokens", "tokens-2", "mcp"], str(w))
+check("usage zai: each limit entry becomes a window with a unique id, named by its period", [x["id"] for x in w] == ["5h", "7d", "mcp"], str(w))
 check("usage zai: percentage and the computed fallback are mapped", [x["used_pct"] for x in w] == [48, 12, 25], str(w))
 check("usage zai: epoch-millisecond resets become ISO UTC", w[0]["resets_at"] == usage.iso_utc(1790004800), str(w[0]))
 check("usage zai: the plan name is reported", rows[0]["plan"] == "GLM Coding Lite")
+# The shape a GLM Coding Pro key returns: two CREDIT_LIMIT entries told apart only by unit + number.
+ZAI_PRO = {"code": 200, "success": True, "data": {"level": "pro", "limits": [
+    {"type": "CREDIT_LIMIT", "unit": 3, "number": 5, "usage": 12000, "currentValue": 3265, "remaining": 8734,
+     "percentage": 27, "nextResetTime": 1791746615622},
+    {"type": "CREDIT_LIMIT", "unit": 6, "number": 1, "usage": 60000, "currentValue": 35215, "remaining": 24784,
+     "percentage": 58, "nextResetTime": 1792183685977},
+    {"type": "TIME_LIMIT", "unit": 3, "number": 5, "percentage": 4},
+    {"type": "CREDIT_LIMIT", "unit": 99, "number": 1, "percentage": 1}]}}
+server.set_routes({"/zai": {"json": ZAI_PRO}})
+r = rows_of(["zai", "@default"], zenv)[1][0]
+check("usage zai: unit + number name the windows like the other CLIs (5-hour, 7-day), MCP keeps its prefix",
+      [(w["id"], w["label"], w["window_seconds"]) for w in r["windows"]]
+      == [("5h", "5-hour", 18000), ("7d", "7-day", 604800), ("mcp-5h", "MCP 5-hour", 18000), ("credits", "Credits", None)]
+      and r["plan"] == "pro", str(r))
+check("usage zai: credits used and the limit are reported for the plan windows only",
+      (r["windows"][0].get("used"), r["windows"][0].get("limit"), r["windows"][0].get("unit")) == (3265, 12000, "credits")
+      and "limit" not in r["windows"][2], str(r["windows"]))
+text = run(["zai", "@default"], zenv)[1]
+check("usage zai: the table shows the credits compactly next to the reset", "3.27K/12K" in text and "35.22K/60K" in text, text)
+check("usage zai: -v names the unit", "35.22K/60K credits" in run(["zai", "@default", "-v"], zenv)[1])
+check("usage zai: amounts use the vendor's K/M style", [usage._amount(v) for v in (950, 3265, 12000, 1500000)] == ["950", "3.27K", "12K", "1.5M"])
 server.set_routes({"/zai": {"json": {"data": {"limits": [{"type": "TOKENS_LIMIT", "percentage": 250}]}}}})
 check("usage zai: percentages are clamped to 0-100", rows_of(["zai", "@default"], zenv)[1][0]["windows"][0]["used_pct"] == 100)
 server.set_routes({"/zai": {"json": {"data": {"limits": []}}}})
@@ -395,7 +468,7 @@ check("usage grok: the recorded decision is n/d with its reason (per-session usa
 check("usage grok: an n/d row is not a problem (exit 0)", code == 0, str(code))
 check("usage grok: no request is made and no credential is read for an n/d source", not server.requests)
 text = run(["grok"])[1]
-check("usage grok: the table shows n/d and the reason", "n/d" in text and "per session" in text)
+check("usage grok: the table shows n/d and the reason", "n/d" in text and "per-session" in text)
 check("usage grok: the profile directory is unchanged", before == snapshot(TMP))
 check("usage grok: nothing from the profile's login reaches the output", "PLANTED-GROK-SESSION-01" not in text + run(["--json"])[1])
 INSTALLED.clear()
@@ -460,9 +533,65 @@ check("usage nd: only n/d rows exit 0 and nothing was requested",
       code2 == 0 and rows2 and all(r["status"] == "unsupported" for r in rows2) and not server.requests, str(code2))
 check("usage nd: every n/d row has a one-line reason and no error",
       all(r["reason"] and "\n" not in r["reason"] and r["error"] is None for r in rows if r["status"] == "unsupported"))
+text = run(["-v"], nd_env)[1]
+check("usage nd: -v lists each n/d row with its full reason",
+      text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]) and "web session" in text)
 text = run([], nd_env)[1]
-check("usage nd: the table marks them n/d", text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]))
+nd_lines = [line for line in text.splitlines() if line.startswith("n/d")]
+check("usage nd: without -v the n/d rows fold into one closing line grouped by cause",
+      len(nd_lines) == 1 and "cursor" in text and "cline @solo" in text and "ak usage -v" in text, text)
+
+# Connected but not measurable: listed at the very end, in a block of its own.
+INSTALLED.add("grok")
+write(os.path.join(HOME, ".grok", "auth.json"), "{}")
+code, rows, _ = rows_of([], nd_env)
+got = {(r["cli"], r["profile"]): r for r in rows}
+check("usage connected: a provider key that is set makes its n/d row connected (JSON)",
+      got[("xai", "@2")].get("connected") is True, str(got[("xai", "@2")]))
+check("usage connected: a CLI login found on disk makes its n/d row connected (grok auth.json)",
+      got[("grok", "@default")].get("connected") is True, str(got[("grok", "@default")]))
+check("usage connected: a login that cannot be told stays without the key (cursor), one that is absent is false",
+      "connected" not in got[("cursor", "@default")] and got[("opencode", "@default")].get("connected") is not True,
+      str(got[("cursor", "@default")]))
+check("usage connected: the table-only keys never reach --json", all("_how" not in r and "_short" not in r for r in rows))
+text = run([], nd_env)[1]
+lines = text.splitlines()
+block = lines[lines.index([l for l in lines if l.startswith("connected")][0]):]
+check("usage connected: a closing block lists them with how they are connected and why there is no number",
+      any("grok" in l and "logged in" in l and "per-session" in l for l in block)
+      and any("xai" in l and "@2" in l and "XAI_API_KEY_2 set" in l for l in block), text)
+check("usage connected: the block comes after every measured block and before the n/d line",
+      lines.index(block[0]) > max(i for i, l in enumerate(lines) if l.startswith("zai"))
+      and lines.index(block[0]) < [i for i, l in enumerate(lines) if l.startswith("n/d")][0], text)
+check("usage connected: what is connected is not repeated in the n/d line",
+      "grok" not in [l for l in lines if l.startswith("n/d")][0] and "xai" not in [l for l in lines if l.startswith("n/d")][0], text)
+os.remove(os.path.join(HOME, ".grok", "auth.json"))
 INSTALLED.clear()
+
+# The Keychain probe: presence only, never the secret (-w), and never under AGENTKIT_KEYCHAIN=off.
+if os.name != "nt":
+    import profiles  # noqa: E402
+    kbin = os.path.join(TMP, "kcbin")
+    os.makedirs(kbin)
+    klog = os.path.join(TMP, "kc.argv")
+    with open(os.path.join(kbin, "security"), "w") as handle:
+        handle.write("#!/bin/sh\nprintf '%s\\n' \"$@\" > '" + klog + "'\n[ \"$3\" = present ] && exit 0\nexit 44\n")
+    os.chmod(os.path.join(kbin, "security"), 0o755)
+    kenv = {"PATH": kbin, "HOME": HOME}
+    saved = common.os_name
+    common.os_name = lambda: "macos"
+    check("usage keychain: an existing item is a login", profiles.keychain_has([{"service": "present", "account": "a"}], kenv))
+    with open(klog) as handle:
+        asked = handle.read().split()
+    check("usage keychain: only presence is asked (no -w), with the service and account",
+          asked == ["find-generic-password", "-s", "present", "-a", "a"], str(asked))
+    check("usage keychain: a missing item is not a login", not profiles.keychain_has([{"service": "absent"}], kenv))
+    os.remove(klog)
+    check("usage keychain: AGENTKIT_KEYCHAIN=off never runs security",
+          not profiles.keychain_has([{"service": "present"}], dict(kenv, AGENTKIT_KEYCHAIN="off")) and not os.path.exists(klog))
+    common.os_name = lambda: "linux"
+    check("usage keychain: off macOS there is no Keychain to ask", not profiles.keychain_has([{"service": "present"}], kenv))
+    common.os_name = saved
 
 
 # ================================================================ scenario

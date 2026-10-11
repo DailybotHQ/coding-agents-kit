@@ -82,9 +82,15 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             pass
 
 
+class _Server(http.server.ThreadingHTTPServer):
+    # ak usage opens up to 8 connections at once; the default listen backlog
+    # of 5 makes macOS refuse the extra ones, which looked like a flaky row.
+    request_queue_size = 64
+
+
 class FakeUsageServer(object):
     def __init__(self, routes=None, routes_file=None, log_file=None):
-        self.httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.httpd = _Server(("127.0.0.1", 0), _Handler)
         self.httpd.daemon_threads = True
         self.httpd.routes = routes or {}
         self.httpd.routes_file = routes_file

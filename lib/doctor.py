@@ -110,6 +110,7 @@ def collect(model, env):
 
 
 def render_text(model, report):
+    cw = max([len(c) for c in model.cli_names()] + [8])   # the CLI column
     out = []
     w = out.append
     w("agentkit %s (interface %d) on %s — %s" % (report["version"], report["interface"], report["os"], common.KIT_ROOT))
@@ -125,18 +126,32 @@ def render_text(model, report):
         k = report["kinds"][cli]
         login = {True: "logged in", False: "not logged in", None: "login: unknown"}[k["logged_in"]]
         if k["installed"]:
-            w("  %-9s %-28s %s  (%s)" % (cli, k["version"] or "?", login, k["path"]))
+            w("  %-*s %-28s %s  (%s)" % (cw, cli, k["version"] or "?", login, k["path"]))
         else:
-            w("  %-9s not installed — ak install %s" % (cli, cli))
+            w("  %-*s not installed — ak install %s" % (cw, cli, cli))
     w("")
     w("## Provider kinds")
+    # One line per key: the kinds it serves, so an unset key is one line, not
+    # one per kind. A kind whose CLI is missing says so; --json keeps the
+    # per-kind detail.
+    by_key = {}
     for name in model.kind_names():
         kind = model.kind(name)
-        if not kind.provider_name:
-            continue
-        k = report["kinds"][name]
-        key = "%s %s" % (kind.key_var, "set" if k["logged_in"] else "unset")
-        w("  %-16s %-14s %s" % (name, "ready" if k["installed"] and k["logged_in"] else "not ready", key))
+        if kind.provider_name:
+            by_key.setdefault(kind.key_var, []).append(name)
+    width = max([len(key) for key in by_key] or [0])
+    for key, names in sorted(by_key.items()):
+        # Only the key itself: a kind whose key is optional is "logged in"
+        # through its CLI's own login, which says nothing about the key.
+        is_set = key in report["keys"]
+        tags = []
+        for n in names:
+            note = "CLI not installed" if not report["kinds"][n]["installed"] else (
+                "key optional" if model.kind(n).data.get("key_optional") else "")
+            tags.append("%s (%s)" % (n, note) if note else n)
+        w("  %-*s  %-6s %s" % (width, key, "set" if is_set else "unset", " ".join(tags)))
+    if not report["keys"]:
+        w("  ready once its key is set: ak env import <file>, or edit the env file")
     w("")
     w("## Keys (names only)")
     w("  " + (" ".join(report["keys"]) or "(none set)"))
@@ -146,7 +161,7 @@ def render_text(model, report):
     for cli, names in sorted(report["profiles"].items()):
         if names:
             any_profile = True
-            w("  %-9s %s" % (cli, " ".join("@" + n for n in names)))
+            w("  %-*s %s" % (cw, cli, " ".join("@" + n for n in names)))
     if not any_profile:
         w("  (none — @default is each CLI's own home; ak profiles add claude @2)")
     w("")
@@ -158,7 +173,7 @@ def render_text(model, report):
     w("")
     w("## Herdr hooks")
     for cli, states in sorted(report["herdr_hooks"].items()):
-        w("  %-9s %s" % (cli, " ".join("%s=%s" % (p, s) for p, s in sorted(states.items()))))
+        w("  %-*s %s" % (cw, cli, " ".join("%s=%s" % (p, s) for p, s in sorted(states.items()))))
     if report["problems"]:
         w("")
         w("## Problems")

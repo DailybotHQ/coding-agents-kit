@@ -54,6 +54,7 @@ git clone --branch v0.4.0 https://github.com/DailybotHQ/coding-agents-kit && ./c
 | `pi` | Pi | `pi-glm`, `pi-azure`, `pi-xai` |
 | `cline` | Cline | `cline-azure`, `cline-xai` |
 | `grok` | Grok (native xAI) | — |
+| `antigravity` | Antigravity CLI (`agy`); a profile's own account is `GEMINI_API_KEY_<SUFFIX>` | — |
 
 Kind names equal Herdr's `--kind` values.
 
@@ -116,7 +117,8 @@ it; never pass secrets in the prompt.
 ## Which account has room: `ak usage`
 
 ```bash
-ak usage                 # one row per account: 5-hour / weekly windows, or n/d with the reason
+ak usage                 # one row per account: 5-hour / weekly windows; n/d accounts fold into one line
+ak usage -v              # every row, n/d included, with its full reason
 ak usage claude @work --json
 ```
 

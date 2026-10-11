@@ -193,6 +193,27 @@ def write_pi(path, provider_id, base_url, env_key, context_window, max_tokens, r
     return True
 
 
+def write_antigravity(path, use_key, confine=None):
+    """Keep `modelProvider` of agy's settings.json in step with the key:
+    "gemini" when the profile has GEMINI_API_KEY, absent when it does not
+    (agy refuses to start with the field and no key). Every other setting is
+    kept; the file is only rewritten when that one field changes. Returns
+    True when it wrote."""
+    data = _load_json_object(path, "")
+    current = data.get("modelProvider")
+    if use_key:
+        if current == "gemini":
+            return False
+        data["modelProvider"] = "gemini"
+    else:
+        if current != "gemini":
+            return False
+        del data["modelProvider"]
+    _backup_once(path)
+    _atomic_write(path, json.dumps(data, indent=2) + "\n", confine=confine)
+    return True
+
+
 def apply(kind, ctx):
     """Run the kind's writer (if any) with templates expanded in ctx.
     Returns the written path or None. Never receives the secret."""
@@ -213,6 +234,9 @@ def apply(kind, ctx):
     elif wtype == "opencode":
         write_opencode(path, spec["provider_id"], env_key, ctx.expand(spec["base_url"]),
                        [ctx.expand(m) for m in spec["models"]], confine=ctx.profile_dir)
+    elif wtype == "antigravity":
+        # Only whether the key is set decides; its value never reaches the file.
+        write_antigravity(path, bool(env_key and ctx.env.get(env_key)), confine=ctx.profile_dir)
     elif wtype == "pi":
         write_pi(path, spec["provider_id"], ctx.expand(spec["base_url"]), env_key,
                  spec["context_window"], spec["max_tokens"], spec["reasoning_effort"],

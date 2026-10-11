@@ -37,7 +37,7 @@ scope_doctor() {
   expect_eq "doctor reports interface 1" "$(json_get "${doc}" 'd["interface"]')" 1
   expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "0.4.0"
   expect_eq "doctor reports this OS" "$(json_get "${doc}" 'd["os"] in ("macos", "linux")')" true
-  expect_eq "doctor lists all 19 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 19
+  expect_eq "doctor lists all 20 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 20
   expect_eq "doctor sees the installed CLIs" "$(json_get "${doc}" 'all(v["installed"] for v in d["kinds"].values())')" true
   expect_eq "doctor reads each CLI's version" "$(json_get "${doc}" 'd["kinds"]["codex"]["version"]')" "codex 0.0.0-fake"
   expect_eq "doctor lists profiles per CLI" "$(json_get "${doc}" 'd["profiles"]["grok"]')" '["9", "work"]'

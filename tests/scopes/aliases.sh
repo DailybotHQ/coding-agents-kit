@@ -21,7 +21,7 @@ scope_aliases() {
   expect_has "turning the preset on says the names follow the posture" "${out}" "autonomy follows your posture"
   check "aliases.json records the preset" grep -q '"classic": true' "${cfg}"
   expect_eq "aliases.json is mode 600" "$(file_mode "${cfg}")" 600
-  for a in claudex codexx cursorx opencodex pix clinex grokx; do
+  for a in claudex codexx cursorx opencodex pix clinex grokx agyx; do
     check "classic defines ${a}" grep -q "^${a}() {" "${script}"
   done
   check "no classic alias spells --auto or --ask (plain names)" bash -c "! grep -E -- '--(auto|ask)' '${script}'"

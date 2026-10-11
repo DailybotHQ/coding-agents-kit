@@ -1,7 +1,7 @@
 # Kinds
 
 A **kind** is what you type after `ak`: a canonical CLI (`claude`, `codex`,
-`cursor`, `opencode`, `pi`, `cline`, `grok`) or a CLI routed to another API
+`cursor`, `opencode`, `pi`, `cline`, `grok`, `antigravity`) or a CLI routed to another API
 provider (`claude-glm`, `codex-azure`, `opencode-xai`, …). Kinds are data in
 [`providers.toml`](../providers.toml); `lib/kinds.py` loads, validates and
 resolves them. No CLI is named in the dispatcher's code.
@@ -15,9 +15,16 @@ resolves them. No CLI is named in the dispatcher's code.
 | `pi` | `pi` | `pi-glm`, `pi-azure`, `pi-xai` | `PI_CODING_AGENT_DIR` |
 | `cline` | `cline` | `cline-azure`, `cline-xai` | `CLINE_DIR` |
 | `grok` | `grok` | (native xAI) | `GROK_HOME` |
+| `antigravity` | `agy` (Antigravity CLI) | (Google login, or a Gemini API key) | `HOME` (profile home, `isolation = "home"`) |
 
 Kind names equal Herdr's `--kind` values, so a kind is also what you pass to
-`herdr agent start --kind`.
+`herdr agent start --kind`. `antigravity` is the exception: Herdr has no
+agent kind for it yet, so it has no `herdr_kind` and no Herdr hooks.
+
+`isolation = "home"` (with `home_dir`, one dot-directory of HOME) is for a CLI
+that keeps its state in that directory and offers no variable to move it:
+the profile gets `HOME=<profile>/home` with every other entry of the real
+HOME linked in, as Cursor does.
 
 ## Providers and their variables
 
@@ -30,8 +37,14 @@ Put these in `~/.config/agentkit/env` (mode 600). A named profile reads
 | Azure OpenAI / Foundry (`*-azure`) | `AZURE_OPENAI_API_KEY` | **required:** `AZURE_OPENAI_RESOURCE` or `AZURE_OPENAI_BASE_URL`, and `AZURE_OPENAI_MODEL_DAILY` (your deployment name — there is no default to guess); optional `AZURE_OPENAI_MODEL_REASONING`, `AZURE_OPENAI_DEFAULT_MODEL` |
 | xAI (`*-xai`, `grok`) | `XAI_API_KEY` | `XAI_BASE_URL` (`https://api.x.ai/v1`), `XAI_MODEL_DAILY` (`grok-4.3`), `XAI_MODEL_REASONING` (`grok-4.6`), `XAI_DEFAULT_MODEL` |
 
-`grok` treats the key as optional: without one it uses the CLI's own
-`grok login`.
+| Gemini API (`antigravity`) | `GEMINI_API_KEY` | `GOOGLE_GEMINI_BASE_URL` |
+
+`grok` and `antigravity` treat the key as optional: without one each uses
+the CLI's own login (`grok login`; for `agy`, its Google login). With a key,
+`ak antigravity` writes `"modelProvider": "gemini"` into that home's
+`settings.json` (the one field agy needs to use the key), and removes it
+again when the key is gone, because agy refuses to start with the field and
+no key. The key value is never written.
 
 ## How a provider reaches the CLI — never as a file value
 
@@ -66,8 +79,10 @@ rather than overwritten.
 | `credential` | `file` (CLI: `files`), `env` (provider: its key variable), `keychain`, `cli` |
 | `files` | `<root>:<path>` references of that CLI, like `login.files` |
 | `keychain` | macOS service name for the default home |
+| `keychain_profile` | `true`: a profile's item is `<keychain>-<first 8 hex of sha256(profile directory)>` (also the default home when its `home_env` is set) |
 | `timeout_s` | integer 1-60 (default 10) |
-| `unsupported` | a one-line reason instead of a source: the row prints `n/d` with it (excludes every other key) |
+| `unsupported` | a one-line reason instead of a source: the row is `n/d` with it (excludes every other key but `note` and `short`) |
+| `short` | the table's few-word form of `unsupported` (at most 32 characters); the full reason stays in `--json` and `ak usage -v` |
 
 The key set is closed: an unknown key, a non-https URL, a template other than `{token}` in a header, an unknown adapter or a `files` entry naming an unknown root is a validation error (`python3 lib/kinds.py check`). A CLI without a table (OpenCode, Pi, Cline) reports through the provider behind each kind. Adding an adapter means a parser in `lib/usage.py`, its id in `USAGE_ADAPTERS`, a fixture and a test.
 

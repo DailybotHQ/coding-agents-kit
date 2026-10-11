@@ -34,9 +34,10 @@ nothing.
 | `pi`, `pi-*` | `--approve` | trust project-local files for this run (Pi has no per-tool approval prompt) |
 | `cline`, `cline-*` | `--yolo` | auto-approve a limited tool set for unsupervised runs |
 | `grok` | `--always-approve` | approve every tool call |
+| `antigravity` | `--dangerously-skip-permissions` | auto-approve every tool permission request |
 
 The flags live only in `providers.toml` (`auto = […]`); no code path spells
-one. For all 19 kinds, the `permissions` test scope proves that a default
+one. For all 20 kinds, the `permissions` test scope proves that a default
 launch carries exactly its own flag and that `--ask` or
 `AGENTKIT_PERMISSIONS=ask` removes it. Listing modes (`ak cursor -l`,
 `ak cline -r`) never carry one.
@@ -58,7 +59,7 @@ the default.
 ## The `classic` aliases
 
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,
-`opencodex`, `pix`, `clinex` and `grokx` as plain shortcuts for
+`opencodex`, `pix`, `clinex`, `grokx` and `agyx` as plain shortcuts for
 `ak <kind>`, for people migrating from the old wrappers. They follow your
 posture: the default, or the opt-out. It ships **off**. The `providers`
 preset (`ak alias preset providers --on`) does the same for the provider

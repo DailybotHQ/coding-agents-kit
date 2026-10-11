@@ -100,7 +100,7 @@ scope_profiles() {
   # --- profile 1 changes nothing --------------------------------------------
   box_new profiles-p1
   box_posture ask  # argv grammar; the permissions scope owns the default
-  for k in claude codex cursor opencode pi cline grok; do
+  for k in claude codex cursor opencode pi cline grok antigravity; do
     out="$(ak -- "${k}" @default)"
     if [[ -z "$(var_of "${out}" CLAUDE_CONFIG_DIR)$(var_of "${out}" CODEX_HOME)$(var_of "${out}" XDG_DATA_HOME)$(var_of "${out}" PI_CODING_AGENT_DIR)$(var_of "${out}" CLINE_DIR)$(var_of "${out}" GROK_HOME)$(var_of "${out}" AGENT_CLI_CREDENTIAL_STORE)$(var_of "${out}" AGENTKIT_ACTIVE_PROFILE)" \
           && "$(var_of "${out}" HOME)" == "${BOX}/home" ]]; then
@@ -113,7 +113,7 @@ scope_profiles() {
   box_new profiles
   box_posture ask  # argv grammar; the permissions scope owns the default
   profiles_env
-  mkdir -p "${root}"/{claude,codex,cursor,opencode,pi,cline,grok}/{2,work}
+  mkdir -p "${root}"/{claude,codex,cursor,opencode,pi,cline,grok,antigravity}/{2,work}
   printf '[{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"}]\n' "${BOX}/work" > "${BOX}/cline-history.json"
   # kind | knob line for profile <P> | continue form
   local -a kinds_table=(
@@ -136,6 +136,7 @@ scope_profiles() {
     "cline-azure|CLINE_DIR=@DIR|-P|openai|-m|dep-daily|-k|fake-azure-@KEY|--id|sess-new"
     "cline-xai|CLINE_DIR=@DIR|-P|openai|-m|grok-4.3|-k|fake-xai-@KEY|--id|sess-new"
     "grok|GROK_HOME=@DIR|--continue"
+    "antigravity|HOME=@DIR/home|--continue"
   )
   for row in "${kinds_table[@]}"; do
     k="${row%%|*}"; row="${row#*|}"
@@ -184,6 +185,31 @@ scope_profiles() {
   expect_has "a set companion follows the profile (AZURE_OPENAI_RESOURCE_2)" "$(cat "${BOX}/auth2.log")" "ARG=https://res-two.services.ai.azure.com/openai/v1"
   out="$(ak FAKE_LOG="${BOX}/auth3.log" -- cline-azure @work)"
   expect_has "an unset companion keeps profile 1's non-secret value" "$(cat "${BOX}/auth3.log")" "ARG=https://res-one.services.ai.azure.com/openai/v1"
+
+  # --- antigravity: a HOME per profile; a profile's own account is its key ---
+  local ag="${root}/antigravity"
+  out="$(ak -- antigravity @2)"
+  if [[ -d "${ag}/2/home/.gemini" && ! -L "${ag}/2/home/.gemini" ]] && grep -qx "HOME=${ag}/2/home" <<<"${out}" \
+      && grep -qx "GEMINI_API_KEY=" <<<"${out}" && [[ ! -e "${ag}/2/home/.gemini/antigravity-cli/settings.json" ]]; then
+    pass "antigravity @2 without a key: its own HOME and .gemini, no key, settings.json untouched (Google login)"
+  else fail "antigravity @2 without a key: ${out}"; fi
+  out="$(ak GEMINI_API_KEY_WORK=planted-gemini-work FAKE_SHOW_SECRETS=1 -- antigravity @work)"
+  local settings="${ag}/work/home/.gemini/antigravity-cli/settings.json"
+  if grep -qx "GEMINI_API_KEY=planted-gemini-work" <<<"${out}" \
+      && [[ "$(json_get "${settings}" 'd.get("modelProvider")')" == gemini ]] && ! grep -q planted-gemini "${settings}"; then
+    pass "antigravity @work with GEMINI_API_KEY_WORK: that key, modelProvider = gemini written, the value never in the file"
+  else fail "antigravity @work with its key: ${out} / $(cat "${settings}" 2>/dev/null)"; fi
+  printf '{"modelProvider":"gemini","trustedWorkspaces":["/w"]}\n' > "${settings}"
+  out="$(ak -- antigravity @work)"
+  if [[ "$(json_get "${settings}" '"modelProvider" not in d and d.get("trustedWorkspaces") == ["/w"]')" == true ]]; then
+    pass "antigravity @work after its key is gone: modelProvider removed (agy would not start), other settings kept"
+  else fail "antigravity @work without its key: $(cat "${settings}")"; fi
+  out="$(ak GEMINI_API_KEY=planted-gemini-one FAKE_SHOW_SECRETS=1 -- antigravity @2)"
+  expect_line "antigravity @2 never borrows profile 1's GEMINI_API_KEY" "${out}" "GEMINI_API_KEY="
+  rm -rf "${root}/antigravity/new"
+  ak_split -- profiles add antigravity @new
+  expect_has "creating an antigravity profile explains the single keyring login and names its key" \
+    "$(cat "${BOX}/err")" "GEMINI_API_KEY_NEW"
 
   # --- isolation layouts ------------------------------------------------------
   mkdir -p "${BOX}/home/.ssh" "${BOX}/home/.config/gh"; printf 'x\n' > "${BOX}/home/.gitconfig"

@@ -4,7 +4,7 @@
     ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
-    ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+    ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
     ak setup probe [--json] | ak setup verify [--json] [...] | ak setup docker --ref TAG --sha256 HEX [...]
     ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
@@ -26,7 +26,7 @@ USAGE = """usage:
   ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] -- "<prompt>"
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
-  ak usage [<kind-or-cli>] [@profile] [--json] [--timeout SECONDS] [--no-color]
+  ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
   ak setup probe [--json] | ak setup verify [--json] [--cli LIST] [--profile CLI=@a,@b] [--keys NAMES] [--expect-posture auto|ask]
   ak profiles [ls | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
@@ -40,12 +40,22 @@ disposable or sandboxed environments). Docs: {root}/docs/
 """
 
 
+def _cli_label(kind):
+    """The CLI, and its command when that is another name: `antigravity (agy)`."""
+    if kind.executable == kind.cli_name:
+        return kind.cli_name
+    return "%s (%s)" % (kind.cli_name, kind.executable)
+
+
 def list_kinds(model):
-    print("%-16s %-9s %-10s %s" % ("KIND", "CLI", "PROVIDER", "INSTALLED"))
-    for name in model.kind_names():
+    names = model.kind_names()
+    wk = max([len(n) for n in names] + [len("KIND")]) + 1
+    wc = max([len(_cli_label(model.kind(n))) for n in names] + [len("CLI")]) + 1
+    print("%-*s %-*s %-10s %s" % (wk, "KIND", wc, "CLI", "PROVIDER", "INSTALLED"))
+    for name in names:
         kind = model.kind(name)
         exe = common.resolve_executable(kind.cli)
-        print("%-16s %-9s %-10s %s" % (name, kind.cli_name, kind.provider_name or "-", exe or "no"))
+        print("%-*s %-*s %-10s %s" % (wk, name, wc, _cli_label(kind), kind.provider_name or "-", exe or "no"))
     print("\nRun: ak <kind> [@profile]   ·   ak --help")
     return 0
 
@@ -114,6 +124,7 @@ def main(argv):
         return installer.main(model, rest, env)
     if first.startswith("-"):
         raise AkError("unknown option '%s'. See: ak --help" % first)
+    first = model.canonical(first)          # `ak agy` is `ak antigravity`
     if first not in model.kinds:
         raise AkError("unknown kind '%s'. Kinds: %s" % (first, " ".join(model.kind_names())))
     import launch
