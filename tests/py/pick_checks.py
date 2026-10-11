@@ -162,6 +162,11 @@ check("--reserve 0: the weekly window may be used to the end", [c for c in run(C
 chosen, _, _ = run(CLAUDE, count=16)
 check("--count larger than the qualifying accounts returns them all", len(chosen) == 5, str(len(chosen)))
 
+opus = [row("claude", "@o", [win("5h", 0, H), win("7d-opus", 95, D)]), row("claude", "@p", [win("5h", 20, H), win("7d-opus", 10, 2 * D)])]
+chosen, _, _ = run(opus, model="claude-opus-4-5")
+check("--model matches by name words: claude-opus-4-5 makes 7d-opus govern", profiles_of(chosen) == ["@p"], str(chosen))
+chosen, cands, _ = run([row("claude", "@s", [win("5h", 0, H), win("7d-sonnet", 99, D)])], model="o")
+check("--model o does not match 7d-sonnet (no substring match)", cands[0]["binding_window"] == "5h", str(cands))
 chosen, cands, _ = run(CLAUDE, model="opus")
 check("a --model with no scoped window falls back to the unscoped windows", profiles_of(chosen) == ["@work2"], str(chosen))
 

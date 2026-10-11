@@ -75,6 +75,11 @@ it changed. Other CLIs: a note and no write. It answers no other screen and
 does not change the permission posture: trusting a folder is not autonomy.
 Claude's one-time bypass-permissions warning stays the user's to accept.
 
+A symlinked config (a dotfiles repository) is updated where it points, and a
+link that leaves the profile is refused. On Windows the entry is written with
+the folder's native path; whether each CLI looks it up in that form there is
+not verified yet.
+
 ## The `classic` aliases
 
 `ak alias preset classic --on` recreates `claudex`, `codexx`, `cursorx`,

@@ -344,6 +344,17 @@ profiles_claude_token() {
   expect_has "profiles claude token: ak env blanks the token for a profile without one" "${out}" "CLAUDE_CODE_OAUTH_TOKEN="
   expect_lacks "profiles claude token: ak env never prints a token value" "${out}" "tok-claude"
 
+  out="$(ak FAKE_SHOW_SECRETS=1 -- profiles run claude @work -- claude)"
+  expect_eq "profiles claude token: ak profiles run gives the profile its own token" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" "tok-claude-work"
+  out="$(ak FAKE_SHOW_SECRETS=1 -- profiles run claude @bare -- claude)"
+  expect_eq "profiles claude token: ak profiles run never hands @default's token to another profile" "$(var_of "${out}" CLAUDE_CODE_OAUTH_TOKEN)" ""
+  out="$(ak -- profiles run claude @work -- claude --json x)"
+  expect_has "profiles claude token: --json after profiles run reaches the command untouched" "${out}" "ARG=--json"
+  ak_split -- env claude @work
+  expect_has "profiles claude token: ak env prints the profile's token empty" "$(cat "${BOX}/out")" "CLAUDE_CODE_OAUTH_TOKEN="
+  expect_has "profiles claude token: ... and says to launch the kind in the pane" "$(cat "${BOX}/err")" "ak claude @work"
+  expect_lacks "profiles claude token: ... never the value" "$(cat "${BOX}/out" "${BOX}/err")" "tok-claude-work"
+
   out="$(ak -- profiles)"
   expect_has "profiles claude token: ak profiles names the token as set" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_WORK=set"
   expect_has "profiles claude token: ... and unset where it is missing" "${out}" "CLAUDE_CODE_OAUTH_TOKEN_BARE=unset"
@@ -382,7 +393,7 @@ profiles_json() {
   expect_lacks "profiles json: no absolute path (the sandbox home never appears)" "$(cat "${doc}")" "${BOX}"
   ak_split -- profiles ls --json
   check "profiles json: ak profiles ls --json is the same" cmp -s "${BOX}/out" "${doc}"
-  ak_split -- profiles add claude @x --json; expect_eq "profiles json: --json on another subcommand exits 2" "$?" 2
+  ak_split -- profiles --json add claude @x; expect_eq "profiles json: --json before another subcommand exits 2" "$?" 2
   ak_split -- profiles
   expect_has "profiles json: the text listing is unchanged" "$(cat "${BOX}/out")" "PROFILE"
 }
@@ -390,7 +401,7 @@ profiles_json() {
 # --trust-cwd / AGENTKIT_TRUST_CWD=1: pre-trust the launch folder in the
 # profile's own CLI config; never without the opt-in.
 profiles_trust_cwd() {
-  local root cj ct wd out sum1 sum2 other
+  local root cj ct wd out sum1 sum2 other status
   box_new profiles-trust claude codex grok
   box_posture ask
   root="${BOX}/home/.local/share/agentkit/profiles"
@@ -435,6 +446,26 @@ profiles_trust_cwd() {
   ak -- claude --trust-cwd >/dev/null
   expect_eq "profiles trust-cwd: @default writes the account root's .claude.json (the CLI's own home)" \
     "$("${AK_PY}" -c 'import json,sys; print(json.load(open(sys.argv[1]))["projects"][sys.argv[2]]["hasTrustDialogAccepted"])' "${BOX}/home/.claude.json" "${wd}")" "True"
+
+  # A symlinked config (dotfiles) is updated where it points, inside the profile;
+  # a link that leaves the profile is refused.
+  mkdir -p "${root}/claude/linked/real"
+  printf '{"theme":"light"}' > "${root}/claude/linked/real/claude.json"
+  ln -s real/claude.json "${root}/claude/linked/.claude.json"
+  ak -- claude @linked --trust-cwd >/dev/null
+  check "profiles trust-cwd: a symlinked .claude.json stays a symlink" test -L "${root}/claude/linked/.claude.json"
+  expect_has "profiles trust-cwd: ... and its target gets the entry" "$(cat "${root}/claude/linked/real/claude.json")" "hasTrustDialogAccepted"
+  mkdir -p "${root}/claude/escape"
+  printf '{}' > "${BOX}/outside.json"
+  ln -s "${BOX}/outside.json" "${root}/claude/escape/.claude.json"
+  ak_split -- claude @escape --trust-cwd; status=$?
+  expect_eq "profiles trust-cwd: a link that leaves the profile is refused (exit 3)" "${status}" 3
+  expect_eq "profiles trust-cwd: ... and the outside file is untouched" "$(cat "${BOX}/outside.json")" "{}"
+  local nl="${BOX}/bad"$'\n'"name"
+  mkdir -p "${nl}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by ak_split
+  ( BOX_CWD="${nl}"; ak_split -- codex @work --trust-cwd; echo "$?" > "${BOX}/nl-status" )
+  expect_eq "profiles trust-cwd: a folder name with a control character is refused (exit 2)" "$(cat "${BOX}/nl-status")" 2
 
   out="$(ak -- grok @work --trust-cwd)"
   expect_has "profiles trust-cwd: a CLI with no known trust screen gets a note" "${out}" "nothing written"

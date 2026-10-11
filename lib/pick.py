@@ -70,7 +70,10 @@ def _governs(win, model):
     match = SCOPED.match(win.get("id", ""))
     if not match:
         return True
-    return bool(model) and _norm(model) in match.group(2)
+    if not model:
+        return False
+    scope, wanted = set(match.group(2).split("-")), set(_norm(model).split("-"))
+    return scope <= wanted or wanted <= scope      # fable ~ 7d-fable, claude-opus-4-5 ~ 7d-opus; not o ~ sonnet
 
 
 def _free(win, reserve, now):

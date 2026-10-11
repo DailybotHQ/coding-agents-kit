@@ -235,8 +235,17 @@ def strip_profile_keys(model, env, keep=()):
     """Remove every <KEY>_<SUFFIX> of the known providers: those are the
     kit's per-profile variables and never meaningful to a CLI."""
     keys = [p["key"] for p in model.providers.values()]
-    keys += [c["profile_token_var"] for c in model.clis.values() if c.get("profile_token_var")]
+    # A login token variable is stripped only for the suffixes of existing
+    # profiles: a vendor variable that merely shares the prefix stays.
+    tokens = set()
+    for cli_name, pname, _d in listing(model, env):
+        base = model.clis[cli_name].get("profile_token_var")
+        if base:
+            tokens.add("%s_%s" % (base, suffix(pname)))
     for name in list(env):
+        if name in tokens and name not in keep:
+            env.pop(name, None)
+            continue
         if name in keep:
             continue
         for key in keys:
@@ -488,6 +497,7 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    apply_token(model.clis[cli_name], name, env)   # its own login token or none, never @default's
     # Same hygiene as a launch: no per-profile key variables; the opt-out is
     # inherited, autonomy is not exported.
     strip_profile_keys(model, env)
@@ -511,12 +521,14 @@ def exec_command(argv, env):
 
 
 def main(model, args, env):
-    as_json = "--json" in args
-    args = [a for a in args if a != "--json"]
+    as_json = bool(args) and args[0] == "--json"
+    if as_json:
+        args = args[1:]
     sub = args[0] if args else "ls"
     rest = args[1:]
     if sub in ("ls", "list"):
-        if rest:
+        as_json = as_json or rest == ["--json"]
+        if rest and rest != ["--json"]:
             raise AkError("ak profiles ls takes no arguments (only --json)", EXIT_USAGE)
         return cmd_ls(model, env, as_json)
     if as_json:

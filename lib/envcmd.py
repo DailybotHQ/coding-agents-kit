@@ -39,8 +39,13 @@ def compute(model, kind_name, head, env):
     # pane cannot inherit profile 1's key.
     blank = []
     token = prep.kind.cli.get("profile_token_var")
-    if token and before.get(token) and token not in prep.env:
-        blank.append(token)      # a named profile without its own token: never inherit @default's
+    token_note = None
+    if token and prep.profile and (before.get(token) or prep.env.get(token)):
+        # Never printed; printed empty so a pane cannot keep another account's token.
+        blank.append(token)
+        if prep.env.get(token):
+            token_note = ("%s is not printed (it is @%s's login token). Launch the kind itself in the pane "
+                          "instead: ak %s @%s" % (token, prep.profile, kind_name, prep.profile))
     if prep.kind.key_var:
         changed.pop(prep.kind.key_var, None)
         if before.get(prep.kind.key_var) and prep.kind.key_var not in prep.env:
@@ -55,7 +60,7 @@ def compute(model, kind_name, head, env):
         if (common.secret_like(name) and value) or "\n" in value:
             continue
         lines.append("%s=%s" % (name, value))
-    notes = []
+    notes = [token_note] if token_note else []
     if skipped or prep.kind.key_var and not prep.kind.key_optional:
         names = skipped or [prep.kind.key_var]
         notes.append("%s is not printed (it carries the %s key). Launch the kind itself in the pane "

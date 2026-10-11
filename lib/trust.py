@@ -19,7 +19,6 @@ and never changes the permission posture. Portable: os.path only.
 
 import json
 import os
-import tempfile
 
 import common
 
@@ -31,32 +30,20 @@ def requested(flag, env):
 
 
 def _toml_key(path):
+    if any(ord(ch) < 32 or ord(ch) == 127 for ch in path):
+        raise common.AkError("--trust-cwd: the folder name has a control character; not written", common.EXIT_USAGE)
     return '"%s"' % path.replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _write_atomic(path, text, mode):
-    directory = os.path.dirname(path)
-    os.makedirs(directory, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(prefix=".agentkit-trust-", dir=directory)
+def _write(path, text, confine):
+    import writers
     try:
-        with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(text)
-        os.chmod(tmp, mode)
-        os.replace(tmp, path)
-    except BaseException:
-        if os.path.exists(tmp):
-            os.remove(tmp)
-        raise
+        writers._atomic_write(path, text, confine)   # follows a symlinked dotfile; stays inside the profile
+    except writers.WriterError as exc:
+        raise common.AkError("--trust-cwd: %s" % exc, common.EXIT_NOT_READY)
 
 
-def _mode(path):
-    try:
-        return os.stat(path).st_mode & 0o777
-    except OSError:
-        return 0o600
-
-
-def _claude_json(path, cwd):
+def _claude_json(path, cwd, confine):
     doc = {}
     if os.path.exists(path):
         with open(path, encoding="utf-8") as handle:
@@ -77,11 +64,11 @@ def _claude_json(path, cwd):
     if entry.get("hasTrustDialogAccepted") is True:
         return False
     entry["hasTrustDialogAccepted"] = True
-    _write_atomic(path, json.dumps(doc, indent=2) + "\n", _mode(path))
+    _write(path, json.dumps(doc, indent=2) + "\n", confine)
     return True
 
 
-def _codex_toml(path, cwd):
+def _codex_toml(path, cwd, confine):
     header = "[projects.%s]" % _toml_key(cwd)
     text = ""
     if os.path.exists(path):
@@ -90,7 +77,7 @@ def _codex_toml(path, cwd):
     if any(line.strip() == header for line in text.splitlines()):
         return False
     sep = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
-    _write_atomic(path, text + sep + header + '\ntrust_level = "trusted"\n', _mode(path))
+    _write(path, text + sep + header + '\ntrust_level = "trusted"\n', confine)
     return True
 
 
@@ -106,7 +93,8 @@ def mark(prep, cwd):
         return None
     cwd = os.path.realpath(os.path.abspath(cwd))
     path = prep.ctx.ref_path(spec["file"])
-    if FORMATS[spec["format"]](path, cwd):
+    confine = prep.directory if prep.profile else None
+    if FORMATS[spec["format"]](path, cwd, confine):
         common.warn("--trust-cwd: %s trusted in %s" % (cwd, path))
         return path
     return None
