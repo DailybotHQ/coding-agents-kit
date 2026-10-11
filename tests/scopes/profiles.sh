@@ -420,6 +420,7 @@ profiles_trust_cwd() {
   expect_eq "profiles trust-cwd: codex: idempotent (one table)" "$(grep -c '^\[projects\.' "${ct}")" 1
   other="${BOX}/elsewhere"; mkdir -p "${other}"; other="$(cd "${other}" && pwd -P)"
   printf '[projects."%s"]\ntrust_level = "untrusted"\n' "${other}" >> "${ct}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by box_run
   ( BOX_CWD="${other}"; ak -- codex @work --trust-cwd >/dev/null )
   expect_eq "profiles trust-cwd: codex: an existing table is the user's and is left alone" "$(grep -c 'trust_level = "untrusted"' "${ct}")" 1
 
