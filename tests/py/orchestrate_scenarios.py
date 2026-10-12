@@ -255,9 +255,14 @@ check("failover: the documented worktree discard works",
 # ----------------------------------------------------- nothing qualifies
 
 server.set_routes(routes(full_route))
-proc = sh("ak pick claude --count 3")
-check("none: when every account is full, ak pick exits 1", proc.returncode == 1, str(proc.returncode))
+# The next batch starts with the taught inventory: ak usage reads live and refreshes the cache pick reuses
+# (the cache still holds the earlier, roomy readings at this point).
+proc = sh("ak usage --json >/dev/null; ak pick claude --count 3")
+check("none: after the batch's live inventory, ak pick (cache) sees every account full and exits 1",
+      proc.returncode == 1, str(proc.returncode))
 check("none: and names the soonest reset", "Soonest reset" in proc.stderr, proc.stderr)
+proc = sh("ak pick claude --count 3 --max-age 0")
+check("none: a live ak pick (--max-age 0) agrees (exit 1)", proc.returncode == 1, str(proc.returncode))
 server.set_routes(routes())
 
 # ----------------------------------------------------------- spend report

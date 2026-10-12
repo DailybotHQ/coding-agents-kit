@@ -12,6 +12,62 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-12
+
+Interface stays **1**. Capacity-aware agents: an agent can ask for its own
+room at every task boundary, cheaply, and leads lease the accounts they hand
+out. Every new surface is additive.
+
+### Added
+
+- **`ak capacity [<kind>] [@profile] [--self] [--low PCT] [--critical PCT]
+  [--max-age S] [--json]`** — one account's headroom and a verdict (`ok`,
+  `low`, `critical`, `unknown`), computed by `ak pick`'s own arithmetic so
+  the two never disagree. Thresholds default to 25 / 10
+  (`AGENTKIT_CAPACITY_LOW`, `AGENTKIT_CAPACITY_CRITICAL`). Exit 0 for every
+  reading; `--self` exits 3 outside an `ak` launch (never a guess). Schema
+  `capacity-v1`.
+- **`AGENTKIT_ACTIVE_ACCOUNT=<kind>/@<profile>`** — set by every `ak` launch
+  and `ak run`, `@default` included, for the CLI it starts (`ak capacity
+  --self` reads it); a kind and a profile name only, never printed by
+  `ak env`. `AGENTKIT_ACTIVE_PROFILE` is unchanged.
+- **A usage cache** under the kit's state directory
+  (`$XDG_STATE_HOME/agentkit/usage-cache/`, `AGENTKIT_STATE_DIR`): usage
+  numbers only, `0600` files, atomic writes. `ak capacity` and `ak pick`
+  reuse a reading younger than `--max-age` (300 s; `0` reads live) and write
+  back what they read live; `ak usage` is the only command that always reads
+  live, and it refreshes the cache.
+- **`AGENTKIT_CAPACITY_CAP=[<kind-or-cli>]@profile=PCT[,…]`** — a
+  lower-only drill cap (`min(real, cap)`, `"capped": true`) applied by
+  `ak capacity` and `ak pick` (where a capped account below a `--need`
+  percent no longer qualifies); a kind names the account its quota lives on;
+  an invalid value or an unknown name exits 2.
+- **`ak lease <kind> @profile --owner ADDR [--ttl DUR] [--purpose TEXT]`,
+  `ak lease release …`, `ak lease ls [--json]`** — advisory, expiring
+  account leases (schema `leases-v1`), changed under a portable lock and
+  written atomically (`0600`). Codex takes one lease (`lease = "exclusive"`
+  in `providers.toml`: one writer per `auth.json`); other accounts take many;
+  only the owner releases.
+- **`ak pick --owner ADDR`** skips Codex accounts leased to another owner and
+  ranks by `headroom / (1 + other leases)`; **`--max-age S`**. `pick-v1`
+  gains `owner` and, per candidate, `leases` and `capped` (additive). Without
+  `--owner` the ranking is unchanged.
+- Skills: `agentkit` teaches `ak capacity` and `ak lease`;
+  `agentkit-orchestrate` gains **Capacity-aware lanes** (check at task
+  boundaries with `ak capacity --self`, leases, proactive handoff) and states
+  the account pool rule exactly: work moves only among accounts the developer
+  declared for the work, within each vendor's terms; agents never create
+  accounts, renew logins or spend a Codex reset.
+
+### Changed
+
+- `ak usage`, `ak pick` and `ak capacity` write the kit's usage cache (and
+  nothing else); they still never write under a profile or the env file,
+  refresh a login or spend a reset. `ak pick` reuses readings up to 300 s old
+  by default (`--max-age 0` reads live).
+- `ak profiles run` sets `AGENTKIT_ACTIVE_ACCOUNT` for its command too, so an
+  inherited marker never names the outer account.
+
 ## [0.5.3] - 2026-10-12
 
 Interface stays **1**. Patch: `ak codex` starts in a container whose Codex
@@ -436,7 +492,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.3...v0.6.0
 [0.5.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.1
 [0.5.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0

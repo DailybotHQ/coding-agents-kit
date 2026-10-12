@@ -40,6 +40,8 @@ when nothing failed.
 | `ak usage` (`lib/usage.py`, `docs/schema/usage-v1.json`, the usage tables of `providers.toml`, checks in `tests/py/usage_checks.py`) | `usage` (pipeline, rendering, the launcher), `usage-providers` (one adapter at a time, the end-to-end layout; `tests/py/usage_provider_checks.py`), `kinds` (the tables), `security` (secrecy, read-only, loopback-only) |
 | Default profile per CLI (`AGENTKIT_DEFAULT_PROFILE_<CLI>`: `lib/profiles.py`, `lib/launch.py`, the marks in `lib/usage.py` / `lib/pick.py`, the doctor's stranded-login problem; checks in `tests/py/default_profile_checks.py`) | `profiles` (precedence, `ak run` / `ak env`, the env-file key, the schemas, the `pick` fallback and the doctor on fixtures) |
 | `ak pick` (`lib/pick.py`, `docs/schema/pick-v1.json`, the policy checks in `tests/py/pick_checks.py`) | `pick` (the policy on fixture rows, the grammar, `pick-v1`, and the real launcher against the fake usage endpoint), `usage` (the shared row pipeline), `security` |
+| `ak capacity`, the usage cache, the drill cap (`lib/capacity.py`, `lib/state.py`, `docs/schema/capacity-v1.json`, checks in `tests/py/capacity_checks.py`) | `capacity` (verdicts, thresholds, cap, cache, `--self` from inside a real launch, the launcher against the fake usage endpoint), `pick`, `usage` |
+| `ak lease`, `ak pick --owner` (`lib/lease.py`, `docs/schema/leases-v1.json`, the `lease` key in `providers.toml`) | `lease` (grammar, exclusivity, release by owner, `leases-v1`, `pick --owner` over real rows), `capacity` (the store's rules in `capacity_checks.py`), `kinds` |
 | `install.sh`, `install.ps1`, `win/`, `lib/env.template`, `ak install` (`lib/installer.py`, verification checks in `tests/py/install_checks.py`) | `install` (+ `kinds` for the install data in `providers.toml`) |
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
@@ -52,7 +54,8 @@ when nothing failed.
 
 `ak usage` is tested against a loopback fake endpoint (`tests/py/fake_usage_server.py`),
 never the network. Its pipeline and adapter checks are bash-free python
-(`python3 tests/py/usage_checks.py`, `python3 tests/py/usage_provider_checks.py`),
+(`python3 tests/py/usage_checks.py`, `python3 tests/py/usage_provider_checks.py`,
+`python3 tests/py/pick_checks.py`, `python3 tests/py/capacity_checks.py`),
 so the Windows CI job runs them natively; the scopes fold their `ok`/`FAIL` lines in.
 
 `live` runs a real CLI and is never part of the default run: it reports

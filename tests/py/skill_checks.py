@@ -104,7 +104,7 @@ if ORCH:
           "herdr pane" not in text and "(both optional)" in text and "Neither\nis required" in ref_texts.get("references/herdr-and-dwp.md", ""))
 
 # --- every taught `ak` command is valid grammar --------------------------------
-verbs = {"run", "env", "doctor", "usage", "pick", "setup", "profiles", "alias", "install", "--skill", "--version",
+verbs = {"run", "env", "doctor", "usage", "pick", "capacity", "lease", "setup", "profiles", "alias", "install", "--skill", "--version",
          "--help"}
 commands = []
 # A fence with any info string opens a block; only bash, sh and bare blocks hold commands (a closing fence of a
@@ -146,6 +146,22 @@ for cmd in pick_lines:
         pick_bad.append((cmd, str(exc)[:60]))
 if pick_lines or ORCH:
     check("every ak pick line parses with the real grammar (%d checked)" % len(pick_lines), pick_lines and not pick_bad, str(pick_bad))
+
+# --- every `ak capacity` / `ak lease` line parses with the real grammar ----------
+import capacity  # noqa: E402
+import lease  # noqa: E402
+
+state_bad = []
+state_lines = [c for c in commands if c.split()[:2] in (["ak", "capacity"], ["ak", "lease"]) and len(c.split()) > 2
+               and "[" not in c and "<" not in c]   # a bare mention (`ak lease`) or the grammar line is not a command
+for cmd in state_lines:
+    try:
+        (capacity if cmd.split()[1] == "capacity" else lease).parse_args(cmd.split()[2:])
+    except Exception as exc:
+        state_bad.append((cmd, str(exc)[:60]))
+if state_lines or ORCH:
+    check("every ak capacity / ak lease line parses with the real grammar (%d checked)" % len(state_lines),
+          state_lines and not state_bad, str(state_bad))
 
 # --- every relative link in SKILL.md and the references resolves -------------
 link_bad = []
@@ -246,7 +262,14 @@ if ORCH:
     check("every writing delegate runs in its own worktree (--cwd ../wt-*)", writers and all(re.search(r"--cwd \.\./wt-[a-z0-9-]+", c) for c in writers), str(writers))
     check("the loop says once per batch, never in a loop", "never in a loop" in text and not re.search(r"(while|watch)\s[^\n]*ak (usage|pick)", alltext))
     check("the skill forbids putting a secret in a prompt", "put a key, token or secret in a prompt" in text)
-    check("the skill forbids getting around a limit the user is not entitled to exceed", "not entitled to exceed" in text)
+    pool_rule = ("work moves only among accounts the developer declared for the work, within each vendor's terms; "
+                 "agents never create accounts, renew logins or spend a Codex reset")
+    lanes_section = text.split("## Capacity-aware lanes", 1)[-1].split("\n## ", 1)[0]
+    trust_section = text.split("## Trust boundary (write scope)", 1)[-1]
+    check("the skill states the account pool rule exactly, in Capacity-aware lanes and in the trust boundary",
+          pool_rule in " ".join(lanes_section.split()) and pool_rule in " ".join(trust_section.split()))
+    check("the skill has a Capacity-aware lanes section (capacity --self at task boundaries, leases, handoff)",
+          "## Capacity-aware lanes" in text and "ak capacity --self" in text and "ak lease" in text and "handoff" in text.lower())
     check("one writer per path is a rule", "one writer per path" in text.lower())
     check("every fenced example the scenarios run is marked (# test: inventory, fanout, pick, review)",
           all("# test: %s" % t in text for t in ("inventory", "fanout", "pick", "review")))

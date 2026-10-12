@@ -102,6 +102,7 @@ executable = "codex"
 herdr_kind = "codex"
 isolation = "env"
 home_env = "CODEX_HOME"
+lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
 interactive = ["{provider}", "{session}", "{auto}"]
 docs = "https://developers.openai.com/codex/cli"

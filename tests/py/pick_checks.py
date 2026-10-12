@@ -215,17 +215,18 @@ class FakeModel(object):
 
 
 def fake_main(args, rows):
-    saved = (usage.enumerate_rows, usage.filter_rows, usage.fetch_all)
+    saved = (usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active)
     out, err = io.StringIO(), io.StringIO()
     usage.enumerate_rows = lambda model, env: list(range(len(rows)))
     usage.filter_rows = lambda model, r, target, profile: r
-    usage.fetch_all = lambda r, env, timeout, now: copy.deepcopy(rows)
+    usage.fetch_cached = lambda r, env, timeout, now, max_age: copy.deepcopy(rows)
+    pick.lease.active = lambda env, now: []
     old_err, sys.stderr = sys.stderr, err
     try:
         code = pick.main(FakeModel(), args, {}, now=NOW, stdout=out)
     finally:
         sys.stderr = old_err
-        usage.enumerate_rows, usage.filter_rows, usage.fetch_all = saved
+        usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active = saved
     return code, out.getvalue(), err.getvalue()
 
 

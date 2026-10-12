@@ -197,6 +197,10 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
         if key_error:
             raise key_error
     profiles.activate(kind.cli_name, kind.cli, name, directory, env)
+    # The running account, for `ak capacity --self`: kind and profile name
+    # only (no path, no secret). Set on every launch, @default included, so an
+    # inherited marker never names the wrong account.
+    env["AGENTKIT_ACTIVE_ACCOUNT"] = "%s/%s" % (kind.name, profiles.label(name))
     auto = resolve_auto(head.auto, head.ask, env)
     ctx = kinds.Context(kind, env, base_env.get("HOME") or common.home(), profile_dir=directory,
                         profile_label=profiles.label(name), allow_secret=(purpose != "print"))

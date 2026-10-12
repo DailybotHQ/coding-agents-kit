@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.6.0/docs/schema/capacity-v1.json",
+  "title": "ak capacity --json (capacity-v1)",
+  "description": "One account's headroom and a verdict, computed with ak pick's arithmetic (pick.evaluate: the smallest free share of the governing windows, a 10% reserve on windows of 7 days or more) and pick's lower-only drill cap. The reading comes from the kit's usage cache when fresh (usage numbers only; ak usage is the only command that always reads live). Exit 0 for every reading; the verdict is here, not in the exit code. Never contains a secret value. Consumers check `schema` and `interface` first; additional keys may appear in later minor versions.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "interface", "generated_at", "kind", "cli", "profile", "status", "verdict", "headroom_pct", "binding_window", "resets_at", "reason", "thresholds", "source", "age_s", "capped", "leases", "cache_note"],
+  "properties": {
+    "schema": { "const": "capacity-v1" },
+    "interface": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "kind": { "type": "string", "description": "The kind or CLI asked for (with --self: from AGENTKIT_ACTIVE_ACCOUNT, else the CLI of AGENTKIT_ACTIVE_PROFILE)." },
+    "cli": { "type": "string", "description": "The usage row's owner: a CLI (claude, codex, ...) or a provider id (zai for the glm kinds)." },
+    "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
+    "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"], "description": "The usage-v1 row status." },
+    "verdict": { "enum": ["ok", "low", "critical", "unknown"], "description": "critical: rate_limited or headroom <= thresholds.critical; low: headroom <= thresholds.low; ok: above; unknown: no readable headroom (a cap at or below the low threshold may still mark it low or critical)." },
+    "headroom_pct": { "type": ["number", "null"], "description": "pick's headroom, after the cap; null when unknown." },
+    "binding_window": { "type": ["string", "null"] },
+    "resets_at": { "type": ["string", "null"], "description": "When the binding window resets (ISO-8601 UTC)." },
+    "reason": { "type": ["string", "null"], "description": "Why the account has no usable room or no reading; one line." },
+    "thresholds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["low", "critical"],
+      "properties": {
+        "low": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "critical": { "type": "integer", "minimum": 0, "maximum": 100 }
+      }
+    },
+    "source": { "enum": ["cache", "live"] },
+    "age_s": { "type": "integer", "minimum": 0, "description": "Age of a cached reading in seconds; 0 when live." },
+    "capped": { "type": "boolean", "description": "AGENTKIT_CAPACITY_CAP applies to this account (lower-only)." },
+    "leases": { "type": "integer", "minimum": 0, "description": "Active leases on this account (ak lease)." },
+    "cache_note": { "const": "the usage cache holds usage numbers only; ak usage is the only command that always reads live" }
+  }
+}

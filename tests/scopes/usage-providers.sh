@@ -54,7 +54,7 @@ json.dump({"/claude": {"by_bearer": {t0: c(10, 5), t1: c(55, 20), t2: c(91, 70)}
            "/zai": {"by_bearer": {z0: z(48), z2: z(77)}}}, open(path, "w"))
 PY
   usage_server_start "${BOX}/routes.json"
-  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  before="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
   ak_split AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH="http://127.0.0.1:${USAGE_PORT}/claude" \
     AGENTKIT_USAGE_URL_ZAI_QUOTA="http://127.0.0.1:${USAGE_PORT}/zai" -- usage --json; status=$?
   cp "${BOX}/out" "${doc}"
@@ -68,7 +68,7 @@ PY
     "$(json_get "${doc}" '[r["windows"][0]["used_pct"] for r in d["rows"] if r["cli"] == "zai"]')" '[48, 77]'
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema:-${ROOT}/docs/schema/usage-v1.json}" "${doc}")"
   expect_eq "usage scenario cli: the output validates against usage-v1" "${out}" "valid"
-  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  after="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
   expect_eq "usage scenario cli: profiles and the env file are untouched" "${before}" "${after}"
   expect_lacks "usage scenario cli: no token or key in the output" "$(cat "${BOX}/out" "${BOX}/err")" "planted-scn-"
   usage_server_stop

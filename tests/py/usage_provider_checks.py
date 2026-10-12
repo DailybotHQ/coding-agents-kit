@@ -67,6 +67,8 @@ def write(path, text):
 def snapshot(base):
     out = []
     for dirpath, _d, files in sorted(os.walk(base)):
+        if os.sep + os.path.join(".local", "state", "agentkit", "usage-cache") in dirpath + os.sep:
+            continue        # the kit's own usage cache (usage numbers only; checked in usage_checks.py)
         for name in sorted(files):
             p = os.path.join(dirpath, name)
             with open(p, "rb") as handle:

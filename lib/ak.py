@@ -5,7 +5,9 @@
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
     ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
-    ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
+    ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--owner ADDR] [--json]
+    ak capacity [<kind-or-cli>] [@profile] [--self] [--low PCT] [--critical PCT] [--max-age S] [--json]
+    ak lease <kind-or-cli> @profile --owner ADDR [--ttl DUR] [--purpose TEXT] | ak lease release <kind> @profile --owner ADDR | ak lease ls [--json]
     ak setup probe [--json] | ak setup verify [--json] [...] | ak setup docker --ref TAG --sha256 HEX [...]
     ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
@@ -28,7 +30,9 @@ USAGE = """usage:
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
   ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
-  ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--json]
+  ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--owner ADDR] [--json]
+  ak capacity [<kind-or-cli>] [@profile] [--self] [--low PCT] [--critical PCT] [--max-age S] [--json]
+  ak lease <kind-or-cli> @profile --owner ADDR [--ttl DUR] [--purpose TEXT] | ak lease release <kind> @profile --owner ADDR | ak lease ls [--json]
   ak setup probe [--json] | ak setup verify [--json] [--cli LIST] [--profile CLI=@a,@b] [--keys NAMES] [--expect-posture auto|ask]
   ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
@@ -116,6 +120,12 @@ def main(argv):
     if first == "pick":
         import pick
         return pick.main(model, rest, env)
+    if first == "capacity":
+        import capacity
+        return capacity.main(model, rest, env)
+    if first == "lease":
+        import lease
+        return lease.main(model, rest, env)
     if first == "setup":
         import setup
         return setup.main(model, rest, env)

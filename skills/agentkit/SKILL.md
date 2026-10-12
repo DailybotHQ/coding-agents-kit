@@ -1,7 +1,7 @@
 ---
 name: agentkit
 description: Launch, install and configure terminal coding agents (Claude Code, Codex, Cursor, OpenCode, Pi, Cline, Grok) through coding-agents-kit's `ak` command — accounts per CLI (profiles), provider routes (GLM, Azure, xAI), headless runs with a JSON result (`ak run`), the environment of a profile for other launchers (`ak env`), quota per account and the account with room (`ak usage`, `ak pick`), and a doctor. Use when the user mentions ak, agentkit or coding-agents-kit, asks to start or set up another coding-agent CLI or account, asks which account has room, or asks to run a prompt through another agent non-interactively.
-version: "0.5.3"
+version: "0.6.0"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
@@ -38,11 +38,11 @@ If `ak` is missing, tell the user and offer the install — it writes into
 their home directory, so do it only after they agree:
 
 ```bash
-git clone --branch v0.5.3 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.6.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 (This skill itself installs with
-`npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.3 --skill agentkit`.)
+`npx --yes skills add DailybotHQ/coding-agents-kit@v0.6.0 --skill agentkit`.)
 `ak --skill` prints the copy of this file that matches the installed kit.
 
 ## Kinds
@@ -139,6 +139,23 @@ Read [references/usage.md](references/usage.md) when you must read the table,
 act on a status (`expired`, `no_login`, `no_scope`, `rate_limited`,
 `unsupported`, `error`), weigh plan-specific windows (Team, model-only, Z.AI
 credits, Codex resets) or choose accounts with `ak pick`.
+
+## Your own room, and leases: `ak capacity`, `ak lease`
+
+```bash
+ak capacity --self       # the account ak launched you on: ok | low | critical | unknown
+ak capacity claude @work --json      # one account; schema capacity-v1
+ak lease codex @work --owner local:w1:p2     # mark an account in use (Codex: one holder)
+ak lease ls              # active leases
+```
+
+`ak capacity` uses `ak pick`'s arithmetic and answers from a cache of usage
+numbers younger than five minutes (`ak usage` is the only command that always
+reads live), so it is cheap enough for every task boundary — still never in a
+loop. Verdicts: `low` at or below 25% headroom, `critical` at or below 10% or
+rate limited, `unknown` with no quota source. It exits 0 for every reading
+and 3 outside an `ak` launch with `--self`. Leases are advisory: they grant
+nothing; `ak pick --owner` respects them. Details: [references/usage.md](references/usage.md).
 
 ## A profile for another launcher: `ak env`
 

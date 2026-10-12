@@ -151,6 +151,10 @@ def activate(cli_name, cli, name, directory, env):
     if isolation == "env":
         env[cli["home_env"]] = directory
     elif isolation == "xdg":
+        # XDG_STATE_HOME moves into the profile: keep the kit's own state
+        # (usage cache, leases; lib/state.py) machine-wide.
+        if not env.get("AGENTKIT_STATE_DIR"):
+            env["AGENTKIT_STATE_DIR"] = os.path.join(env.get("XDG_STATE_HOME") or os.path.join(real_home, ".local/state"), "agentkit")
         pairs = (("XDG_CONFIG_HOME", ".config", "config"), ("XDG_DATA_HOME", ".local/share", "data"),
                  ("XDG_STATE_HOME", ".local/state", "state"), ("XDG_CACHE_HOME", ".cache", "cache"))
         for var, default, sub in pairs:
@@ -695,6 +699,9 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    # The running account for `ak capacity --self`; an inherited marker would
+    # name the outer account. A CLI here, as AGENTKIT_ACTIVE_PROFILE does.
+    env["AGENTKIT_ACTIVE_ACCOUNT"] = "%s/%s" % (cli_name, label(name))
     apply_token(model.clis[cli_name], name, env)   # its own login token or none, never @default's
     # Same hygiene as a launch: no per-profile key variables; the opt-out is
     # inherited, autonomy is not exported.

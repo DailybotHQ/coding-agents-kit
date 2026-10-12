@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.6.0/docs/schema/leases-v1.json",
+  "title": "ak lease ls --json (leases-v1)",
+  "description": "Every active (unexpired) advisory account lease on this machine, oldest first. Leases grant nothing: ak pick --owner and the orchestration skill respect them. Holds profile names, owner addresses, times and a purpose note; never a secret value or a path. Additional keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "generated_at", "leases"],
+  "properties": {
+    "schema": { "const": "leases-v1" },
+    "interface": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "leases": { "type": "array", "items": { "$ref": "#/$defs/lease" } }
+  },
+  "$defs": {
+    "lease": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["cli", "profile", "owner", "exclusive", "purpose", "kind", "created_at", "expires_at"],
+      "properties": {
+        "cli": { "type": "string", "description": "The account's usage row owner (CLI or provider id)." },
+        "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
+        "owner": { "type": "string", "pattern": "^[A-Za-z0-9][A-Za-z0-9:._@/-]{0,79}$" },
+        "exclusive": { "type": "boolean", "description": "The account takes one lease at a time (providers.toml lease = \"exclusive\": Codex)." },
+        "purpose": { "type": ["string", "null"] },
+        "kind": { "type": ["string", "null"], "description": "The kind named when the lease was taken." },
+        "created_at": { "type": "string" },
+        "expires_at": { "type": "string" }
+      }
+    }
+  }
+}

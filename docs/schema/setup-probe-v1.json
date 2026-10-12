@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.3/docs/schema/setup-probe-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.6.0/docs/schema/setup-probe-v1.json",
   "title": "ak setup probe --json (setup-probe-v1)",
   "description": "What a machine or container looks like to someone about to install or configure coding-agents-kit. Read-only; it works from an uninstalled clone. Never contains a secret value: keys are variable names only. Consumers check `schema` and `interface` first; additional top-level keys may appear in later minor versions.",
   "type": "object",

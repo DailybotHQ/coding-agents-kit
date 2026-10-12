@@ -83,8 +83,10 @@ public issue.
 
 Cursor, Grok, xAI and Azure OpenAI are `n/d`: no readable account quota (or one
 that needs a browser session or a second, management credential, which `ak`
-never asks for). `ak usage` is the only command that makes a network request
-without you asking for an install; it has no side effects and no cache.
+never asks for). `ak usage`, `ak pick` and `ak capacity` are the only commands
+that make a network request without you asking for an install. `ak usage`
+always reads live; each reading refreshes the kit's usage cache (below), which
+`ak pick` and `ak capacity` reuse while it is fresh.
 
 Keychain (macOS): only when a profile has no login file, `ak usage` asks the
 Keychain for that profile's own item (`security find-generic-password -w`),
@@ -98,8 +100,10 @@ is reported once, as that profile, so the same quota is never counted twice.
 ## Account selection (`ak pick`)
 
 `ak pick` reads exactly what `ak usage` reads, with the same hosts, the same
-per-row requests and the same rules: read-only, no cache, no login refresh, no
-reset spent. Its output (`pick-v1`) carries CLI, profile, window ids,
+per-row requests and the same rules: no login refresh, no reset spent,
+nothing written under a profile or the env file; a reading younger than
+`--max-age` (300 s) comes from the usage cache. `AGENTKIT_CAPACITY_CAP` can
+only lower a headroom. Its output (`pick-v1`) carries CLI, profile, window ids,
 percentages, reset times and a one-line reason built from the row status;
 never a token or an account identity.
 
@@ -107,6 +111,30 @@ never a token or an account identity.
 read-only selection at each launch, over the accounts whose login is portable
 only: a Keychain item is never read for it. Its one stderr line names the
 profile and its headroom, nothing else.
+
+## Capacity, the usage cache and leases
+
+- **Usage cache** (`<state>/usage-cache/`, `<state>` = `AGENTKIT_STATE_DIR`
+  or `$XDG_STATE_HOME/agentkit` or `~/.local/state/agentkit`): one `0600`
+  file per account in a `0700` directory, written atomically. It holds
+  **usage numbers only** — window ids, labels, percentages, resets, the
+  plan name and the row status; never a token, key, key name or path. Only
+  `ok` and `rate_limited` readings are kept. `ak usage` is the only command
+  that always reads live.
+- **`ak capacity --self`** trusts only the marker `ak` sets for the CLI it
+  launches (`AGENTKIT_ACTIVE_ACCOUNT=<kind>/@<profile>`: a kind and a profile
+  name, no path or secret; `ak env` never prints it). Outside an `ak` launch
+  it refuses (exit 3) instead of guessing.
+- **Drill cap** (`AGENTKIT_CAPACITY_CAP`): lower-only by construction
+  (`min(real, cap)`); an invalid value is exit 2, so it never fails open.
+- **Leases** (`<state>/leases/leases.json`, `0600`): advisory records —
+  account, owner address, times, a short purpose whose credential-shaped
+  words are refused. They grant nothing; an exclusive (Codex) lease keeps two
+  writers off one `auth.json`. Changes run under a lock directory and are
+  written atomically; expired leases are swept.
+- **Accounts:** work moves only among the accounts you declared for the work,
+  within each vendor's terms; no agent creates an account, renews a login or
+  spends a Codex reset.
 
 ## Orchestration (agents launching agents)
 
@@ -124,8 +152,10 @@ accounts. The rules it teaches, and the suite checks:
   paths only.
 - Failover's destructive git steps touch only worktrees the lead created,
   after checking the worktree's top level.
-- `ak usage` / `ak pick` once per batch, never in a loop; only accounts you
-  hold, within each vendor's terms — never rotated to get past a limit.
+- `ak usage` / `ak pick` once per batch, never in a loop; `ak capacity --self`
+  at task boundaries reads the cache. Work moves only among the accounts you
+  declared for the work, within each vendor's terms — never rotated to get
+  past a limit; no agent creates an account, renews a login or spends a reset.
 
 ## Claude token per profile
 
@@ -169,13 +199,15 @@ paths.
 | `~/.config/agentkit/env` (`AGENTKIT_ENV`) | your keys and settings (created once, never overwritten) | 600 |
 | `~/.config/agentkit/aliases.json` | alias definitions | 600 |
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
+| `~/.local/state/agentkit/` (`AGENTKIT_STATE_DIR`) | `usage-cache/<cli>@<profile>.json` (usage numbers only), `leases/leases.json` | dirs 700, files 600 |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
-`ak usage` and `ak pick` write nothing at all. Neither do `ak setup probe`, `verify` and
+`ak usage`, `ak pick` and `ak capacity` write nothing but the usage cache;
+`ak lease` writes only the lease store. Neither do `ak setup probe`, `verify` and
 `docker` (stdout only); `docker --out FILE` creates one new file, mode 644.
 
 Nothing else: no telemetry, and no network access except `ak install`
-fetching a vendor installer you asked for and `ak usage` / `ak pick` querying
+fetching a vendor installer you asked for and `ak usage` / `ak pick` / `ak capacity` querying
 the usage endpoint of an account you run (the hosts above, one request per row),
 which a launch also does when you opt into `AGENTKIT_DEFAULT_PROFILE_<CLI>=pick`.
 
@@ -183,6 +215,6 @@ which a launch also does when you opt into `AGENTKIT_DEFAULT_PROFILE_<CLI>=pick`
 
 `bash tests/run.sh security` (planted secrets, file modes, env-file
 refusal, `ak usage`, `ak pick` and `ak setup` secrecy/read-only rules, the orchestration skill's rules, recipe safety, static rules),
-plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `pick`, `setup`, `setup-skill`, `orchestrate-skill` and `lint`
+plus `permissions`, `doctor`, `profiles`, `usage`, `usage-providers`, `pick`, `capacity`, `lease`, `setup`, `setup-skill`, `orchestrate-skill` and `lint`
 (secret-shaped strings, private references, shellcheck). The suite runs in a
 sandbox HOME with fake CLIs and never touches the network.

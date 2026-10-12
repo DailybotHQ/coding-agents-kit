@@ -65,11 +65,11 @@ PY
   # Secrecy and read-only: no token in any output; nothing written under the home.
   ak_split "${url}" -- pick claude --count 3 --json
   expect_lacks "pick security: no token in stdout or stderr" "$(cat "${BOX}/out" "${BOX}/err")" "planted-pick"
-  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
-  expect_eq "pick security: ak pick writes nothing under the home" "${before}" "${after}"
+  after="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
+  expect_eq "pick security: ak pick writes nothing under the home but its usage cache" "${before}" "${after}"
   usage_server_stop
 
-  out="$(ak AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH=http://example.com/x -- pick claude)"; status=$?
+  out="$(ak AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH=http://example.com/x -- pick claude --max-age 0)"; status=$?
   expect_eq "pick security: a non-loopback URL override is never fetched (exit 1 or 2)" "$([[ ${status} -eq 1 || ${status} -eq 2 ]] && echo ok)" ok
 
   check "pick platform: lib/pick.py imports nothing POSIX-only and calls no fork/alarm/getuid" \

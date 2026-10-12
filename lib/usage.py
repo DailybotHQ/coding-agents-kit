@@ -9,7 +9,9 @@ an `error` row, never a crash.
 
 Secret discipline: a token lives in memory and in one request header. It is
 never in a message, a log, the table, `--json` or a file. Nothing is
-refreshed and nothing is written under a profile or the env file.
+refreshed and nothing is written under a profile or the env file. The only
+file written is the kit's own usage cache (lib/state.py: usage numbers,
+0600), which every live read refreshes for `ak capacity` and `ak pick`.
 
 Portable on purpose (Linux, macOS, Windows): os.path, urllib, threads and
 subprocess only; the few OS decisions sit in `Platform`.
@@ -32,6 +34,7 @@ import urllib.request
 import common
 import kinds
 import profiles
+import state
 from common import AkError, EXIT_OK, EXIT_USAGE
 
 SCHEMA = "usage-v1"
@@ -660,6 +663,27 @@ def fetch_all(rows, env, timeout, now):
     return results
 
 
+def fetch_cached(rows, env, timeout, now, max_age):
+    """fetch_all, but a row with a fresh usage-cache entry (age <= max_age)
+    is answered from the cache; every live result refreshes the cache.
+    Results carry `_source` (cache|live) and `_age` (seconds)."""
+    results = [None] * len(rows)
+    live = []
+    for index, row in enumerate(rows):
+        cached, age = state.cache_get(env, row.cli, row.profile, now, max_age)
+        if cached is None:
+            live.append(index)
+            continue
+        cached.update({"_source": "cache", "_age": age})
+        results[index] = cached
+    fetched = fetch_all([rows[i] for i in live], env, timeout, now) if live else []
+    for index, result in zip(live, fetched):
+        state.cache_put(env, result, now)
+        result.update({"_source": "live", "_age": 0})
+        results[index] = result
+    return results
+
+
 # --------------------------------------------------------------- adapters
 
 def _number(value):
@@ -1244,7 +1268,10 @@ def main(model, args, env, now=None, stdout=None, platform=None):
         if opts["json"]:
             emit(stdout, render_json([], now))
         return EXIT_NOTHING
-    results = mark_defaults(model, fetch_all(rows, env, opts["timeout"], now), env)
+    results = fetch_all(rows, env, opts["timeout"], now)
+    for result in results:          # always live; refreshes what ak capacity / ak pick read
+        state.cache_put(env, result, now)
+    results = mark_defaults(model, results, env)
     if opts["json"]:
         emit(stdout, render_json(results, now))
     else:

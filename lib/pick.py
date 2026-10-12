@@ -1,10 +1,11 @@
 """`ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-[--count N] [--exclude @profile]... [--allow-unknown] [--json] [--timeout SECONDS]`
+[--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S] [--json] [--timeout SECONDS]`
 — the account(s) with the most usable headroom for a kind.
 
 It reads the same rows as `ak usage` (same enumeration, filter and parallel
-fetch; read-only: no login is refreshed, no reset is spent, nothing is
-written) and applies one documented policy (docs/usage.md#choosing-an-account):
+fetch; no login is refreshed, no reset is spent; the only file written is the
+kit's usage cache, lib/state.py, read back while fresh) and applies one
+documented policy (docs/usage.md#choosing-an-account):
 
 - only `ok` rows are eligible; `unsupported` but connected accounts only with
   --allow-unknown, ranked after every measured account;
@@ -16,7 +17,11 @@ written) and applies one documented policy (docs/usage.md#choosing-an-account):
   binding window gives it); --need WIN:PCT must hold for the window with
   exactly that id;
 - rank: headroom, then the account whose earliest long window resets first
-  ("spend what expires first"), then providers.toml and profile order.
+  ("spend what expires first"), then providers.toml and profile order;
+- AGENTKIT_CAPACITY_CAP lowers a headroom to min(real, cap), never raises it
+  (`cap_of`/`apply_cap`, shared with `ak capacity`);
+- with --owner, an account leased exclusively (Codex) to another owner is
+  excluded and the rest rank by headroom / (1 + leases held by others).
 
 `choose()` is pure (rows in, decision out) so the policy is tested without a
 network. Portable: no OS-specific code.
@@ -26,7 +31,9 @@ import json
 import re
 
 import common
+import lease
 import profiles
+import state
 import usage
 from common import AkError, EXIT_OK, EXIT_USAGE
 
@@ -49,6 +56,9 @@ ak usage (read-only: no login is refreshed, no reset is spent).
   --count N         up to N distinct accounts, best first (default 1, max 16)
   --exclude @name   leave an account out (repeatable), e.g. one already busy
   --allow-unknown   connected accounts with no readable quota may be chosen, last
+  --owner ADDR      choose for this lease owner: skip Codex accounts leased to others,
+                    rank by headroom / (1 + leases held by others) (see ak lease)
+  --max-age S       use cached usage up to S seconds old (default 300; 0 = always live)
 Exit: 0 chosen · 1 none qualifies (the soonest reset is named) · 2 usage · 3 nothing matches
 """
 
@@ -145,18 +155,125 @@ def evaluate(row, model, reserve, needs, now):
     return cand
 
 
-def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude=(), allow_unknown=False, now=0):
+# ------------------------------------------------------------------ cap
+
+CAP_VAR = "AGENTKIT_CAPACITY_CAP"
+CAP_ENTRY = re.compile(r"^([a-z0-9][a-z0-9-]{0,40})?(@[a-z0-9][a-z0-9._-]{0,31})=(\d{1,3})$")
+DEFAULT_LOW = 25            # ak capacity's thresholds; the low one also marks a capped unmeasured account poor
+DEFAULT_CRITICAL = 10
+
+
+def _pct(text, what):
+    if not isinstance(text, str) or not text.isdigit() or int(text) > 100:
+        raise AkError("%s takes a percent from 0 to 100" % what)
+    return int(text)
+
+
+def thresholds(env, low=None, critical=None):
+    """(low, critical): the flags, else AGENTKIT_CAPACITY_LOW / _CRITICAL, else 25 / 10."""
+    low = low if low is not None else (_pct(env["AGENTKIT_CAPACITY_LOW"], "AGENTKIT_CAPACITY_LOW")
+                                       if env.get("AGENTKIT_CAPACITY_LOW") else DEFAULT_LOW)
+    critical = critical if critical is not None else (
+        _pct(env["AGENTKIT_CAPACITY_CRITICAL"], "AGENTKIT_CAPACITY_CRITICAL")
+        if env.get("AGENTKIT_CAPACITY_CRITICAL") else DEFAULT_CRITICAL)
+    if critical > low:
+        raise AkError("the critical threshold (%d) must not be above the low one (%d)" % (critical, low))
+    return low, critical
+
+
+def _cap_owner(model, name):
+    """The usage-row owner a cap's CLI part names: a CLI or provider as is; a
+    kind -> its provider's rows when the provider has a usage table, else its
+    CLI's. Anything else is an error (a typo must never disable a drill)."""
+    name = model.canonical(name)
+    if name in model.providers or (name in model.clis and name not in model.kinds):
+        return name
+    if name in model.kinds:
+        provider = model.kinds[name].get("provider")
+        if provider and model.provider_usage(provider) is not None:
+            return provider
+        return model.kinds[name]["cli"]
+    raise AkError("%s names '%s', which is no kind, CLI or provider" % (CAP_VAR, name))
+
+
+def parse_caps(env, model=None):
+    """AGENTKIT_CAPACITY_CAP=[<kind-or-cli>]@profile=PCT[,...] -> [(cli|None, label, pct)].
+    An invalid value is an error, never ignored: a drill must not run uncapped."""
+    text = (env.get(CAP_VAR) or "").strip()
+    caps = []
+    if not text:
+        return caps
+    for entry in text.split(","):
+        match = CAP_ENTRY.match(entry.strip().lower())
+        if not match or int(match.group(3)) > 100:
+            raise AkError("%s takes [<kind-or-cli>]@profile=PERCENT[,...] with 0-100, e.g. @work=5 or codex@2=20"
+                          % CAP_VAR)
+        owner = match.group(1)
+        if owner and model is not None:
+            owner = _cap_owner(model, owner)
+        name = profiles.normalize(match.group(2)[1:])
+        caps.append((owner, usage._profile_label(name), int(match.group(3))))
+    return caps
+
+
+def cap_of(caps, cli, profile):
+    """The lowest cap that applies to this account, or None."""
+    found = [pct for c, p, pct in caps if p == profile and c in (None, cli)]
+    return min(found) if found else None
+
+
+def apply_cap(cand, caps, low=DEFAULT_LOW, needs=()):
+    """Lower a candidate's headroom to the cap (lower-only): an account
+    capped at 0, or below a --need percent, is no longer eligible; an
+    unmeasured one capped at or below `low` is marked poor. `capped: true`
+    says a cap applies (it may sit above the real reading). Returns the cap
+    or None."""
+    cap = cap_of(caps, cand["cli"], cand["profile"])
+    if cap is None:
+        return None
+    cand["capped"] = True
+    if cand["headroom_pct"] is not None:
+        if cap < cand["headroom_pct"]:
+            cand["headroom_pct"] = cap
+        short = [pct for _wid, pct in needs if cap < pct]
+        if cand["eligible"] and (cap <= 0 or short):
+            cand["eligible"] = False
+            cand["excluded_reason"] = ("capped at %d%%, needs %s%%" % (cap, _num(max(short)))) if short \
+                else "no headroom (capped)"
+    elif cap <= low:
+        cand["_unknown_poor"] = True
+    return cap
+
+
+def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude=(), allow_unknown=False, now=0,
+           caps=(), leases=None, owner=None, low=DEFAULT_LOW):
     """The decision over usage-v1 rows (already in providers.toml + profile
-    order). Returns (chosen, candidates, soonest_reset)."""
+    order). Returns (chosen, candidates, soonest_reset). `leases` (active
+    lease records) adds `leases` to each candidate; with `owner` it also
+    excludes accounts leased exclusively to others and divides headroom by
+    1 + leases held by others."""
     cands = []
     for index, row in enumerate(rows):
         if row["profile"] in exclude:
             continue
         cand = evaluate(row, model, reserve, needs, now)
         cand["_order"] = index
-        if allow_unknown and cand["_unknown"] and cand.get("_connected") and not needs:
+        apply_cap(cand, caps, low, needs)
+        if (allow_unknown and cand["_unknown"] and cand.get("_connected") and not needs
+                and not cand.get("_unknown_poor")):
             cand["eligible"] = True
             cand["excluded_reason"] = None
+        cand["_others"] = 0
+        if leases is not None:
+            held = [r for r in leases if r["cli"] == cand["cli"] and r["profile"] == cand["profile"]]
+            others = [r for r in held if r["owner"] != owner] if owner else held
+            cand["leases"] = len(others)
+            if owner:
+                cand["_others"] = len(others)
+                blocking = [r for r in others if r.get("exclusive")]
+                if blocking and cand["eligible"]:
+                    cand["eligible"] = False
+                    cand["excluded_reason"] = "leased to %s until %s" % (blocking[0]["owner"], blocking[0]["expires_at"])
         cands.append(cand)
     far = float("inf")
 
@@ -164,7 +281,7 @@ def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude
         measured = c["headroom_pct"] is not None
         return (0 if c["eligible"] else 1,
                 0 if measured else 1,
-                -(c["headroom_pct"] or 0),
+                -((c["headroom_pct"] or 0) / (1.0 + c["_others"])),
                 usage.epoch_of(c["_long_reset"]) if c["_long_reset"] else far,
                 c["_order"])
 
@@ -183,7 +300,8 @@ def _public(cand):
 
 def parse_args(args):
     opts = {"target": None, "profile": None, "model": None, "needs": [], "reserve": DEFAULT_RESERVE,
-            "count": 1, "exclude": [], "allow_unknown": False, "json": False, "timeout": None}
+            "count": 1, "exclude": [], "allow_unknown": False, "json": False, "timeout": None,
+            "owner": None, "max_age": state.DEFAULT_MAX_AGE}
 
     def value(i, flag):
         if i >= len(args):
@@ -228,6 +346,12 @@ def parse_args(args):
             if not text.startswith("@"):
                 raise AkError("--exclude takes a profile, e.g. @work")
             opts["exclude"].append(usage._profile_label(profiles.normalize(text[1:])))
+        elif arg == "--owner":
+            i += 1
+            opts["owner"] = lease.check_owner(value(i, arg))
+        elif arg == "--max-age":
+            i += 1
+            opts["max_age"] = state_max_age(value(i, arg))
         elif arg == "--timeout":
             i += 1
             text = value(i, arg)
@@ -250,8 +374,14 @@ def parse_args(args):
     return opts
 
 
+def state_max_age(text):
+    if not text.isdigit() or int(text) > state.MAX_MAX_AGE:
+        raise AkError("--max-age takes seconds from 0 to %d" % state.MAX_MAX_AGE)
+    return int(text)
+
+
 def render_json(opts, chosen, candidates, soonest, now):
-    doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": usage.iso_utc(now),
+    doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": usage.iso_utc(now), "owner": opts["owner"],
            "target": opts["target"], "model": opts["model"], "reserve_pct": opts["reserve"],
            "need": [{"window": w, "min_free_pct": p} for w, p in opts["needs"]],
            "count": opts["count"], "chosen": chosen, "candidates": candidates, "soonest_reset": soonest}
@@ -278,10 +408,13 @@ def main(model, args, env, now=None, stdout=None):
     if not rows:
         common.warn("nothing to pick from: no profile or login matches. Try: ak usage")
         return EXIT_NOTHING
-    results = usage.mark_defaults(model, usage.fetch_all(rows, env, opts["timeout"], now), env)
+    caps = parse_caps(env, model)
+    low = thresholds(env)[0] if caps else DEFAULT_LOW     # the threshold matters only for a capped account
+    results = usage.mark_defaults(model, usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"]), env)
     results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
     chosen, candidates, soonest = choose(results, opts["model"], opts["reserve"], opts["needs"], opts["count"],
-                                         opts["exclude"], opts["allow_unknown"], now)
+                                         opts["exclude"], opts["allow_unknown"], now, caps,
+                                         lease.active(env, now), opts["owner"], low)
     if opts["json"]:
         usage.emit(stdout, render_json(opts, chosen, candidates, soonest, now))
     else:

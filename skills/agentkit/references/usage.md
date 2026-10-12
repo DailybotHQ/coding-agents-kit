@@ -5,9 +5,11 @@ or what a row of `ak usage` means, or before you start a long task or
 several delegates. For adding accounts and logging in, read
 [accounts.md](accounts.md).
 
-`ak usage` and `ak pick` are **read-only**: they never refresh a login,
-never spend a reset, never print a token and never write under a profile.
-But they ask each vendor with the user's own logins, so run them once per
+`ak usage` and `ak pick` are **read-only** for the user's accounts: they
+never refresh a login, never spend a reset, never print a token and never
+write under a profile; the only file they write is the kit's usage cache
+(usage numbers only), which `ak pick` and `ak capacity` reuse for five
+minutes. But they ask each vendor with the user's own logins, so run them once per
 batch of work and when the user asks, never in a loop.
 
 ## Reading the table
@@ -124,11 +126,13 @@ error; 3 nothing matches the filter.
 
 ```
 ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-        [--count N] [--exclude @profile]... [--allow-unknown] [--json] [--timeout SECONDS]
+        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S]
+        [--json] [--timeout SECONDS]
 ```
 
 `ak pick` reads the same rows as `ak usage` (read-only, same vendor
-requests) and returns the account with the most usable room for a kind:
+requests; a reading younger than `--max-age`, 300 s, comes from the usage
+cache) and returns the account with the most usable room for a kind:
 
 1. Only `ok` rows are eligible; `unsupported` ones join last with
    `--allow-unknown`. Every other status is excluded with that reason.
@@ -146,7 +150,10 @@ requests) and returns the account with the most usable room for a kind:
    `@default` first.
 
 `--count N` (1-16) returns the top N distinct accounts for parallel work;
-`--exclude @name` skips accounts already busy. Text output is one line per
+`--exclude @name` skips accounts already busy. `--owner ADDR` (your lease
+owner address) skips Codex accounts leased to another owner and ranks the
+rest by `headroom / (1 + leases held by others)`; without it, leases are
+only shown (`leases` per candidate). Text output is one line per
 account:
 
 ```text
@@ -193,12 +200,59 @@ On exit 1, tell the user when the soonest reset is and wait for them;
 do not switch to an account they did not offer, and do not ask them to
 spend a Codex reset unless they bring it up.
 
+## Your own room: `ak capacity`
+
+```
+ak capacity [<kind-or-cli>] [@profile] [--self] [--model NAME] [--low PCT] [--critical PCT]
+            [--max-age S] [--json] [--timeout SECONDS]
+```
+
+One account, one verdict, `ak pick`'s headroom:
+
+| Verdict | Means | Do |
+| --- | --- | --- |
+| `ok` | headroom above the low threshold (25) | continue |
+| `low` | at or below 25 | finish the current task; start none you cannot finish; tell the lead |
+| `critical` | at or below 10, or rate limited | reach a safe point, write a handoff note, tell the lead, stop |
+| `unknown` | no readable quota (Cursor, Grok, Antigravity, a login problem) | continue; hand off on the CLI's own limit warning |
+
+`AGENTKIT_CAPACITY_LOW` / `AGENTKIT_CAPACITY_CRITICAL` (or `--low` /
+`--critical`) move the thresholds. `--self` names the account `ak` launched
+this process on (`AGENTKIT_ACTIVE_ACCOUNT`); outside an `ak` launch it exits
+3 — name the account instead, never guess. Exit 0 for every reading; the
+verdict is in the output. `--json` is schema `capacity-v1` (`verdict`,
+`headroom_pct`, `binding_window`, `resets_at`, `source` `cache`/`live`,
+`age_s`, `capped`, `leases`, `thresholds`).
+
+The **usage cache** holds usage numbers only (no token, key or path; `0600`
+files). `ak capacity` and `ak pick` reuse a reading younger than five
+minutes; `ak usage` is the only command that always reads live and refreshes
+it. `AGENTKIT_CAPACITY_CAP=@profile=PCT` lowers a reading for drills; it can
+never raise one.
+
+## Leases: `ak lease`
+
+```bash
+ak lease codex @work1 --owner local:w1:p2 --ttl 4h   # Codex: one holder at a time
+ak lease release codex @work1 --owner local:w1:p2    # only the owner releases
+ak lease ls --json                                   # schema leases-v1
+```
+
+Advisory and expiring (default 4 h, 60 s to 24 h; the same owner leasing
+again renews). Exit 1 when a Codex account is held by another owner (it names
+the holder and expiry) or when you hold no lease to release; 3 when the kit
+cannot see the account. A lease grants nothing.
+
 ## When not to query
 
 - Never in a loop, a `watch`, or after each delegate finishes: once before a
   batch, once after it for the spend report, and whenever the user asks.
+  (`ak capacity --self` at a task boundary is the exception: it reads the
+  cache.)
 - Not for a short task on the account the user already chose.
 - Not to retry a `rate_limited` or `error` row right away.
-- Not to compare accounts the user did not offer for this work.
+- Not to compare accounts the user did not offer for this work: work moves
+  only among accounts the developer declared for the work, within each
+  vendor's terms.
 - Never to renew a login, spend a reset, or create or remove a profile: none
   of those is a quota action, and each one is the user's.
