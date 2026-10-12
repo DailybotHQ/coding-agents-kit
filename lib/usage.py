@@ -1037,7 +1037,10 @@ class AntigravityQuota(Adapter):
     named by its period and the group (`5-hour Gemini`, `7-day Claude and
     GPT`), the short window first as the other CLIs list theirs; `used_pct`
     is 100 minus the vendor's remainingFraction, `resets_at` its resetTime.
-    The plan is the tier (`free`, `AI Pro`, …). The login is agy's token
+    The plan is the account's paid tier when it holds one (`paidTier`: the
+    Google AI subscription, `AI Pro`, `AI Ultra`), else its current tier
+    (`currentTier`, the base Code Assist tier every account has, `free`).
+    The login is agy's token
     file (Linux, containers: `antigravity-oauth-token` in its home); the
     macOS Keychain item is an opaque blob the kit does not parse
     (`keychain_opaque`). The refresh token in the file is never read beyond
@@ -1080,7 +1083,9 @@ class AntigravityQuota(Adapter):
         quota = json.loads(body.decode("utf-8-sig"))
         if not isinstance(quota, dict):
             raise ShapeError("retrieveUserQuotaSummary is not an object")
-        merged = {"tier": load.get("currentTier"), "groups": quota.get("groups")}
+        paid = load.get("paidTier")
+        tier = paid if isinstance(paid, dict) and paid.get("id") else load.get("currentTier")
+        merged = {"tier": tier, "groups": quota.get("groups")}
         return 200, json.dumps(merged).encode("utf-8")
 
     @staticmethod

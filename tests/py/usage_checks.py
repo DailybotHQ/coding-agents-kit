@@ -571,8 +571,8 @@ write(os.path.join(AGY_HOME, "antigravity-oauth-token"),
                   "token": {"access_token": AGY_LOGIN, "refresh_token": AGY_RENEWAL, "token_type": "Bearer",
                             "expiry": usage.iso_utc(NOW + 1800)}}))
 os.makedirs(os.path.join(PROFILES, "antigravity", "acc2", "home", ".gemini", "antigravity-cli"))
-AGY_LOAD = {"currentTier": {"id": "g1-pro-tier", "name": "Google AI Pro"}, "cloudaicompanionProject": "aicode-consumers",
-            "paidTier": {"id": "g1-pro-tier"}}
+AGY_LOAD = {"currentTier": {"id": "free-tier", "name": "Antigravity"}, "cloudaicompanionProject": "aicode-consumers",
+            "paidTier": {"id": "g1-pro-tier", "name": "Google AI Pro"}}
 AGY_QUOTA = {"groups": [
     {"displayName": "Gemini Models", "description": "Models within this group: Gemini Flash, Gemini Pro", "buckets": [
         {"bucketId": "gemini-weekly", "displayName": "Weekly Limit Remaining", "window": "weekly",
@@ -589,7 +589,7 @@ del server.requests[:]
 code, agy_rows = rows_of(["antigravity"], ENV_AGY)
 acc1 = next((r for r in agy_rows if r["profile"] == "@acc1"), None)
 acc2 = next((r for r in agy_rows if r["profile"] == "@acc2"), None)
-check("usage antigravity: a profile with agy's token file is an ok row with the tier as its plan",
+check("usage antigravity: a profile with agy's token file is an ok row; the paid tier (AI Pro) wins over the base free tier",
       acc1 is not None and acc1["status"] == "ok" and acc1["plan"] == "AI Pro" and acc1["source"] == "antigravity-quota", str(acc1))
 check("usage antigravity: one window per group bucket, the 5-hour one first, named by period and family, used = 100 - remaining",
       acc1 is not None and [(w["id"], w["label"], w["used_pct"], w["window_seconds"]) for w in acc1["windows"]]
@@ -654,6 +654,12 @@ try:
 finally:
     usage.os_name, profiles.keychain_has = saved_os, saved_has
     INSTALLED.discard("antigravity")
+write(os.path.join(AGY_HOME, "antigravity-oauth-token"), json.dumps({"token": {"access_token": AGY_LOGIN, "expiry": usage.iso_utc(NOW + 1800)}}))
+server.set_routes(dict(AGY_ROUTES, **{"/agy/v1internal:loadCodeAssist": {"json": {"currentTier": {"id": "free-tier"},
+                                                                               "cloudaicompanionProject": "aicode-consumers"}}}))
+_c, free_rows = rows_of(["antigravity", "@acc1"], ENV_AGY)
+check("usage antigravity: without a paid tier the plan is the current tier (free)", free_rows[0]["plan"] == "free", str(free_rows[0]))
+server.set_routes(AGY_ROUTES)
 secrecy = run(["antigravity", "-v"], ENV_AGY)
 check("usage antigravity: the planted tokens never reach the output",
       AGY_LOGIN not in secrecy[1] + secrecy[2] and AGY_RENEWAL not in secrecy[1] + secrecy[2])

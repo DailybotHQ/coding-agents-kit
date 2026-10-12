@@ -26,7 +26,7 @@ adapter id.
   profile's Google login file (`antigravity-oauth-token` in agy's home — Linux
   and containers), two POSTs to agy's own Code Assist host (identifying as the
   Antigravity client, as agy does) give the account's
-  tier (`free`, `AI Pro`, the plan column) and its quota summary, the one agy's
+  plan (the Google AI subscription — `AI Pro`, `AI Ultra` — or `free`) and its quota summary, the one agy's
   own `/usage` panel shows: a five-hour and a weekly window for the Gemini
   models and for the Claude and GPT models (`5-hour Gemini  34%  in 1h 17m`). `ak pick` and `ak capacity`
   count such an account like any measured one. On macOS the login is a Keychain
