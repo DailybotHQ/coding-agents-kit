@@ -40,7 +40,7 @@ cursor  ──▶  @default     ──▶  Keychain / web session            ─
 | pi | `PI_CODING_AGENT_DIR` | — | provider keys | through the provider rows |
 | cline | `CLINE_DIR` | — | provider keys | through the provider rows |
 | grok | `GROK_HOME` | its own login | `XAI_API_KEY_<SUFFIX>`, optional | connected only |
-| antigravity | a `HOME` of its own | one keyring slot per machine | `GEMINI_API_KEY_<SUFFIX>` is the profile's own account | connected only |
+| antigravity | a `HOME` of its own | its own login file (Linux, containers); one keyring slot per machine (macOS, Windows) | `GEMINI_API_KEY_<SUFFIX>`, optional | per-model quota buckets (file login); connected only (Keychain) |
 | zai (provider) | — | — | `ZAI_CODING_API_KEY[_SUFFIX]` | 5-hour, 7-day credits |
 
 How each CLI is pointed at a profile, file by file, is in
@@ -102,7 +102,8 @@ in upper case with `-` and `.` turned into `_`.
 - A named profile **never falls back** to the default key: a missing key is
   exit 3 naming the variable.
 - `grok` and `antigravity` treat the key as optional: without it they use
-  the profile's own login (grok) or the machine's Google login (antigravity).
+  the profile's own login (grok; antigravity on Linux and in containers) or
+  the machine's Google login (antigravity on macOS and Windows).
 - Non-secret settings follow the same suffix rule; see
   [Profiles → Provider keys per profile](profiles.md#provider-keys-per-profile).
 
@@ -139,9 +140,11 @@ To reuse the same set of accounts elsewhere, read `ak profiles --json`
   item until you delete it in Keychain Access.
 - **Cursor** keeps its macOS login under one fixed Keychain name, so a
   profile gets its own `HOME` and a file credential store.
-- **Antigravity** has one keyring slot per machine: signing in inside a
-  profile replaces the login of every other Antigravity home. A second
-  account is a `GEMINI_API_KEY_<SUFFIX>` key.
+- **Antigravity** keeps its Google login in a file of its home on Linux and
+  in containers, so each profile is its own account: sign in inside it. On
+  macOS and Windows it has one keyring slot per machine: signing in inside a
+  profile replaces the login of every other Antigravity home, and a second
+  account there is a `GEMINI_API_KEY_<SUFFIX>` key.
 - **Windows:** profiles and logins are files in the same layout. A login in
   Windows Credential Manager (or a Codex keyring) is not readable by the kit
   and shows as `no_login` with that cause. A program calling the kit starts
@@ -158,7 +161,7 @@ To reuse the same set of accounts elsewhere, read `ak profiles --json`
 | `ak usage` says `no_scope` | the login lacks the usage permission or was rejected | sign in again with a full login |
 | `login ?` in `ak profiles` on macOS | the login is in the Keychain, which `ak profiles` does not read | `ak usage claude @work` tells whether it works |
 | Two profiles show the same quota | a login file was copied between them | one login per profile; log in again in one of them |
-| Every Antigravity home switched account | someone signed in inside a profile | use `GEMINI_API_KEY_<SUFFIX>` for the second account |
+| Every Antigravity home switched account (macOS, Windows) | someone signed in inside a profile; the OS keyring holds one login per machine | use `GEMINI_API_KEY_<SUFFIX>` for the second account, or run the profiles in a container (one login file each) |
 
 Whether several subscriptions of one vendor may be used at once is that
 vendor's terms, and yours to check.

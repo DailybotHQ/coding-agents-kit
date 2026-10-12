@@ -421,8 +421,8 @@ def keychain_services(entries, ctx=None):
         directory = profile_dir or moved
         if directory and entry.get("profile"):
             service = "%s-%s" % (service, hashlib.sha256(directory.encode("utf-8")).hexdigest()[:8])
-        elif profile_dir:
-            continue
+        elif profile_dir and not entry.get("shared"):
+            continue          # `shared = true`: one item serves every home of the CLI (Antigravity)
         out.append((service, entry.get("account")))
     return out
 

@@ -12,6 +12,40 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-12
+
+Interface stays **1**. Every account in `ak usage`, and Antigravity's quota:
+the table lists each CLI's accounts whether or not their quota is readable,
+and an Antigravity Google login shows the windows agy's own `/usage` panel
+shows. `--json` and every schema are unchanged except for one additive
+adapter id.
+
+### Added
+
+- **`ak usage` reads Antigravity.** A new `antigravity-quota` source: with the
+  profile's Google login file (`antigravity-oauth-token` in agy's home — Linux
+  and containers), two POSTs to agy's own Code Assist host (identifying as the
+  Antigravity client, as agy does) give the account's
+  plan (the Google AI subscription — `AI Pro`, `AI Ultra` — or `free`) and its quota summary, the one agy's
+  own `/usage` panel shows: a five-hour and a weekly window for the Gemini
+  models and for the Claude and GPT models (`5-hour Gemini  34%  in 1h 17m`). `ak pick` and `ak capacity`
+  count such an account like any measured one. On macOS the login is a Keychain
+  item in a format the kit does not parse: the row is `n/d`, `logged in`
+  (`keychain_opaque`, presence only). The login file is also Antigravity's
+  login probe now, so `ak profiles` and `ak doctor` see a container login.
+
+### Changed
+
+- **`ak usage` lists every account under its CLI.** Rows with no readable quota
+  no longer fold into a closing `connected` block or an `n/d` line: each sits
+  under its CLI's title like a measured one, `n/d` with how it is connected and
+  the few-word reason, or `no login` with the command that logs it in. The
+  table thus also says which accounts of every CLI are connected. `--json` is
+  unchanged.
+- Antigravity's profile note and docs say where its login lives per OS: a file
+  per profile on Linux and in containers (sign in inside the profile), one
+  OS-keyring slot per machine on macOS and Windows (use `GEMINI_API_KEY_<SUFFIX>`).
+
 ## [0.6.1] - 2026-10-12
 
 Interface stays **1**. Patch: the four kit findings of the first live swarm

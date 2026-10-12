@@ -1,7 +1,7 @@
 ---
 name: agentkit-setup
 description: Install, configure, verify, repair and upgrade coding-agents-kit (`ak`) on any machine, server or Docker container — macOS, Linux, WSL and Windows — from a pinned release, with consent before every change, provider keys handled by name only, and a container recipe that verifies a SHA256. Use when the user asks to set up, install, configure, repair or upgrade ak or agentkit on a host or in a container, to prepare a machine for several coding-agent accounts, or to write a Dockerfile or compose file that runs the kit.
-version: "0.6.1"
+version: "0.7.0"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["git","python3"]},"interface":1}
 ---
@@ -38,7 +38,7 @@ not ask for.
 
 ```bash
 # test: probe
-git clone --branch v0.6.1 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v0.7.0 https://github.com/DailybotHQ/coding-agents-kit
 python3 coding-agents-kit/lib/ak.py setup probe --json
 ```
 

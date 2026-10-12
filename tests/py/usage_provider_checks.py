@@ -546,11 +546,11 @@ text = run(["-v"], nd_env)[1]
 check("usage nd: -v lists each n/d row with its full reason",
       text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]) and "web session" in text)
 text = run([], nd_env)[1]
-nd_lines = [line for line in text.splitlines() if line.startswith("n/d")]
-check("usage nd: without -v the n/d rows fold into one closing line grouped by cause",
-      len(nd_lines) == 1 and "cursor" in text and "cline @solo" in text and "ak usage -v" in text, text)
+check("usage nd: without -v every n/d row still sits under its CLI (nothing folds into a closing line)",
+      not any(line.startswith("n/d") for line in text.splitlines())
+      and text.count("n/d") == len([r for r in rows if r["status"] == "unsupported"]) and "web session only" in text, text)
 
-# Connected but not measurable: listed at the very end, in a block of its own.
+# Connected but not measurable: listed under its CLI like every account, with how it is connected.
 INSTALLED.add("grok")
 write(os.path.join(HOME, ".grok", "auth.json"), "{}")
 code, rows, _ = rows_of([], nd_env)
@@ -565,15 +565,13 @@ check("usage connected: a login that cannot be told stays without the key (curso
 check("usage connected: the table-only keys never reach --json", all("_how" not in r and "_short" not in r for r in rows))
 text = run([], nd_env)[1]
 lines = text.splitlines()
-block = lines[lines.index([l for l in lines if l.startswith("connected")][0]):]
-check("usage connected: a closing block lists them with how they are connected and why there is no number",
-      any("grok" in l and "logged in" in l and "per-session" in l for l in block)
-      and any("xai" in l and "@2" in l and "XAI_API_KEY_2 set" in l for l in block), text)
-check("usage connected: the block comes after every measured block and before the n/d line",
-      lines.index(block[0]) > max(i for i, l in enumerate(lines) if l.startswith("zai"))
-      and lines.index(block[0]) < [i for i, l in enumerate(lines) if l.startswith("n/d")][0], text)
-check("usage connected: what is connected is not repeated in the n/d line",
-      "grok" not in [l for l in lines if l.startswith("n/d")][0] and "xai" not in [l for l in lines if l.startswith("n/d")][0], text)
+grok_title = [i for i, l in enumerate(lines) if l.startswith("grok")]
+xai_title = [i for i, l in enumerate(lines) if l.startswith("xai")]
+check("usage connected: a connected account sits under its CLI's title, n/d, with how it is connected and why there is no number",
+      grok_title and "n/d" in lines[grok_title[0] + 1] and "logged in: per-session only" in lines[grok_title[0] + 1]
+      and xai_title and any("@2" in l and "XAI_API_KEY_2 set" in l for l in lines[xai_title[0] + 1:xai_title[0] + 3]), text)
+check("usage connected: the blocks keep the CLI order (grok before the providers)",
+      grok_title and xai_title and grok_title[0] < xai_title[0], text)
 os.remove(os.path.join(HOME, ".grok", "auth.json"))
 INSTALLED.clear()
 

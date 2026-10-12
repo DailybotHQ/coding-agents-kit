@@ -26,7 +26,7 @@ An **account** is one CLI (or provider) × one profile.
 | pi | `PI_CODING_AGENT_DIR` | — | provider keys | through the provider rows |
 | cline | `CLINE_DIR` | — | provider keys | through the provider rows |
 | grok | `GROK_HOME` | its own login | `XAI_API_KEY_<SUFFIX>`, optional | connected only |
-| antigravity | a `HOME` of its own | one keyring slot per machine | `GEMINI_API_KEY_<SUFFIX>` is the profile's own account | connected only |
+| antigravity | a `HOME` of its own | its own login file (Linux, containers); one keyring slot per machine (macOS, Windows) | `GEMINI_API_KEY_<SUFFIX>`, optional | per-model quota buckets (file login); connected only (Keychain) |
 | zai (provider) | — | — | `ZAI_CODING_API_KEY[_SUFFIX]` | 5-hour, 7-day credits |
 
 ## Lifecycle
@@ -85,7 +85,8 @@ in upper case with `-` and `.` turned into `_`.
   brings them over with `ak env import <file>`. Refer to variables by name
   only; never read, print or copy a value.
 - `grok` and `antigravity` treat the key as optional: without it they use
-  the profile's own login (grok) or the machine's Google login (antigravity).
+  the profile's own login (grok; antigravity on Linux and in containers) or
+  the machine's Google login (antigravity on macOS and Windows).
 
 ### A Claude token per account
 
@@ -119,9 +120,11 @@ a value.
   the Keychain item stays until the user deletes it in Keychain Access.
 - **Cursor** keeps its login under one fixed Keychain name, so its profiles
   get their own `HOME` and a file credential store.
-- **Antigravity** has one keyring slot per machine: signing in inside a
-  profile replaces the login of every other Antigravity home. A second
-  account is a `GEMINI_API_KEY_<SUFFIX>` key, not a second login.
+- **Antigravity** keeps its Google login in a file of its home on Linux and
+  in containers, so each profile is its own account: sign in inside it. On
+  macOS and Windows it has one keyring slot per machine: signing in inside a
+  profile replaces the login of every other Antigravity home, and a second
+  account there is a `GEMINI_API_KEY_<SUFFIX>` key.
 - **Windows:** profiles and logins are files under the same layout. A login
   kept in Windows Credential Manager is not readable by the kit and shows as
   `no_login` with that cause. A program calling the kit runs the core
@@ -135,7 +138,7 @@ a value.
 | Expecting `@work` to use the default key | exit 3 naming `<KEY>_WORK` | ask the user to set that variable |
 | Copying a login file between profiles | two profiles share one account and its quota | one login per profile |
 | Creating or removing a profile to "free" quota | it changes the user's machine and frees nothing | create or remove only on request |
-| Signing in to Antigravity inside a profile | every Antigravity home switches account | use `GEMINI_API_KEY_<SUFFIX>` |
+| Signing in to Antigravity inside a profile on macOS or Windows | every Antigravity home switches account (one keyring login per machine) | use `GEMINI_API_KEY_<SUFFIX>`; on Linux and in containers each profile keeps its own login |
 | Syncing the profiles root to a shared drive | tokens leave the machine | keep it local (mode 700) |
 
 Whether several subscriptions of one vendor may be used at once is that

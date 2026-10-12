@@ -40,7 +40,8 @@ Put these in `~/.config/agentkit/env` (mode 600). A named profile reads
 | Gemini API (`antigravity`) | `GEMINI_API_KEY` | `GOOGLE_GEMINI_BASE_URL` |
 
 `grok` and `antigravity` treat the key as optional: without one each uses
-the CLI's own login (`grok login`; for `agy`, its Google login). With a key,
+the CLI's own login (`grok login`; for `agy`, its Google login — per profile
+on Linux and in containers, one per machine on macOS and Windows). With a key,
 `ak antigravity` writes `"modelProvider": "gemini"` into that home's
 `settings.json` (the one field agy needs to use the key), and removes it
 again when the key is gone, because agy refuses to start with the field and
@@ -92,7 +93,7 @@ The key set is closed: an unknown key, a non-https URL, a template other than `{
    to `providers.toml`. A new CLI needs a `[clis.<cli>]` block: executable,
    isolation, roots, session mapping, autonomy flag, headless mapping, login
    probe (`[clis.<cli>.login]`: `files` + `marker`, `env`, `keychain` —
-   `{ service, account?, profile? }`, `profile = true` when the CLI suffixes a
+   `{ service, account?, profile? | shared? }`, `profile = true` when the CLI suffixes a
    profile's item with the sha256 of its directory — and `token_files` when
    the login files only name the account and the token lives elsewhere),
    optionally a `[clis.<cli>.daemon]` table when the CLI records a

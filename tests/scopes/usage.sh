@@ -20,8 +20,10 @@ scope_usage() {
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
   expect_eq "usage json: ak usage --json matches docs/schema/usage-v1.json" "${out}" "valid"
   expect_eq "usage json: schema and interface" "$(json_get "${doc}" '[d["schema"], d["interface"]]')" '["usage-v1", 1]'
+  expect_eq "usage core: antigravity is a readable source now (no login in a fresh box, never n/d)" \
+    "$(json_get "${doc}" '[r["status"] for r in d["rows"] if r["cli"] == "antigravity"]')" '["no_login"]'
   expect_eq "usage core: unsupported sources are listed with a reason, not hidden" \
-    "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["antigravity", "cline", "cursor", "grok", "opencode", "pi"]'
+    "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["cline", "cursor", "grok", "opencode", "pi"]'
 
   out="$(ak -- usage --no-color)"; status=$?
   expect_eq "usage core: the table exits like the JSON" "${status}" 1

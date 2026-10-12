@@ -403,9 +403,11 @@ files = ["home:hooks/herdr-agent-state.sh", "home:hooks/herdr.json"]
 [clis.antigravity]
 name = "Antigravity CLI"
 executable = "agy"
-# Its Google login sits in one OS-keyring slot per machine, and its state in
-# ~/.gemini with no variable to move it: a profile is a HOME of its own (the
-# rest of the real HOME linked in), and a profile's own account is an API key.
+# Its state lives in ~/.gemini with no variable to move it: a profile is a
+# HOME of its own (the rest of the real HOME linked in). Its Google login is a
+# file in that home on Linux and in containers (one account per profile); on
+# macOS and Windows it sits in one OS-keyring slot per machine, so there a
+# profile's own account is an API key.
 isolation = "home"
 home_dir = ".gemini"
 auto = ["--dangerously-skip-permissions"]
@@ -427,16 +429,32 @@ result = "antigravity-json"
 
 [clis.antigravity.login]
 command = "agy"
-files = []
+# Linux and containers: agy keeps the Google login in this file of its home
+# (no OS keyring reachable), so every profile has its own account. macOS and
+# Windows: one OS-keyring slot per machine (the Keychain item below).
+files = ["home:antigravity-oauth-token"]
 env = ["GEMINI_API_KEY"]
 definitive = false
-note = "the Google login is in the OS keyring (one per machine); a profile's own account is GEMINI_API_KEY_<SUFFIX>"
-keychain = [{ service = "gemini", account = "antigravity" }]
-profile_note = "Antigravity keeps its Google login in one OS-keyring slot per machine: signing in here replaces the login of every other Antigravity home. For a separate account set GEMINI_API_KEY_{suffix} in the env file instead (ak writes modelProvider for it)."
+note = "the Google login is a file in agy's home (Linux, containers) or one OS-keyring slot per machine (macOS, Windows); a profile's own account there is GEMINI_API_KEY_<SUFFIX>"
+keychain = [{ service = "gemini", account = "antigravity", shared = true }]
+profile_note = "On Linux and in containers this profile keeps its own Google login: sign in inside it. On macOS and Windows Antigravity keeps one OS-keyring login per machine, so signing in here replaces the login of every other Antigravity home; for a separate account there set GEMINI_API_KEY_{suffix} in the env file instead (ak writes modelProvider for it)."
 
 [clis.antigravity.usage]
-unsupported = "Antigravity exposes no account quota that ak can read"
-short = "no quota source"
+# agy's own /usage panel: the account's tier (loadCodeAssist) and its quota
+# groups (retrieveUserQuotaSummary: Gemini models, Claude and GPT models, each
+# with a five-hour and a weekly bucket), two POSTs the adapter makes to this host.
+# The host tells the Antigravity client by the request metadata AND a user
+# agent naming antigravity-cli (any other agent gets the generic Code Assist
+# tiers and a 403 on the quota), so the kit names both itself and the CLI.
+# The login is the token file above; the macOS Keychain item is an opaque blob
+# the kit does not parse.
+adapter = "antigravity-quota"
+url = "https://cloudcode-pa.googleapis.com"
+headers = { authorization = "Bearer {token}", content-type = "application/json", accept = "application/json", user-agent = "agentkit antigravity-cli" }
+credential = "file"
+files = ["home:antigravity-oauth-token"]
+keychain_opaque = "the macOS Keychain login is in a format ak does not read; a profile on Linux or in a container keeps a readable login file"
+timeout_s = 15
 
 [clis.antigravity.install]
 # The tarball the vendor's installer downloads (its per-platform manifest at

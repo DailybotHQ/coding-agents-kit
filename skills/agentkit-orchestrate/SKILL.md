@@ -1,7 +1,7 @@
 ---
 name: agentkit-orchestrate
 description: Run several terminal coding agents at once across the user's accounts and vendors with coding-agents-kit (`ak`) — take inventory of every account's quota, pick the accounts with room (`ak pick --count`), give each writing agent its own git worktree, fan out headless runs (`ak run`), fail over when an account hits a limit, verify every result before merging, and report what was spent. Use when the user asks to split work across several agents or accounts, to run agents in parallel, to get a second opinion from another vendor, to spread a long task over their accounts, or to know which accounts can take the next batch.
-version: "0.6.1"
+version: "0.7.0"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
@@ -126,9 +126,10 @@ ak lease release codex @work1 --owner local:w1:p2
   takes one lease (one writer per `auth.json`); other accounts take several,
   and `ak pick --owner` ranks them by `headroom / (1 + active leases)` —
   your own leases count too, so the next lane never lands on an account you
-  already handed out. Grok, Cursor and Antigravity have no readable quota:
-  `ak pick <kind> --allow-unknown` reaches them, after every measured
-  account, with verdict `unknown`.
+  already handed out. Grok and Cursor have no readable quota (Antigravity
+  only on macOS, where its login is a Keychain item): `ak pick <kind>
+  --allow-unknown` reaches them, after every measured account, with
+  verdict `unknown`.
 - **Successor:** the lead picks an account with `ak pick <kind> --owner
   <lead>` (prefer another vendor when the task allows; `--reuse @profile`
   when the successor may take over the lane's own account), leases it, and

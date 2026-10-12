@@ -32,13 +32,22 @@ zai · Z.AI GLM Coding Plan
   @default  pro              5-hour            ███░░░░░░░  27%  in 3h 28m  3.27K/12K
                              7-day             ██████░░░░  58%  in 5d 4h   35.22K/60K
 
-connected · no quota to read
-  grok         @default  logged in        per-session only
-  antigravity  @default  logged in        no quota source
-  xai          @default  XAI_API_KEY set  needs a management key
+cursor · Cursor Agent
+  @default  -     n/d               web session only
+  @work     -     no login          log in: ak cursor @work · web session only
 
-n/d  cursor (web session only) · opencode, pi, cline (via a provider key)
-     ak usage -v for every row and its reason
+grok · Grok CLI
+  @default  -     n/d               logged in: per-session only
+
+antigravity · Antigravity CLI
+  @acc1     AI Pro  5-hour Gemini          ███▍░░░░░░  34%  in 1h 17m
+                    7-day Gemini           ▊░░░░░░░░░   7%  in 2d 23h
+                    5-hour Claude and GPT  ░░░░░░░░░░   0%  in 5h 0m
+                    7-day Claude and GPT   ░░░░░░░░░░   0%  in 6d 23h
+  @acc2     -       no login               log in: ak antigravity @acc2
+
+xai · xAI
+  @default  -     n/d               XAI_API_KEY set: needs a management key
 ```
 
 One block per CLI or provider: its id and name on a title line, its
@@ -46,19 +55,20 @@ accounts indented under one shared header, a blank line between blocks. A
 tip that applies to the whole block (how to spend a Codex reset) is said
 once, on the title line.
 
-An account with no quota to read still matters when it is **connected**: a
-login found for it (a login file, a credential variable, or — on macOS, for
-the CLI's default home — its Keychain item, of which only the presence is
-asked) or its provider key set. Those close the table in a `connected` block
-that says how each is connected; the rest fold into the `n/d` line. In
-`--json` such a row carries `"connected": true` (or `false`; the key is
+**Every account is listed under its CLI**, whether or not its quota can be
+read, so the table also answers which accounts are connected. An account with
+no readable quota shows `n/d` and how it is **connected**: a login found for
+it (`logged in`: a login file, a credential variable, or — on macOS, for the
+CLI's default home — its Keychain item, of which only the presence is asked)
+or its provider key set (`XAI_API_KEY set`), then the few-word reason. One
+with no login shows `no login` and how to log in (`log in: ak cursor @work`).
+In `--json` such a row carries `"connected": true` (or `false`; the key is
 absent when it cannot be told).
 
 On a terminal the table fits its width: a row with a problem shows its status
-and a few-word note (`log in: ak claude @work`), and the accounts with no
-readable quota fold into one closing `n/d` line grouped by cause. Nothing
-wraps; a note too long for the width ends in `…`. `-v` lists every row with
-its full note instead. A pipe or a file gets the whole text (no width).
+and a few-word note (`log in: ak claude @work`). Nothing wraps; a note too
+long for the width ends in `…`. `-v` lists every row with its full note
+instead. A pipe or a file gets the whole text (no width).
 
 ## Reading the table
 
@@ -84,9 +94,10 @@ codex   resets: use one with /usage in codex
 zai · Z.AI GLM Coding Plan
   @default  pro   5-hour            ████░░░░░░  36%  in 1h 51m  4.36K/12K
                   7-day             ██████░░░░  60%  in 5d 3h   36.31K/60K
-connected · no quota to read
-  cursor       @default  logged in        web session only
-  xai          @default  XAI_API_KEY set  needs a management key
+cursor · Cursor Agent
+  @default  -     n/d               logged in: web session only
+xai · xAI
+  @default  -     n/d               XAI_API_KEY set: needs a management key
 ```
 
 | Column | What it says |
@@ -111,12 +122,11 @@ What the example says:
 - **Credits** (`zai`): Z.AI reports absolute credits; `4.36K/12K` is used
   out of the limit. Its 5-hour window has 64% left, its week 40%: the week
   binds.
-- **The `connected` block** lists accounts with no quota to read that work
-  anyway: a login found (`logged in`) or a provider key set
-  (`XAI_API_KEY set`). Their headroom is unknown.
-- **The `n/d` line** (absent here) folds the accounts with no readable quota
-  and no connection, grouped by cause; `ak usage -v` shows each with its
-  reason.
+- **`n/d` rows** (`cursor`, `xai`) are accounts with no quota to read that
+  work anyway: a login found (`logged in`) or a provider key set
+  (`XAI_API_KEY set`). Their headroom is unknown. An account with no login
+  shows `no login` and the command that logs it in; `ak usage -v` gives
+  every row its full reason.
 
 ## What it shows
 
@@ -136,7 +146,8 @@ Order: the CLI order of `providers.toml`, then `@default`, then profile names.
 | Claude Code subscription | `api.anthropic.com` usage endpoint, with the profile's login (`.credentials.json`; on macOS the profile's Keychain item) | needs the `user:profile` permission; a plan without a global weekly cap (Team) shows its per-model weekly windows only; each window is its own line: `5-hour`, `7-day all models`, `7-day <model> only` |
 | Codex (ChatGPT login) | `chatgpt.com` usage endpoint, with the profile's `auth.json` | an API-key login has no quota: `n/d`; the limit resets the account holds show as a `resets` line (`resets_available` in `--json`) |
 | Z.AI coding plan | `api.z.ai` quota endpoint, with the profile's `ZAI_CODING_API_KEY[_SUFFIX]` | global host only; the windows are named by their period (`5-hour`, `7-day`) and show the credits used out of the limit |
-| Cursor, Grok, Antigravity, xAI, Azure OpenAI, Gemini API | — | `n/d` with the reason (browser session only, per-session usage only, needs a management key, nothing to read) |
+| Antigravity (Google login) | `cloudcode-pa.googleapis.com`, agy's own quota source (its `/usage` panel): the account's tier (`loadCodeAssist`) then its quota summary (`retrieveUserQuotaSummary`), with the profile's login file (`antigravity-oauth-token` in agy's home — Linux and containers) | the plan is the account's Google AI subscription when it has one (`AI Pro`, `AI Ultra`: the paid tier), else the base tier (`free`); the quota is shared by a family of models, not per model: one group for the Gemini models and one for the Claude and GPT models, each with a five-hour and a weekly bucket, so the windows are `5-hour Gemini`, `7-day Gemini`, `5-hour Claude and GPT`, `7-day Claude and GPT`. On macOS the login is a Keychain item in a format ak does not read: `n/d`, `logged in`. A `GEMINI_API_KEY` profile is `n/d` |
+| Cursor, Grok, xAI, Azure OpenAI, Gemini API | — | `n/d` with the reason (browser session only, per-session usage only, needs a management key, nothing to read) |
 | OpenCode, Pi, Cline | the provider behind the kind (`opencode-glm` → Z.AI, `pi-xai` → xAI) | an `n/d` row only when no provider key covers the profile |
 
 **These endpoints are vendor-internal and unofficial.** They can change
@@ -149,7 +160,7 @@ shape` and the rest of the list is unaffected.
 | --- | --- |
 | `<kind-or-cli>` | only the rows of a CLI (`claude`), a kind (`claude-glm` selects the Z.AI rows) or a provider (`zai`) |
 | `@profile` | only that profile (`@default` and `@1` are the CLI's own home) |
-| `-v`, `--verbose` | one line per row, n/d rows included, with the full reason or error |
+| `-v`, `--verbose` | every row with its full reason or error (the table never cuts a note) |
 | `--json` | exactly one JSON object, schema `usage-v1` ([`schema/usage-v1.json`](schema/usage-v1.json)), no ANSI |
 | `--timeout SECONDS` | per request, 1-60 (default 10) |
 | `--no-color` | and `NO_COLOR`; colour is also off when stdout is not a terminal |
@@ -228,9 +239,9 @@ The policy, in plain words:
    reason. `unsupported` rows are left out (`no readable quota`) unless
    `--allow-unknown`, which admits the connected ones after every measured
    account (verdict `unknown`). When only such accounts were refused, the
-   warning names `--allow-unknown`. This is the path for Grok, Cursor and
-   Antigravity lanes: capacity unknown means *continue, and hand off on the
-   CLI's own limit warning*.
+   warning names `--allow-unknown`. This is the path for Grok and Cursor lanes
+   (and Antigravity on macOS, where its login is a Keychain item): capacity
+   unknown means *continue, and hand off on the CLI's own limit warning*.
 2. **Which windows count.** Every window without a model scope (`5h`, `7d`,
    the provider's windows). A model-only window (`7d-<model>`) counts only
    when `--model` names that model. So without `--model`, a Team account
@@ -373,7 +384,7 @@ claude @work1  ok  64% free  binding 5h  resets in 2h 10m  cached 42s ago
 - **Verdict:** `critical` when the account is rate limited or its headroom is
   at or below the critical threshold; `low` at or below the low threshold;
   `ok` above; `unknown` when no headroom can be read (Cursor, Grok,
-  Antigravity, a login problem, an error). Thresholds default to 25 and 10;
+  Antigravity on macOS, a login problem, an error). Thresholds default to 25 and 10;
   set `AGENTKIT_CAPACITY_LOW` / `AGENTKIT_CAPACITY_CRITICAL`, or pass
   `--low` / `--critical`.
 - **`--self`** reads the account this process runs on: every `ak` launch

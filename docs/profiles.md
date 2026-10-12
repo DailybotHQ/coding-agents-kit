@@ -135,11 +135,14 @@ ak profiles run opencode @2 -- opencode auth login
 ak profiles run cline @2 -- cline auth
 ```
 
-**Antigravity** is the exception: its Google login sits in one OS-keyring
-slot per machine (macOS Keychain `gemini`/`antigravity`, Linux Secret
-Service, Windows Credential Manager), so signing in inside a profile
-replaces the login every other Antigravity home uses. For a second account
-give the profile its own key instead — `GEMINI_API_KEY_<SUFFIX>` in the env
+**Antigravity** depends on the OS. On Linux and in containers `agy` reaches
+no OS keyring and keeps its Google login in a file of its home
+(`antigravity-cli/antigravity-oauth-token`), so every profile is its own
+account: sign in inside it, and several run side by side. On macOS and
+Windows the login sits in one OS-keyring slot per machine (Keychain item
+`gemini`/`antigravity`, Credential Manager), so signing in inside a profile
+replaces the login every other Antigravity home uses; for a second account
+there give the profile its own key — `GEMINI_API_KEY_<SUFFIX>` in the env
 file — and `ak antigravity @name` uses it (see below). `ak profiles add
 antigravity @name` says so when it creates the profile.
 
@@ -165,7 +168,7 @@ settings.
 | Pi | `PI_CODING_AGENT_DIR=<profile>` | `<profile>/auth.json` |
 | Cline | `CLINE_DIR=<profile>` | `<profile>/data/settings/` |
 | Grok | `GROK_HOME=<profile>` | `<profile>/auth.json` |
-| Antigravity | its own `HOME=<profile>/home` (state in `<profile>/home/.gemini`) | the OS keyring, one slot per machine — a profile's own account is `GEMINI_API_KEY_<SUFFIX>` |
+| Antigravity | its own `HOME=<profile>/home` (state in `<profile>/home/.gemini`) | Linux, containers: `<profile>/home/.gemini/antigravity-cli/antigravity-oauth-token`; macOS, Windows: the OS keyring, one slot per machine — a profile's own account there is `GEMINI_API_KEY_<SUFFIX>` |
 
 A new profile starts empty: no settings, user skills, MCP servers or plugins
 from profile 1. Copy what you want into it.
@@ -175,8 +178,9 @@ account needs a separate `HOME` and the file credential store. `ak` links
 every other entry of your real home (`.gitconfig`, `.ssh`, `.config`, …) into
 `<profile>/home`, so git, gh and ssh keep working in the agent's shells.
 **Antigravity** profiles get the same separate `HOME` (its own `.gemini`:
-conversations, settings, trusted folders), without a file credential store
-(agy has none), which is why a profile's own account is its key.
+conversations, settings, trusted folders, and on Linux and in containers the
+login file too). On macOS and Windows agy keeps the login in the OS keyring
+instead, which is why a profile's own account there is its key.
 **OpenCode** profiles get the same treatment for the XDG directories (all of
 `~/.config` except `opencode/`, and so on).
 
@@ -198,7 +202,7 @@ Put them in `~/.config/agentkit/env` (mode 600). A missing key is an error
 (exit 3) that names the variable; **ak never falls back to profile 1's
 key**. `grok` and `antigravity` treat the key as optional: with no
 `XAI_API_KEY_<SUFFIX>` grok uses that profile's own `grok login`, and with no
-`GEMINI_API_KEY_<SUFFIX>` agy uses the machine's Google login. The CLI receives the key under the
+`GEMINI_API_KEY_<SUFFIX>` agy uses the profile's own Google login (Linux, containers) or the machine's (macOS, Windows). The CLI receives the key under the
 base name (`ZAI_CODING_API_KEY`, …); the per-profile variables themselves
 are removed from the CLI's environment.
 
