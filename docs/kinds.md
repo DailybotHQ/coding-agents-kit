@@ -95,6 +95,10 @@ The key set is closed: an unknown key, a non-https URL, a template other than `{
    `{ service, account?, profile? }`, `profile = true` when the CLI suffixes a
    profile's item with the sha256 of its directory — and `token_files` when
    the login files only name the account and the token lives elsewhere),
+   optionally a `[clis.<cli>.daemon]` table when the CLI records a
+   background daemon in its home (`record`, `executable`, the `off` flags a
+   launch adds when the recorded executable cannot run here, and the `env`
+   variable that forces them),
    install channel (`binary`, `tarball` or `npm`, with an exact
    version and its digests: per-platform `sha256`, or the npm `integrity`)
    and, when Herdr integrates it, hook files.

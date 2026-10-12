@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/doctor-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.3/docs/schema/doctor-v1.json",
   "title": "ak doctor --json (interface 1)",
   "description": "What coding-agents-kit reports about a machine. Never contains a secret value: keys are variable names only. Consumers check `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
@@ -29,6 +29,14 @@
       "type": "object",
       "description": "Since 0.5.2. Per CLI whose AGENTKIT_DEFAULT_PROFILE_<CLI> is set: what a bare `ak <cli>` launches, `@name`, `@default` or `pick`.",
       "additionalProperties": { "type": "string", "pattern": "^(@[a-z0-9._-]{1,32}|pick)$" }
+    },
+    "daemons": {
+      "type": "object",
+      "description": "Since 0.5.3. Per CLI that records a background daemon in its home (Codex), per account (@default, @name): present, absent (nothing recorded), missing (the home records a daemon that is not on this machine, so launches add the CLI's no-daemon flag) or off (AGENTKIT_<CLI>_NO_DAEMON=1).",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": { "enum": ["present", "absent", "missing", "off"] }
+      }
     },
     "profiles": {
       "type": "object",

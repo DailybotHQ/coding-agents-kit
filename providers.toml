@@ -149,6 +149,18 @@ integrity = "sha512-GBhcKpQmVLsCtEP5mUf6WFye6QQgTKotwsXrYPM0GFmEsoOSahik6hkf2FHa
 files = ["home:herdr-agent-state.sh"]
 register = "home:hooks.json"
 
+[clis.codex.daemon]
+# Codex installs an app-server daemon under its home and records it there. A
+# home shared with another machine (a host profile mounted into a container,
+# one volume shared by several containers) records a daemon that is not on
+# this machine, and Codex refuses to start. When `record` exists and
+# `executable` is missing or not built for this OS, or `env` is 1, an
+# interactive launch adds `off`; never when the daemon is here.
+record = "home:packages/app-server-daemon"
+executable = "home:packages/app-server-daemon/current/bin/codex"
+off = ["--no-daemon"]
+env = "AGENTKIT_CODEX_NO_DAEMON"
+
 
 [clis.cursor]
 name = "Cursor Agent"

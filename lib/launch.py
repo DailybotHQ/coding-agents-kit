@@ -13,7 +13,10 @@ token it does not own (or after `--`) reaches the CLI untouched:
   * one session flag: -c/--continue, -r/--resume [id], and -l/--last where
     the CLI defines it (Codex: continue; Cursor: list) — mapped per CLI
     from providers.toml;
-  * `--` stops the kit from reading anything else.
+  * `--` stops the kit from reading anything else;
+  * a CLI that records a background daemon in its home (providers.toml
+    `daemon`: Codex) gets its `off` flags when the recorded daemon is not on
+    this machine (a home shared with another machine) or its variable is 1.
 
 prepare() is shared by launch, `ak run` and `ak env`: it resolves the kind,
 the executable, the profile, the provider key and the environment.
@@ -312,6 +315,11 @@ def launch(model, kind_name, args, base_env):
         trust.mark(prep, os.getcwd())
         prep.env[trust.ENV] = "1"          # inherited by a nested ak, like the opt-out
     argv, standalone = interactive_argv(prep, head)
+    daemon_off = [f for f in profiles.daemon_args(prep.kind.cli, prep.ctx, prep.env) if f not in head.rest]
+    if daemon_off:
+        # Before the user's own arguments, like `ak codex -- --no-daemon`
+        # without the `--`.
+        argv = argv[:len(argv) - len(head.rest)] + daemon_off + head.rest
     if not standalone:
         run_pre(prep)
     return profiles.exec_command([prep.exe] + argv, prep.env)

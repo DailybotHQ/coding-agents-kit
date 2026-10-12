@@ -316,6 +316,55 @@ scope_profiles() {
   profiles_json
   profiles_trust_cwd
   profiles_default
+  profiles_codex_daemon
+}
+
+# Codex records an app-server daemon in its home; a home shared with another
+# machine records one that is not here, and only then does ak add --no-daemon.
+profiles_codex_daemon() {
+  local out root d doc native foreign
+  box_new profiles-codex-daemon codex
+  box_posture ask
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/codex/work" "${root}/codex/host"
+  d="packages/app-server-daemon/current/bin"
+  if [[ "$(uname -s)" == Darwin ]]; then native='\xcf\xfa\xed\xfe'; foreign='\x7fELF'; else native='\x7fELF'; foreign='\xcf\xfa\xed\xfe'; fi
+
+  out="$(ak -- codex)"
+  expect_eq "codex daemon: nothing recorded, no flag" "$(argv_of "${out}")" ""
+  mkdir -p "${BOX}/home/.codex/${d}"
+  printf "${native}rest" > "${BOX}/home/.codex/${d}/codex"; chmod +x "${BOX}/home/.codex/${d}/codex"
+  out="$(ak -- codex -c)"
+  expect_eq "codex daemon: a daemon built for this OS is used, no flag" "$(argv_of "${out}")" "resume|--last"
+  out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex)"
+  expect_eq "codex daemon: AGENTKIT_CODEX_NO_DAEMON=1 adds --no-daemon anyway" "$(argv_of "${out}")" "--no-daemon"
+
+  mkdir -p "${root}/codex/work/packages/app-server-daemon"
+  ln -s "${BOX}/elsewhere/0.158.0" "${root}/codex/work/packages/app-server-daemon/current"
+  out="$(ak -- codex @work -c --model x)"
+  expect_eq "codex daemon: a recorded daemon that is not here adds --no-daemon, before the user's args" \
+    "$(argv_of "${out}")" "resume|--last|--no-daemon|--model|x"
+  out="$(ak -- codex @work -- --no-daemon)"
+  expect_eq "codex daemon: a --no-daemon the user passed is not repeated" "$(argv_of "${out}")" "--no-daemon"
+  out="$(ak AGENTKIT_PERMISSIONS=auto -- codex @work)"
+  expect_eq "codex daemon: ... with autonomy" "$(argv_of "${out}")" "--dangerously-bypass-approvals-and-sandbox|--no-daemon"
+  mkdir -p "${root}/codex/host/${d}"
+  printf "${foreign}rest" > "${root}/codex/host/${d}/codex"; chmod +x "${root}/codex/host/${d}/codex"
+  out="$(ak -- codex @host)"
+  expect_eq "codex daemon: a daemon built for another OS (a host home in a container) adds --no-daemon" \
+    "$(argv_of "${out}")" "--no-daemon"
+
+  ak_split -- doctor --json
+  doc="${BOX}/doctor.json"; cp "${BOX}/out" "${doc}"
+  expect_eq "codex daemon: doctor --json reports each account" "$(json_get "${doc}" 'd["daemons"]')" \
+    '{"codex": {"@default": "present", "@host": "missing", "@work": "missing"}}'
+  expect_eq "codex daemon: doctor --json still matches doctor-v1" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/doctor-v1.json" "${doc}")" "valid"
+  ak_split AGENTKIT_CODEX_NO_DAEMON=1 -- doctor --json
+  expect_eq "codex daemon: doctor --json reports the variable as off" "$(json_get "${BOX}/out" 'd["daemons"]["codex"]["@default"]')" "off"
+  ak_split -- doctor
+  expect_has "codex daemon: doctor says what ak does" "$(cat "${BOX}/out")" \
+    "@work: the daemon its home records is not on this machine; ak codex adds --no-daemon"
 }
 
 # A per-CLI default profile (AGENTKIT_DEFAULT_PROFILE_<CLI>): what a bare

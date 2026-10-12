@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/profiles-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.3/docs/schema/profiles-v1.json",
   "title": "ak profiles --json (profiles-v1)",
   "description": "Every account the kit knows, portable to another host: names and kinds only. Never contains a secret value, an account identity or an absolute path. Another host recreates the set with `ak profiles add <cli> @<name>` and logs each one in. Consumers check `schema` and `interface` first; additional keys may appear in later minor versions.",
   "type": "object",
