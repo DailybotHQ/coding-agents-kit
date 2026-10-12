@@ -85,6 +85,7 @@ ak profiles add claude @work      # a second Claude account
 ak claude @work                   # log in AS the profile (the first launch asks)
 ak usage                          # every account's windows, read-only
 ak pick claude                    # the Claude account with the most room
+ak capacity claude @work          # one account: ok | low | critical | unknown
 ak run claude @work --cwd ~/src/api --output-format json -- "fix the failing test"
 ```
 
@@ -112,6 +113,16 @@ profile can also log in with its own token, `CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`
 (from `claude setup-token`), for containers that reuse the host's accounts.
 The loop — inventory, pick, one worktree per writer, failover, verify, merge
 — is [Orchestration](docs/orchestration.md).
+
+Long runs stay ahead of their limits: an agent asks for its own room at each
+task boundary and hands off before it runs dry, and leads lease the accounts
+they hand out so two never share one Codex login:
+
+```bash
+ak capacity --self --json                        # capacity-v1, from a cache of usage numbers (ak usage stays live)
+ak lease codex @work1 --owner local:w1:p2        # advisory; Codex takes one holder
+ak pick codex --owner local:w1:p1 --count 2      # skips accounts leased to others
+```
 
 ### Skills for agents
 
@@ -185,7 +196,7 @@ the threat model is [docs/SECURITY.md](docs/SECURITY.md).
 - [Permissions](docs/permissions.md) — autonomy by default, the `--ask` opt-out, the `classic` and `providers` aliases
 - [`ak run`](docs/run.md) — the headless contract, exit codes, the JSON envelope
 - [Set up on any machine or container](docs/setup.md) — `ak setup`, the `agentkit-setup` skill, container recipes
-- [`ak usage` and `ak pick`](docs/usage.md) — quota per account, reading the table, choosing an account ([usage-v1](docs/schema/usage-v1.json), [pick-v1](docs/schema/pick-v1.json))
+- [`ak usage`, `ak pick`, `ak capacity` and `ak lease`](docs/usage.md) — quota per account, reading the table, choosing an account, one account's room, the usage cache, leases ([usage-v1](docs/schema/usage-v1.json), [pick-v1](docs/schema/pick-v1.json), [capacity-v1](docs/schema/capacity-v1.json), [leases-v1](docs/schema/leases-v1.json))
 - [Orchestration](docs/orchestration.md) — several agents over several accounts: worktrees, failover, Herdr, Deep Work Plans
 - [`ak doctor` and `ak env`](docs/doctor.md) — interface 1 outputs ([schema](docs/schema/doctor-v1.json))
 - [Install, `ak install`, aliases](docs/install.md)

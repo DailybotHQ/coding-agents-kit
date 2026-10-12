@@ -1,7 +1,9 @@
 # Orchestration — several agents over several accounts
 
 With profiles ([Accounts](accounts.md)), quota ([`ak usage`](usage.md)),
-a chooser ([`ak pick`](usage.md#choosing-an-account)) and a headless runner
+a chooser ([`ak pick`](usage.md#choosing-an-account)), a per-agent room check
+([`ak capacity`](usage.md#capacity-of-one-account-ak-capacity)), account
+leases ([`ak lease`](usage.md#leases-ak-lease)) and a headless runner
 ([`ak run`](run.md)), one lead agent can spread work over several agents,
 accounts and vendors. This page is the method. Agents get it as a skill:
 [`agentkit-orchestrate`](../skills/agentkit-orchestrate/SKILL.md), printed by `ak --skill orchestrate`.
@@ -67,6 +69,43 @@ discarding its changes is a deliberate step), re-create it, re-pick and run
 `ak pick` exit 1 means no account has room: it names the soonest reset;
 wait for it or ask the user, never switch to an account they did not offer.
 
+## Capacity-aware lanes
+
+A run that lasts longer than one account's 5-hour window needs every agent
+to watch its own room and hand off **before** it runs dry, not after.
+
+- **Check at task boundaries.** Each agent — the lead and every lane — runs
+  `ak capacity --self --json` before a task, after any step longer than 20
+  minutes, and when its CLI shows a limit warning. `--self` is the account
+  `ak` launched it on; the reading comes from the
+  [usage cache](usage.md#the-usage-cache) (usage numbers only; `ak usage` is
+  the only command that always reads live), so the check costs at most one
+  vendor request per account every five minutes. Still: never in a loop, never
+  on a timer.
+- **Act on the verdict.** `ok` continue · `low` finish the current task, start
+  none it cannot finish, report it · `critical` reach a safe point (work
+  committed or left as is, never discarded), write a handoff note (task,
+  branch, HEAD, done / verified / not verified, next steps, open questions —
+  no secret), tell the lead and stop · `unknown` continue and hand off on the
+  CLI's own limit warning. A written handoff is final.
+- **Lease what you hand out.** The lead runs `ak lease <kind> @<profile> --owner
+  <lead-pane>` for each lane's account and `ak lease release …` when the lane
+  ends. Codex takes one lease (one writer per `auth.json`); other accounts take
+  several. `ak pick <kind> --owner <lead-pane> --count N` skips Codex accounts
+  leased to other leads and ranks the rest by `headroom / (1 + others'
+  leases)`, so several leads in one workspace never collide.
+- **Successor.** On a lane's handoff the lead picks a fresh account (`ak pick
+  … --owner`, another vendor when the task allows), leases it, and launches
+  the successor in the same checkout to resume from the note; it releases the
+  spent account's lease once the successor has taken over.
+- **Drill it.** `AGENTKIT_CAPACITY_CAP=@work1=8` makes `@work1` read
+  `critical` (lower-only: it can never report more room than real), so a
+  handoff can be rehearsed on purpose.
+- **The pool.** Work moves only among accounts the developer declared for the
+  work, within each vendor's terms; agents never create accounts, renew logins
+  or spend a Codex reset. When no account in the pool has room, the run stops
+  and reports the soonest reset.
+
 ## Herdr lanes
 
 For long, interactive lanes, give each lane a Herdr pane on its own account:
@@ -130,9 +169,9 @@ plan's pre-authorization) is the standing grant the lead relies on.
   heredoc), so the lead's shell never expands `$(…)` or backticks in it.
 - Failover discards only worktrees the lead created: check
   `git -C <worktree> rev-parse --show-toplevel` before `reset --hard`.
-- Only your own accounts, within each vendor's terms: spread work across
-  them, never rotate accounts to get past a limit you are not entitled to
-  exceed. An agent asks before starting more than one writing delegate
+- Work moves only among accounts the developer declared for the work, within
+  each vendor's terms; agents never create accounts, renew logins or spend a
+  Codex reset — never rotate accounts to get past a limit. An agent asks before starting more than one writing delegate
   unless you asked for parallel work.
 - Logins are renewed, Codex resets spent and profiles created or removed by
   you, or on your request — never by the kit.

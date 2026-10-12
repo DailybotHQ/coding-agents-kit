@@ -6,9 +6,11 @@ ak usage [<kind-or-cli>] [@profile] [-v | --verbose] [--json] [--timeout SECONDS
 
 One command, one list: the quota windows of every account the kit can see —
 each profile of each CLI — so you know which account has room before you
-start a long task. It is a list, not a dashboard: no graphics, no daemon, no
-cache, and **read-only** (it never refreshes a login, never prints a token and
-never writes under a profile or the env file).
+start a long task. It is a list, not a dashboard: no graphics, no daemon,
+always **live**, and **read-only** for your accounts (it never refreshes a
+login, never prints a token and never writes under a profile or the env file).
+The one file it writes is the kit's own [usage cache](#the-usage-cache), which
+`ak capacity` and `ak pick` reuse.
 
 ```text
   PROFILE   PLAN             WINDOW            USED             RESET
@@ -201,12 +203,15 @@ pick` ranks first. See [Profiles](profiles.md#a-default-profile-per-cli).
 
 ```
 ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-        [--count N] [--exclude @profile]... [--allow-unknown] [--json] [--timeout SECONDS]
+        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S]
+        [--json] [--timeout SECONDS]
 ```
 
 `ak pick` reads the same rows as `ak usage` — same enumeration, filter and
-parallel requests, equally **read-only** (no login is refreshed, no reset is
-spent, nothing is written) — and returns the account with the most usable
+parallel requests, equally **read-only** for your accounts (no login is
+refreshed, no reset is spent, nothing is written under a profile or the env
+file); a reading younger than `--max-age` comes from the
+[usage cache](#the-usage-cache) — and returns the account with the most usable
 room for a kind. `<kind-or-cli>` resolves as in `ak usage` (`claude-glm`
 selects the Z.AI rows); `@profile` turns it into a check of one account.
 
@@ -234,6 +239,15 @@ The policy, in plain words:
    resets first (room that resets soon is lost if unused); then the order of
    `providers.toml` and the profiles (`@default` first). Resets available
    never count as headroom.
+7. **Leases** ([`ak lease`](#leases-ak-lease)). Every candidate shows
+   `leases`, the active leases on that account. With `--owner ADDR` they also
+   count: a Codex account leased to another owner is left out (`leased to …
+   until …`), and the rest rank by `headroom / (1 + leases held by others)`,
+   so lanes spread over the accounts instead of piling on one. Without
+   `--owner` the ranking is unchanged.
+8. **Drill cap.** `AGENTKIT_CAPACITY_CAP` lowers an account's headroom the
+   same way it does for [`ak capacity`](#capacity-of-one-account-ak-capacity)
+   (`"capped": true`); it never raises one.
 
 | Option | |
 | --- | --- |
@@ -243,7 +257,9 @@ The policy, in plain words:
 | `--count N` | up to N distinct accounts, best first (1-16, default 1); a warning when fewer qualify |
 | `--exclude @name` | leave an account out (repeatable), e.g. one already busy |
 | `--allow-unknown` | connected accounts with no readable quota may be chosen, last |
-| `--json` | one object, schema `pick-v1` ([`schema/pick-v1.json`](schema/pick-v1.json)) |
+| `--owner ADDR` | choose for this lease holder: skip Codex accounts leased to others, rank by headroom / (1 + others' leases) |
+| `--max-age S` | reuse a cached reading up to S seconds old (default 300; 0 = always live) |
+| `--json` | one object, schema `pick-v1` ([`schema/pick-v1.json`](schema/pick-v1.json)); since 0.6.0 `owner`, and per candidate `leases` and `capped` |
 | `--timeout SECONDS` | per request, as `ak usage` |
 
 The text output is one line per chosen account:
@@ -320,6 +336,99 @@ characters with eighth-cell precision on a UTF-8 console, `#`/`-` otherwise;
 any nonzero use shows at least one mark and only 100% is full; colour needs a terminal (on Windows one
 that announces itself) and is never written into pipes or `--json`.
 
+## Capacity of one account: `ak capacity`
+
+```
+ak capacity [<kind-or-cli>] [@profile] [--self] [--model NAME] [--low PCT] [--critical PCT]
+            [--max-age S] [--json] [--timeout SECONDS]
+```
+
+The question an agent asks at every task boundary: *how much room does my
+account have left?* `ak capacity` answers for one account with a verdict:
+
+```text
+claude @work1  ok  64% free  binding 5h  resets in 2h 10m  cached 42s ago
+```
+
+- **Headroom** is `ak pick`'s, computed by the same code (the smallest free
+  share of the windows that count, 10% reserve on weekly windows), so the two
+  commands never disagree. `--model` works as in `ak pick`.
+- **Verdict:** `critical` when the account is rate limited or its headroom is
+  at or below the critical threshold; `low` at or below the low threshold;
+  `ok` above; `unknown` when no headroom can be read (Cursor, Grok,
+  Antigravity, a login problem, an error). Thresholds default to 25 and 10;
+  set `AGENTKIT_CAPACITY_LOW` / `AGENTKIT_CAPACITY_CRITICAL`, or pass
+  `--low` / `--critical`.
+- **`--self`** reads the account this process runs on: every `ak` launch
+  (`ak <kind>`, `ak run`), `@default` included, sets
+  `AGENTKIT_ACTIVE_ACCOUNT=<kind>/@<profile>` for the CLI it starts, so an
+  agent inside it runs `ak capacity --self`. A process not launched by `ak`
+  gets exit 3, "unknown account" — never a guess. (`AGENTKIT_ACTIVE_PROFILE`,
+  set for named profiles since 0.1, is still read as a fallback.)
+- **Exit codes:** 0 for every reading — the verdict is in the output, not
+  the exit code · 2 usage or an invalid threshold or cap · 3 unknown account
+  or nothing matches · ≥ 64 internal.
+- `--json` prints one object, schema `capacity-v1`
+  ([`schema/capacity-v1.json`](schema/capacity-v1.json)): `verdict`,
+  `headroom_pct`, `binding_window`, `resets_at`, `cli`, `profile`, `status`,
+  `reason`, `thresholds`, `source` (`cache`/`live`), `age_s`, `capped`,
+  `leases`, and a `cache_note` stating the cache rule below.
+
+### The usage cache
+
+`ak usage` always reads live, and each reading refreshes a small cache:
+one file per account under `$XDG_STATE_HOME/agentkit/usage-cache/`
+(`~/.local/state/agentkit/` by default; `AGENTKIT_STATE_DIR` moves it). The
+cache holds **usage numbers only** — the windows' ids, labels, percentages
+and resets, the plan name and the row status; never a token, key or path —
+in `0600` files, written atomically. `ak capacity` and `ak pick` reuse a
+reading younger than `--max-age` (300 s by default; `0` reads live) and write
+back what they read live. Only vendor readings (`ok`, `rate_limited`) are
+kept; a login problem shows again at once. **`ak usage` is the only command
+that always reads live**, so checking `ak capacity --self` at every task
+boundary costs at most one vendor request per account every five minutes.
+
+### Drill cap: `AGENTKIT_CAPACITY_CAP`
+
+`AGENTKIT_CAPACITY_CAP=@work1=8,codex@2=20` caps the reported headroom of
+those accounts (`@profile` matches that profile of every CLI; `<cli>@profile`
+one CLI): `min(real, cap)`, with `"capped": true`. It can only make an
+account look **poorer**, never richer — it exists to rehearse a handoff
+(make one lane `critical` on purpose), not to stretch a limit. An account
+with no readable quota stays `unknown` unless the cap is at or below the low
+threshold, which reads `low`/`critical`. An invalid value is exit 2: a drill
+never runs uncapped by accident.
+
+## Leases: `ak lease`
+
+```
+ak lease <kind-or-cli> @profile --owner ADDR [--ttl DUR] [--purpose TEXT] [--json]
+ak lease release <kind-or-cli> @profile --owner ADDR
+ak lease ls [--json]
+```
+
+A lease says "this account is in use by ADDR until T". Leases are advisory
+— they grant nothing — but `ak pick --owner` and the orchestration skill
+respect them, so two leads never put two writers on one Codex `auth.json`
+and lanes spread over the accounts.
+
+- **Codex takes one lease at a time** (`lease = "exclusive"` in
+  `providers.toml`: one writer per `auth.json`); a second owner gets exit 1
+  naming the holder and expiry. Every other account takes many.
+- **The account** is the `ak usage` row: `ak lease claude-glm @work` leases
+  the Z.AI account `zai @work`. An account the kit cannot see is exit 3.
+- **Owner** is an address such as a Herdr pane (`local:w1:p2`). The same
+  owner leasing again **renews** (new expiry). Only the owner releases.
+- **Expiry:** `--ttl` takes `N[s|m|h|d]`, 60 s to 24 h, default 4 h; expired
+  leases are ignored and swept, so a lane that died frees its account.
+- **Purpose** is a short note (80 characters); a word that looks like a
+  credential is refused.
+- **Store:** `<state>/leases/leases.json` (`0600`), changed only under a
+  lock and written atomically. `ak lease ls --json` prints schema
+  `leases-v1` ([`schema/leases-v1.json`](schema/leases-v1.json)).
+- Exit: 0 done · 1 held by another owner, or no lease to release · 2 usage ·
+  3 no such account.
+
 ## Safety, in short
 
 The token lives in memory and in one request header. Requests go to the fixed
@@ -332,7 +441,6 @@ stay `n/d` rather than asking for a second credential.
 ## Not in this version
 
 A watch mode, token totals from local transcripts, Cursor (browser cookies are
-never read), Azure quota, account identity, a cache, alert thresholds,
-Windows Credential Manager and the China host of
+never read), Azure quota, account identity, alerts or notifications, Windows Credential Manager and the China host of
 Z.AI. Adding a source: a parser in `lib/usage.py`, its table in
 `providers.toml` ([kinds](kinds.md#usage-sources)), a fixture and a test.

@@ -15,7 +15,7 @@ agentkit (alias ak); skills agentkit, agentkit-setup, agentkit-orchestrate
 | Path | What |
 | --- | --- |
 | `bin/ak`, `bin/agentkit` | one byte-identical bash launcher: sources the env file, exec's the python core |
-| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `usage`, `pick` (`ak pick`, the account-selection policy over the usage rows), `setup`, `aliases`, `installer`, `hooks`, `common` |
+| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `usage`, `pick` (`ak pick`, the account-selection policy over the usage rows), `capacity` (`ak capacity`, one account's room and verdict, pick's arithmetic), `state` (the machine state dir: usage cache, atomic 0600 writes), `lease` (`ak lease`, advisory account leases), `setup`, `aliases`, `installer`, `hooks`, `common` |
 | `lib/common.sh`, `lib/env.template` | the launcher's shell half; the env file template |
 | `providers.toml` | the kinds model as data (CLIs, providers, kinds) — see `docs/kinds.md` |
 | `skills/agentkit/` | the bundled skill (`ak --skill`): `SKILL.md` + `references/` (`accounts.md`, `usage.md`) |
@@ -23,11 +23,11 @@ agentkit (alias ak); skills agentkit, agentkit-setup, agentkit-orchestrate
 | `skills/agentkit-orchestrate/` | the orchestration skill (`ak --skill orchestrate`): several agents over several accounts; see `docs/orchestration.md` |
 | `install.sh`, `install.ps1`, `win/*.cmd` | installers (POSIX, Windows) and Windows shims |
 | `tests/run.sh`, `tests/scopes/`, `tests/fakes/`, `tests/py/` | the suite: sandbox HOME, fake CLIs, one scope per surface |
-| `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json`, `schema/usage-v1.json`, `schema/pick-v1.json`, `schema/profiles-v1.json`, `schema/setup-probe-v1.json`, `schema/setup-verify-v1.json`, `accounts.md`, `orchestration.md`, `setup.md`, `usage.md` |
+| `docs/` | user docs, `SECURITY.md`, `TESTING_GUIDE.md`, `schema/doctor-v1.json`, `schema/usage-v1.json`, `schema/pick-v1.json`, `schema/capacity-v1.json`, `schema/leases-v1.json`, `schema/profiles-v1.json`, `schema/setup-probe-v1.json`, `schema/setup-verify-v1.json`, `accounts.md`, `orchestration.md`, `setup.md`, `usage.md` |
 | `scripts/` | maintainer tooling: `check-public-hygiene.sh`, `release.sh`, `update-pins.sh` |
 | `.agents/` (+ `.claude`, `.cursor` symlinks) | the agent kit for working on this repo: personas, `dwp-*` delegators, vendored skills, catalog in `.agents/docs/` |
 
-Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`). `ak usage --json` (schema `usage-v1`, `docs/usage.md`), `ak pick --json` (schema `pick-v1`, `docs/usage.md#choosing-an-account`), `ak profiles --json` (schema `profiles-v1`, `docs/profiles.md`) and `ak setup probe|verify --json` (schemas `setup-probe-v1`, `setup-verify-v1`, `docs/setup.md`) are additive, separately versioned surfaces; `ak usage` and `ak pick` read logins and query vendors and `ak setup` guides machine changes, so their rules are in `docs/SECURITY.md`.
+Interface 1 (`ak doctor --json`, `ak env`, `ak run`) is consumed by other tools: a change to it is a breaking change (see `docs/doctor.md`, `docs/run.md`). `ak usage --json` (schema `usage-v1`, `docs/usage.md`), `ak pick --json` (schema `pick-v1`, `docs/usage.md#choosing-an-account`), `ak capacity --json` (schema `capacity-v1`), `ak lease ls --json` (schema `leases-v1`), `ak profiles --json` (schema `profiles-v1`, `docs/profiles.md`) and `ak setup probe|verify --json` (schemas `setup-probe-v1`, `setup-verify-v1`, `docs/setup.md`) are additive, separately versioned surfaces; `ak usage`, `ak pick` and `ak capacity` read logins and query vendors (and keep a cache of usage numbers), `ak lease` keeps a lease store, and `ak setup` guides machine changes, so their rules are in `docs/SECURITY.md`.
 
 ## Quick commands
 

@@ -140,6 +140,23 @@ act on a status (`expired`, `no_login`, `no_scope`, `rate_limited`,
 `unsupported`, `error`), weigh plan-specific windows (Team, model-only, Z.AI
 credits, Codex resets) or choose accounts with `ak pick`.
 
+## Your own room, and leases: `ak capacity`, `ak lease`
+
+```bash
+ak capacity --self       # the account ak launched you on: ok | low | critical | unknown
+ak capacity claude @work --json      # one account; schema capacity-v1
+ak lease codex @work --owner local:w1:p2     # mark an account in use (Codex: one holder)
+ak lease ls              # active leases
+```
+
+`ak capacity` uses `ak pick`'s arithmetic and answers from a cache of usage
+numbers younger than five minutes (`ak usage` is the only command that always
+reads live), so it is cheap enough for every task boundary — still never in a
+loop. Verdicts: `low` at or below 25% headroom, `critical` at or below 10% or
+rate limited, `unknown` with no quota source. It exits 0 for every reading
+and 3 outside an `ak` launch with `--self`. Leases are advisory: they grant
+nothing; `ak pick --owner` respects them. Details: [references/usage.md](references/usage.md).
+
 ## A profile for another launcher: `ak env`
 
 ```bash
