@@ -157,6 +157,8 @@ docs = "https://cursor.com/docs/cli"
 
 [clis.cursor.roots]
 home = { default = "~/.cursor", profile = "{dir}/home/.cursor" }
+# Linux keeps the default login at ~/.config/cursor/auth.json (XDG).
+xdg = { default = "~/.config/cursor", profile = "{dir}/home/.config/cursor" }
 
 [clis.cursor.session]
 continue = ["--continue"]
@@ -173,10 +175,10 @@ result = "json-result"
 
 [clis.cursor.login]
 command = "agent login"
-files = ["home:auth.json"]
+files = ["home:auth.json", "xdg:auth.json"]
 env = ["CURSOR_API_KEY"]
 definitive = false
-note = "the default home on macOS keeps the login in the Keychain; profiles use the file store"
+note = "the default home on macOS keeps the login in the Keychain, on Linux in ~/.config/cursor/auth.json; profiles use the file store"
 # The default home's Keychain item (presence only; read by nothing).
 keychain = [{ service = "cursor-access-token" }]
 

@@ -12,6 +12,18 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-12
+
+Interface stays **1**. Patch: a Cursor login on Linux is recognised.
+
+### Fixed
+
+- **Cursor login on Linux**: the default account keeps its login in
+  `~/.config/cursor/auth.json` (not `~/.cursor/auth.json`), so `ak usage` and
+  `ak doctor` reported `n/d` / `login: unknown` for a logged-in Cursor in a
+  container or on a Linux host. The login probe now also reads the `xdg` root
+  (`~/.config/cursor`); profiles are unchanged (`<profile>/home/.cursor`).
+
 ## [0.5.0] - 2026-10-11
 
 Interface stays **1**. Accounts and quota for agents and humans: `ak pick`
@@ -365,7 +377,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.1
 [0.5.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0
