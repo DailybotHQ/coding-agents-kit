@@ -315,6 +315,76 @@ scope_profiles() {
   profiles_claude_token
   profiles_json
   profiles_trust_cwd
+  profiles_default
+}
+
+# A per-CLI default profile (AGENTKIT_DEFAULT_PROFILE_<CLI>): what a bare
+# `ak <cli>` launches. @profile, AGENTKIT_PROFILE and an explicit @default win.
+profiles_default() {
+  local out status root doc
+  box_new profiles-default claude codex
+  box_posture ask
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  mkdir -p "${root}/claude/work" "${root}/claude/2" "${root}/codex/work"
+  local D=AGENTKIT_DEFAULT_PROFILE_CLAUDE
+
+  out="$(ak "${D}=@work" -- claude -c)"
+  expect_eq "default profile: a bare ak claude launches it" "$(var_of "${out}" CLAUDE_CONFIG_DIR)|$(argv_of "${out}")" "${root}/claude/work|--continue"
+  out="$(ak "${D}=work" -- claude)"
+  expect_eq "default profile: a name without @ is accepted" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/work"
+  out="$(ak "${D}=@work" -- claude @default)"
+  expect_eq "default profile: an explicit @default is still the CLI's own home" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" ""
+  out="$(ak "${D}=@work" -- claude @2)"
+  expect_eq "default profile: a positional profile wins" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/2"
+  out="$(ak "${D}=@work" AGENTKIT_PROFILE=@2 -- claude)"
+  expect_eq "default profile: AGENTKIT_PROFILE wins over the per-CLI default" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/2"
+  out="$(ak "${D}=@default" -- claude)"
+  expect_eq "default profile: @default as the value is the CLI's own home" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" ""
+  out="$(ak "${D}=@work" -- codex)"
+  expect_eq "default profile: another CLI is unaffected" "$(var_of "${out}" CODEX_HOME)" ""
+  out="$(ak "${D}=@work" ZAI_CODING_API_KEY=fake-zai-one -- claude-glm)"
+  expect_eq "default profile: a provider kind keeps the CLI's own home (its key is per profile)" \
+    "$(var_of "${out}" CLAUDE_CONFIG_DIR)" ""
+
+  out="$(ak "${D}=@ghost" -- claude)"; status=$?
+  expect_has "default profile: a missing profile is not ready (exit 3), names the variable" "${status}:${out}" \
+    "3:ak: claude profile \"@ghost\" does not exist"
+  expect_has "default profile: ... and its source" "${out}" "(the name came from ${D})"
+  check "default profile: ... and creates nothing, even at a terminal" test ! -e "${root}/claude/ghost"
+  out="$(ak "${D}=@a/b" -- claude)"; status=$?
+  expect_has "default profile: an invalid value is a usage error naming the variable" "${status}:${out}" \
+    "2:ak: ${D}=@a/b is not a profile"
+
+  ak_split "${D}=@work" -- env claude
+  expect_has "default profile: ak env follows it" "$(cat "${BOX}/out")" "CLAUDE_CONFIG_DIR=${root}/claude/work"
+  printf '{"oauthAccount":{}}' > "${root}/claude/work/.claude.json"     # ak run refuses an account with no login
+  ak_split "${D}=@work" FAKE_MODE=headless FAKE_LOG="${BOX}/fake.log" -- run claude --output-format json -- "hello"
+  expect_eq "default profile: ak run follows it" "$(var_of "$(cat "${BOX}/fake.log")" CLAUDE_CONFIG_DIR)" "${root}/claude/work"
+
+  # The env file is the configuration: the same key there works.
+  box_env_file "${D}=@work"
+  out="$(ak -- claude)"
+  expect_eq "default profile: the env-file key works" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/work"
+
+  ak_split -- profiles --json
+  doc="${BOX}/out"
+  expect_eq "default profile: profiles --json marks the default account (additive)" \
+    "$(json_get "${doc}" '[p["cli"] + " " + p["profile"] for p in d["profiles"] if p.get("default")]')" '["claude @work"]'
+  expect_eq "default profile: profiles --json still matches profiles-v1" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/profiles-v1.json" "${doc}")" "valid"
+  ak_split -- doctor --json
+  doc="${BOX}/out"
+  expect_eq "default profile: doctor --json reports it" "$(json_get "${doc}" 'd["default_profiles"]')" '{"claude": "@work"}'
+  expect_eq "default profile: doctor --json still matches doctor-v1" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/doctor-v1.json" "${doc}")" "valid"
+  ak_split -- doctor
+  expect_has "default profile: doctor shows it" "$(cat "${BOX}/out")" "default: ak claude -> @work (${D})"
+  box_env_file "${D}=@ghost"
+  ak_split -- doctor --json
+  expect_has "default profile: doctor names a default that does not exist, with the fix" \
+    "$(json_get "${BOX}/out" 'd["problems"]')" "Fix: ak profiles add claude @ghost"
+
+  py_checks default_profile_checks.py
 }
 
 # A long-lived Claude token per account (CLAUDE_CODE_OAUTH_TOKEN[_SUFFIX]):

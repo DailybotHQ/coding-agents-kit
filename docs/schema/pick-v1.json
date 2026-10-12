@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.1/docs/schema/pick-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/pick-v1.json",
   "title": "ak pick --json (pick-v1)",
   "description": "The account(s) with the most usable headroom for a kind, chosen from the same rows as `ak usage` by one documented policy (docs/usage.md#choosing-an-account). Read-only: no login is refreshed, no reset is spent. Never contains a secret value or an account identity. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
@@ -45,6 +45,7 @@
       "properties": {
         "cli": { "type": "string" },
         "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
+        "default": { "const": true, "description": "Since 0.5.2, present only on the account a bare `ak <cli>` launches by AGENTKIT_DEFAULT_PROFILE_<CLI>." },
         "kinds": { "type": "array", "items": { "type": "string" } },
         "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"] },
         "eligible": { "type": "boolean" },

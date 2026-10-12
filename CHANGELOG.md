@@ -12,6 +12,29 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.5.2] - 2026-10-12
+
+Interface stays **1**. A default profile per CLI, so a bare `ak claude` works
+in a container whose host keeps Claude's login in the macOS Keychain.
+
+### Added
+
+- **`AGENTKIT_DEFAULT_PROFILE_<CLI>`** (environment or env file): the account
+  a bare `ak <cli>`, `ak run <cli>` and `ak env <cli>` use. A positional
+  `@profile`, `AGENTKIT_PROFILE` and an explicit `@default` (the CLI's own
+  home) win. The profile must exist (a default never creates one); a
+  provider kind (`claude-glm`) keeps the CLI's own home.
+- **`pick`** as the value (opt-in, off by default): the account with the most
+  headroom by `ak pick`'s policy among those whose login is portable (a file
+  or a token variable, never a Keychain item); `@default` when none has room.
+- `ak usage`, `ak pick` and `ak profiles --json` mark the default account
+  (`"default": true`, additive in `usage-v1`, `pick-v1`, `profiles-v1`);
+  `ak doctor` lists it (`default_profiles`, additive in `doctor-v1`) and
+  names a default that does not exist.
+- **`ak doctor` on Linux or in a container** names each account whose file
+  names the account but whose login token is not there (a macOS Keychain
+  login does not travel), with the fix.
+
 ## [0.5.1] - 2026-10-12
 
 Interface stays **1**. Patch: a Cursor login on Linux is recognised, and

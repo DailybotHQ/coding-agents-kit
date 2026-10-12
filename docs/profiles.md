@@ -38,6 +38,51 @@ ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id]
   passes the mention through instead of treating it as a profile.
 - `AGENTKIT_PROFILE=@work` selects a profile for scripts and Herdr panes. A
   positional `@name` wins over it.
+- `AGENTKIT_DEFAULT_PROFILE_<CLI>=@work` makes `@work` the account a bare
+  `ak <cli>` launches (see [A default profile per CLI](#a-default-profile-per-cli)).
+
+## A default profile per CLI
+
+`AGENTKIT_DEFAULT_PROFILE_<CLI>` (`AGENTKIT_DEFAULT_PROFILE_CLAUDE`,
+`AGENTKIT_DEFAULT_PROFILE_CODEX`, …) names the account `ak <cli>`, `ak run
+<cli>` and `ak env <cli>` use when no `@profile` is given. Set it in the
+environment or as a line of the env file (`~/.config/agentkit/env`), which is
+the kit's configuration:
+
+```bash
+AGENTKIT_DEFAULT_PROFILE_CLAUDE=@work3
+```
+
+- Precedence: a positional `@name`, then `AGENTKIT_PROFILE`, then
+  `AGENTKIT_DEFAULT_PROFILE_<CLI>`, then the CLI's own home. **An explicit
+  `@default` always means the CLI's own home.**
+- Values: `@name` (or `name`), `@default`, or `pick` (below). `@pick` is a
+  profile named pick. Anything else is a usage error (exit 2) naming the
+  variable.
+- The profile must exist: a default never creates one (exit 3, naming the
+  variable and `ak profiles add`).
+- It applies to the CLI's own kind only (`ak claude`, not `ak claude-glm`):
+  a provider kind reads its key per profile, so it keeps the CLI's own home.
+- `ak usage` and `ak pick` mark that account (`@work3 (ak claude)`;
+  `"default": true` in `usage-v1` / `pick-v1`), `ak profiles --json` marks it
+  (`"default": true`), and `ak doctor` lists it under Profiles
+  (`default_profiles` in `doctor-v1`), with a problem when the profile does
+  not exist.
+
+**Why: a container.** A Mac keeps Claude's default login in the macOS
+Keychain, which cannot be shared into Linux, so inside a container a bare
+`ak claude` would start logged out. Point it at a profile whose login is a
+file (`.credentials.json`) or a token variable (`CLAUDE_CODE_OAUTH_TOKEN_<SUFFIX>`)
+and `ak claude` works there as it does on the Mac. On Linux or in a container,
+`ak doctor` names each account whose file names the account but whose token
+is not there, with this fix.
+
+**`pick`** (opt-in, off by default): `AGENTKIT_DEFAULT_PROFILE_CLAUDE=pick`
+launches the account with the most headroom by [`ak pick`'s
+policy](usage.md#choosing-an-account), among the accounts whose login is
+portable (a file or a token variable; never a Keychain item). It asks every
+such account's vendor at each launch and says on stderr which one it chose;
+when none has room it launches `@default`.
 
 ## Creating a profile
 

@@ -191,6 +191,12 @@ typing at a prompt).
   "windows": [{"id": "5h", "label": "5-hour", "used_pct": 42, "resets_at": "2026-10-10T17:00:00Z", "window_seconds": 18000}]}]}
 ```
 
+Since 0.5.2 the row a bare `ak <cli>` launches by
+`AGENTKIT_DEFAULT_PROFILE_<CLI>` carries `"default": true` (absent on every
+other row), and the table shows it as `@work3 (ak claude)`. For
+`AGENTKIT_DEFAULT_PROFILE_<CLI>=pick` it is the portable-login account `ak
+pick` ranks first. See [Profiles](profiles.md#a-default-profile-per-cli).
+
 ## Choosing an account
 
 ```
@@ -288,6 +294,10 @@ with its `excluded_reason`.
  "candidates": ["… the same object, then every other evaluated row …"],
  "soonest_reset": "2026-10-16T15:00:00Z"}
 ```
+
+A candidate that is the CLI's default account (`AGENTKIT_DEFAULT_PROFILE_<CLI>`)
+carries `"default": true` (since 0.5.2); the text line ends with
+`(ak claude default)`.
 
 Run it once before a batch of work, never in a loop: each call asks every
 vendor, as `ak usage` does. Using several accounts at once:

@@ -103,6 +103,11 @@ reset spent. Its output (`pick-v1`) carries CLI, profile, window ids,
 percentages, reset times and a one-line reason built from the row status;
 never a token or an account identity.
 
+`AGENTKIT_DEFAULT_PROFILE_<CLI>=pick` (opt-in, off by default) runs the same
+read-only selection at each launch, over the accounts whose login is portable
+only: a Keychain item is never read for it. Its one stderr line names the
+profile and its headroom, nothing else.
+
 ## Orchestration (agents launching agents)
 
 The `agentkit-orchestrate` skill lets one agent start others on your
@@ -171,7 +176,8 @@ paths.
 
 Nothing else: no telemetry, and no network access except `ak install`
 fetching a vendor installer you asked for and `ak usage` / `ak pick` querying
-the usage endpoint of an account you run (the hosts above, one request per row).
+the usage endpoint of an account you run (the hosts above, one request per row),
+which a launch also does when you opt into `AGENTKIT_DEFAULT_PROFILE_<CLI>=pick`.
 
 ## Checks
 

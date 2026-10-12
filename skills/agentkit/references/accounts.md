@@ -98,6 +98,12 @@ goes; never ask for it or read it.
 
 ### The whole set, portable
 
+`AGENTKIT_DEFAULT_PROFILE_<CLI>=@name` (environment or env file) makes that
+account what a bare `ak <cli>` launches; `@profile`, `AGENTKIT_PROFILE` and an
+explicit `@default` win. In a container, where a Mac's Keychain login cannot
+follow, point it at a profile with a file or token-variable login; `pick`
+(opt-in) launches the portable account with the most headroom.
+
 `ak profiles --json` (schema `profiles-v1`) lists every account by name:
 CLI, profile, relative path, isolation, login kind and the key names that
 are set. Use it to recreate the accounts on another host; it never carries

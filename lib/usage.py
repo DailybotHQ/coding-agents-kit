@@ -1031,7 +1031,7 @@ def render_table(results, platform, color, now, verbose=False, names=None):
         if not groups or groups[-1][0] != r["cli"]:
             groups.append((r["cli"], [], []))
         lines, hints = groups[-1][1], groups[-1][2]
-        base = [r["profile"], r["plan"] or "-"]
+        base = [r["profile"] + (" (ak %s)" % r["cli"] if r.get("default") else ""), r["plan"] or "-"]
         if r["status"] == "ok" and r["windows"]:
             for i, w in enumerate(r["windows"]):
                 pct = w["used_pct"]
@@ -1143,6 +1143,36 @@ def _visible(text):
     return re.sub(r"\x1b\[[0-9;]*m", "", text)
 
 
+def mark_defaults(model, results, env):
+    """Flag (`default: true`, additive) the row a bare `ak <cli>` launches
+    when AGENTKIT_DEFAULT_PROFILE_<CLI> is set: the named profile, or for
+    `pick` the portable-login account `ak pick`'s policy ranks first among
+    these results. A row of a provider key is never flagged. An invalid
+    setting flags nothing (ak doctor names it)."""
+    if not any(k.startswith(profiles.DEFAULT_PREFIX) and env.get(k) for k in env):
+        return results
+    import pick
+    for cli_name in _cli_order(model):
+        try:
+            setting = profiles.default_setting(cli_name, env)
+        except AkError:
+            continue
+        if setting is None:
+            continue
+        own = [r for r in results if r["cli"] == cli_name]
+        if setting == profiles.PICK:
+            pool = [r for r in own if profiles.portable_login(model, cli_name, profiles._name_of(r["profile"]), env)]
+            clean = [{k: v for k, v in r.items() if not k.startswith("_")} for r in pool]
+            chosen = pick.choose(clean, allow_unknown=True, now=common_now())[0]
+            target = chosen[0]["profile"] if chosen else None
+        else:
+            target = profiles.label(setting)
+        for r in own:
+            if r["profile"] == target:
+                r["default"] = True
+    return results
+
+
 def render_json(results, now):
     stamp = iso_utc(now)
     rows = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]   # _short, _how: table only
@@ -1214,7 +1244,7 @@ def main(model, args, env, now=None, stdout=None, platform=None):
         if opts["json"]:
             emit(stdout, render_json([], now))
         return EXIT_NOTHING
-    results = fetch_all(rows, env, opts["timeout"], now)
+    results = mark_defaults(model, fetch_all(rows, env, opts["timeout"], now), env)
     if opts["json"]:
         emit(stdout, render_json(results, now))
     else:
