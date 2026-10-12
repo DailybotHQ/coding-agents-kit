@@ -151,6 +151,10 @@ def activate(cli_name, cli, name, directory, env):
     if isolation == "env":
         env[cli["home_env"]] = directory
     elif isolation == "xdg":
+        # XDG_STATE_HOME moves into the profile: keep the kit's own state
+        # (usage cache, leases; lib/state.py) machine-wide.
+        if not env.get("AGENTKIT_STATE_DIR"):
+            env["AGENTKIT_STATE_DIR"] = os.path.join(env.get("XDG_STATE_HOME") or os.path.join(real_home, ".local/state"), "agentkit")
         pairs = (("XDG_CONFIG_HOME", ".config", "config"), ("XDG_DATA_HOME", ".local/share", "data"),
                  ("XDG_STATE_HOME", ".local/state", "state"), ("XDG_CACHE_HOME", ".cache", "cache"))
         for var, default, sub in pairs:

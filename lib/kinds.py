@@ -41,6 +41,7 @@ USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "k
               "unsupported", "short")
 USAGE_SHORT_MAX = 32  # the table's few-word note; the full reason stays in --json and -v
 USAGE_CREDENTIALS = ("file", "env", "keychain", "cli")
+LEASES = ("shared", "exclusive")   # ak lease: how many holders an account takes
 
 
 class KindsError(Exception):
@@ -233,6 +234,8 @@ class Model(object):
                         + cli.get("hooks", {}).get("files", [])):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
+            if cli.get("lease", "shared") not in LEASES:
+                bad("%s.lease: one of %s" % (where, ", ".join(LEASES)))
             daemon = cli.get("daemon")
             if daemon is not None:
                 if set(daemon) != {"record", "executable", "off", "env"} \

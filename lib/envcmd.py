@@ -22,7 +22,7 @@ import launch
 from common import AkError, EXIT_USAGE
 
 # Variables that are the kit's own bookkeeping, not the CLI's environment.
-INTERNAL = ("AGENTKIT_ACTIVE_PROFILE", "AGENTKIT_REAL_HOME")
+INTERNAL = ("AGENTKIT_ACTIVE_PROFILE", "AGENTKIT_ACTIVE_ACCOUNT", "AGENTKIT_REAL_HOME", "AGENTKIT_STATE_DIR")
 
 
 def compute(model, kind_name, head, env):

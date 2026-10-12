@@ -225,7 +225,7 @@ security_usage() {
   usage_server_start "${BOX}/routes.json"
   local base="http://127.0.0.1:${USAGE_PORT}"
   : > "${BOX}/usage-output"
-  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  before="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
 
   # Every mode of the server and the command, debug on, output collected.
   for mode in ok 500 401 429 redirect garbage truncated; do
@@ -248,8 +248,11 @@ security_usage() {
   expect_eq "security usage: a redirect target was never requested" "$(grep -c '"/elsewhere"' "${BOX}/server.log")" 0
   expect_eq "security usage: only the two usage paths were ever requested (no refresh or token endpoint)" \
     "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" "path": "/zai" '
-  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
-  expect_eq "security usage: the credentials and the env file are byte-identical after every run" "${before}" "${after}"
+  after="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
+  expect_eq "security usage: the credentials and the env file are byte-identical after every run (only the usage cache is new)" "${before}" "${after}"
+  expect_lacks "security usage: no access token in the usage cache" "$(cat "${BOX}/home/.local/state/agentkit/usage-cache/"*.json)" "${tok}"
+  check "security usage: every usage cache file is 0600" \
+    bash -c 'for f in "$1"/*.json; do [[ "$(stat -c %a "$f" 2>/dev/null || stat -f %Lp "$f")" == 600 ]] || exit 1; done' _ "${BOX}/home/.local/state/agentkit/usage-cache"
   expect_eq "security usage: the credential file mode is untouched" "$(file_mode "${dir}/.credentials.json")" "600"
 
   # Network rules: nothing leaves loopback, whatever the environment says.
@@ -345,7 +348,7 @@ security_pick() {
   printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json"
   usage_server_start "${BOX}/routes.json"
   : > "${BOX}/pick-output"
-  before="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
+  before="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
   for mode in ok 401 429 garbage; do
     case "${mode}" in
       ok) printf '%s' '{"/claude":{"json":{"five_hour":{"utilization":10,"resets_at":"2099-01-01T00:00:00Z"}}}}' > "${BOX}/routes.json" ;;
@@ -363,8 +366,10 @@ security_pick() {
   expect_lacks "security pick: ... nor the refresh token" "$(cat "${BOX}/pick-output")" "${ref}"
   expect_eq "security pick: only the usage path was requested (no refresh or token endpoint)" \
     "$(grep -o '"path": "[^"]*"' "${BOX}/server.log" | sort -u | tr '\n' ' ')" '"path": "/claude" '
-  after="$(find "${BOX}/home" -type f | sort | xargs -r cksum)"
-  expect_eq "security pick: the login and the env file are byte-identical after every run" "${before}" "${after}"
+  after="$(find "${BOX}/home" -type f ! -path "*/.local/state/agentkit/usage-cache/*" | sort | xargs -r cksum)"
+  expect_eq "security pick: the login and the env file are byte-identical after every run (only the usage cache is new)" "${before}" "${after}"
+  expect_lacks "security pick: the access token is not in the usage cache" "$(cat "${BOX}/home/.local/state/agentkit/usage-cache/"*.json)" "${tok}"
+  expect_lacks "security pick: nor the refresh token" "$(cat "${BOX}/home/.local/state/agentkit/usage-cache/"*.json)" "${ref}"
   usage_server_stop
 
   # AGENTKIT_KEYCHAIN=off: no Keychain call at all, secret read included (a

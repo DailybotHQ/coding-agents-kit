@@ -301,10 +301,27 @@ check("usage core: no token or key value reaches any output or message",
 sent = [r["auth"] for r in server.requests if r["auth"]]
 check("usage core: the credential reached the endpoint (as a bearer, hashed in the log)",
       hashlib.sha256(("Bearer " + PLANTED_LOGIN).encode()).hexdigest()[:12] in sent)
+CACHE_DIR = os.path.join(HOME, ".local", "state", "agentkit", "usage-cache")
 state = tree_state(TMP)
 run([], ENV)
 run(["--json"], ENV)
-check("usage core: a run changes nothing under the home or the profiles", [s for s in tree_state(TMP) if s[0] != doc_path] == [s for s in state if s[0] != doc_path])
+
+
+def _outside_cache(rows):
+    return [s for s in rows if s[0] != doc_path and not s[0].startswith(CACHE_DIR + os.sep)]
+
+
+check("usage core: a run changes nothing under the home or the profiles (only the kit's usage cache)",
+      _outside_cache(tree_state(TMP)) == _outside_cache(state))
+cached = sorted(os.listdir(CACHE_DIR)) if os.path.isdir(CACHE_DIR) else []
+check("usage cache: a live ak usage refreshes the cache, one file per ok account", "claude@default.json" in cached, cached)
+blob = "".join(open(os.path.join(CACHE_DIR, n)).read() for n in cached)
+check("usage cache: no token or key value reaches a cache file",
+      cached and PLANTED_LOGIN not in blob and PLANTED_PROVIDER not in blob and "Bearer" not in blob)
+if os.name == "posix":
+    check("usage cache: cache files are 0600 and the directory 0700",
+          cached and all(os.stat(os.path.join(CACHE_DIR, n)).st_mode & 0o777 == 0o600 for n in cached)
+          and os.stat(CACHE_DIR).st_mode & 0o777 == 0o700)
 
 
 # ------------------------------------------------------------- resilience

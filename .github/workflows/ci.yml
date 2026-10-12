@@ -86,7 +86,7 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($script in @('tests/py/usage_checks.py', 'tests/py/usage_provider_checks.py', 'tests/py/pick_checks.py')) {
+          foreach ($script in @('tests/py/usage_checks.py', 'tests/py/usage_provider_checks.py', 'tests/py/pick_checks.py', 'tests/py/capacity_checks.py')) {
             $out = & python $script
             if ($LASTEXITCODE -ne 0) { throw "$script failed: $($out | Select-String '^FAIL')" }
             Write-Output "$script : $(@($out | Select-String '^ok').Count) checks ok"
