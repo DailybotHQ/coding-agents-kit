@@ -280,30 +280,38 @@ def login_state(model, cli_name, name, env):
                 pass
     if not name and any(env.get(v) for v in login.get("env", [])):
         return True
-    if not name and keychain_has(login.get("keychain"), env):
+    if keychain_has(login.get("keychain"), env, ctx):
         return True
     if not login.get("definitive"):
         return None
     return False
 
 
-def keychain_has(entries, env):
-    """True when one of the CLI's macOS Keychain login items exists (its
-    default home only: profiles keep their login elsewhere or share it).
-    Only presence is asked — `security find-generic-password` without -w
-    never returns the secret, and its output is discarded. AGENTKIT_KEYCHAIN=off
-    skips it (the test suite never touches the real Keychain)."""
-    if not entries or env.get("AGENTKIT_KEYCHAIN") == "off" or common.os_name() != "macos":
+def keychain_has(entries, env, ctx=None):
+    """True when one of the CLI's macOS Keychain login items exists, None
+    when the Keychain cannot be asked here (AGENTKIT_KEYCHAIN=off, or no
+    `security` tool on macOS), False otherwise. An entry applies to the
+    default home only, unless it sets `profile = true`: the CLI then names
+    the item `<service>-<first 8 hex of sha256(config dir)>` for a profile
+    directory (and for a default home moved by its home variable), as
+    Claude does. Only presence is asked — `security find-generic-password`
+    without -w never returns the secret, and its output is discarded.
+    AGENTKIT_KEYCHAIN=off skips it (the test suite never touches the real
+    Keychain)."""
+    services = keychain_services(entries, ctx)
+    if not services or common.os_name() != "macos":
         return False
+    if env.get("AGENTKIT_KEYCHAIN") == "off":
+        return None
     security = common.which("security", env)
     if not security:
-        return False
+        return None
     import subprocess
     clean = {k: v for k, v in env.items() if not common.secret_like(k)}
-    for entry in entries:
-        argv = [security, "find-generic-password", "-s", entry["service"]]
-        if entry.get("account"):
-            argv += ["-a", entry["account"]]
+    for service, account in services:
+        argv = [security, "find-generic-password", "-s", service]
+        if account:
+            argv += ["-a", account]
         try:
             proc = subprocess.run(argv, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                                   stdin=subprocess.DEVNULL, timeout=5, env=clean)
@@ -312,6 +320,25 @@ def keychain_has(entries, env):
         if proc.returncode == 0:
             return True
     return False
+
+
+def keychain_services(entries, ctx=None):
+    """(service, account) pairs a home's Keychain login items are named by
+    (see keychain_has); empty when no entry applies to this home."""
+    import hashlib
+    out = []
+    profile_dir = ctx.profile_dir if ctx is not None else None
+    home_env = ctx.kind.cli.get("home_env") if ctx is not None else None
+    moved = ctx.env.get(home_env) if ctx is not None and home_env else None
+    for entry in entries or []:
+        service = entry["service"]
+        directory = profile_dir or moved
+        if directory and entry.get("profile"):
+            service = "%s-%s" % (service, hashlib.sha256(directory.encode("utf-8")).hexdigest()[:8])
+        elif profile_dir:
+            continue
+        out.append((service, entry.get("account")))
+    return out
 
 
 def keys_by_name(model, cli_name, name, env):
@@ -379,6 +406,7 @@ def login_kind(model, cli_name, name, env):
         return "token-var"
     kind = model.kind(cli_name)
     ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=path(cli_name, name) if name else None)
+    account = False
     for ref in login.get("files", []):
         p = ctx.ref_path(ref)
         if os.path.isfile(p):
@@ -386,11 +414,23 @@ def login_kind(model, cli_name, name, env):
             try:
                 with open(p, "rb") as handle:
                     if not marker or marker.encode() in handle.read():
-                        return "file"
+                        account = True
+                        break
             except OSError:
                 pass
-    if not name and keychain_has(login.get("keychain"), env):
+    # `token_files`: the account file names the account, the token lives in
+    # one of these files or in the Keychain (Claude: `.claude.json` versus
+    # `.credentials.json`), so only a token file is a file login.
+    token_files = login.get("token_files")
+    if token_files is None and account:
+        return "file"
+    if any(os.path.isfile(ctx.ref_path(ref)) for ref in token_files or []):
+        return "file"
+    in_keychain = keychain_has(login.get("keychain"), env, ctx)
+    if in_keychain:
         return "keychain"
+    if in_keychain is None and account:
+        return "unknown"        # the Keychain could not be asked; the account file alone cannot tell
     return "none" if login.get("definitive") else "unknown"
 
 

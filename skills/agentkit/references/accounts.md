@@ -107,8 +107,9 @@ a value.
 
 - **macOS:** Claude Code keeps a profile's login in the Keychain item
   `Claude Code-credentials-<8 hex>` (derived from the profile directory).
-  `ak profiles` can only tell it exists from files, so `login ?` is normal;
-  `ak usage` asks the Keychain for that item only. After removing a profile
+  `ak profiles --json` reports `keychain` when that item exists (presence
+  only, never the secret), `file` only with `.credentials.json`, and `none`
+  when neither exists; `ak usage` asks the Keychain for that item only. After removing a profile
   the Keychain item stays until the user deletes it in Keychain Access.
 - **Cursor** keeps its login under one fixed Keychain name, so its profiles
   get their own `HOME` and a file credential store.

@@ -184,8 +184,13 @@ ak profiles hooks claude @2        # copy Herdr's state hooks into the profile
 needs `--yes` when there is no terminal. Claude's token for a removed
 profile stays in the macOS Keychain until you delete the
 `Claude Code-credentials-<id>` entry in Keychain Access. Login is reported
-from file presence only (`?` when the CLI's login cannot be seen from files,
-e.g. Cursor's default Keychain login); no credential is ever read.
+by presence only: login files, credential variable names and macOS Keychain
+items (asked without the secret; never under `AGENTKIT_KEYCHAIN=off`); no
+credential is ever read. For Claude, `.claude.json` only names the account:
+the login is `file` with `.credentials.json`, `keychain` with the
+`Claude Code-credentials` item (`-<id>` for a profile), `none` with neither,
+and `unknown` (`?`) when only `.claude.json` is there and the Keychain cannot
+be asked.
 
 ## Herdr
 

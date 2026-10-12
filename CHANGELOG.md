@@ -14,7 +14,8 @@ permission posture changes.
 
 ## [0.5.1] - 2026-10-12
 
-Interface stays **1**. Patch: a Cursor login on Linux is recognised.
+Interface stays **1**. Patch: a Cursor login on Linux is recognised, and
+`ak profiles --json` reports where Claude's token really is.
 
 ### Fixed
 
@@ -25,6 +26,16 @@ Interface stays **1**. Patch: a Cursor login on Linux is recognised.
   (`~/.config/cursor`); profiles are unchanged (`<profile>/home/.cursor`): a
   profile's HOME links the real `~/.config` in, so it never borrows the
   default account's login.
+- **Claude login kind** (`ak profiles --json`, profiles-v1): an account with
+  `.claude.json` (`oauthAccount`) was reported as a `file` login although that
+  file only names the account; the token is `.credentials.json` or, on macOS,
+  a Keychain item. The login is now `file` only with `.credentials.json`,
+  `keychain` when the `Claude Code-credentials` item exists (a profile's own
+  `-<sha256 prefix>` item for a profile), `none` when neither exists, and
+  `unknown` when only the account file is there and the Keychain cannot be
+  asked (`AGENTKIT_KEYCHAIN=off`). Presence only: the secret is never read.
+  `@default` copied into a container without its token now reads `none`.
+  The doctor's `logged_in` is unchanged.
 - The bundled skills' versions and pinned install lines follow the release.
 
 ## [0.5.0] - 2026-10-11

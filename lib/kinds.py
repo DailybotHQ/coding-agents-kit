@@ -225,10 +225,12 @@ class Model(object):
                 bad("%s.install: %s" % (where, problem))
             keychain = cli.get("login", {}).get("keychain", [])
             if not isinstance(keychain, list) or not all(isinstance(e, dict) and isinstance(e.get("service"), str)
-                                                         and e["service"] and set(e) <= {"service", "account"}
+                                                         and e["service"] and set(e) <= {"service", "account", "profile"}
+                                                         and e.get("profile", True) is True
                                                          for e in keychain):
-                bad("%s.login.keychain: a list of { service, account? } tables" % where)
-            for ref in cli.get("login", {}).get("files", []) + cli.get("hooks", {}).get("files", []):
+                bad("%s.login.keychain: a list of { service, account?, profile? } tables" % where)
+            for ref in (cli.get("login", {}).get("files", []) + cli.get("login", {}).get("token_files", [])
+                        + cli.get("hooks", {}).get("files", [])):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
             if "usage" in cli:

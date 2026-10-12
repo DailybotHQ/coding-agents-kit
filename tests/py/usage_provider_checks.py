@@ -598,6 +598,71 @@ if os.name != "nt":
           not profiles.keychain_has([{"service": "present"}], dict(kenv, AGENTKIT_KEYCHAIN="off")) and not os.path.exists(klog))
     common.os_name = lambda: "linux"
     check("usage keychain: off macOS there is no Keychain to ask", not profiles.keychain_has([{"service": "present"}], kenv))
+
+    # Claude's login kind: `.claude.json` names the account, the token is
+    # `.credentials.json` or a Keychain item (per profile: suffixed by the
+    # sha256 of the profile directory). Presence only, never the secret.
+    with open(os.path.join(kbin, "security"), "w") as handle:
+        handle.write("#!/bin/sh\nprintf '%s\\n' \"$@\" >> '" + klog + "'\n"
+                     "while IFS= read -r item; do [ \"$item\" = \"$3\" ] && exit 0; done < '"
+                     + os.path.join(TMP, "kc.items") + "'\nexit 44\n")   # builtins only: PATH is this folder
+    kc_items = os.path.join(TMP, "kc.items")
+
+    def plant(*services):
+        with open(kc_items, "w") as handle:
+            handle.write("".join(s + "\n" for s in services))
+
+    claude_home = os.path.join(HOME, ".claude")
+    os.makedirs(claude_home, exist_ok=True)
+    with open(os.path.join(HOME, ".claude.json"), "w") as handle:
+        handle.write('{"oauthAccount":{"x":1}}')
+    kc_dir = os.path.join(PROFILES, "claude", "kc")
+    os.makedirs(kc_dir, exist_ok=True)
+    with open(os.path.join(kc_dir, ".claude.json"), "w") as handle:
+        handle.write('{"oauthAccount":{"x":1}}')
+    kc_service = "Claude Code-credentials-" + hashlib.sha256(kc_dir.encode("utf-8")).hexdigest()[:8]
+    common.os_name = lambda: "macos"
+    plant("Claude Code-credentials")
+    check("login kind claude: @default with the Keychain item and no token file is keychain, not file",
+          profiles.login_kind(MODEL, "claude", "", kenv) == "keychain")
+    plant()
+    check("login kind claude: @default with neither the Keychain item nor a token file is none",
+          profiles.login_kind(MODEL, "claude", "", kenv) == "none")
+    plant(kc_service)
+    check("login kind claude: a profile's own suffixed Keychain item is keychain",
+          profiles.login_kind(MODEL, "claude", "kc", kenv) == "keychain")
+    plant("Claude Code-credentials")
+    check("login kind claude: @default's Keychain item never logs a profile in",
+          profiles.login_kind(MODEL, "claude", "kc", kenv) == "none")
+    moved = os.path.join(TMP, "moved-claude")
+    os.makedirs(moved, exist_ok=True)
+    plant("Claude Code-credentials-" + hashlib.sha256(moved.encode("utf-8")).hexdigest()[:8])
+    check("login kind claude: a default home moved by CLAUDE_CONFIG_DIR asks its suffixed item",
+          profiles.login_kind(MODEL, "claude", "", dict(kenv, CLAUDE_CONFIG_DIR=moved)) == "keychain")
+    plant()
+    if os.path.exists(klog):
+        os.remove(klog)
+    check("login kind claude: AGENTKIT_KEYCHAIN=off with only the account file is unknown, and security never runs",
+          profiles.login_kind(MODEL, "claude", "", dict(kenv, AGENTKIT_KEYCHAIN="off")) == "unknown"
+          and not os.path.exists(klog))
+    with open(klog, "w"):
+        pass
+    profiles.login_kind(MODEL, "claude", "", kenv)
+    with open(klog) as handle:
+        asked = handle.read()
+    check("login kind claude: the probe never asks for the secret (-w)", "-w" not in asked.split(), asked)
+    with open(os.path.join(claude_home, ".credentials.json"), "w") as handle:
+        handle.write("{}")
+    check("login kind claude: a token file is a file login", profiles.login_kind(MODEL, "claude", "", kenv) == "file")
+    os.remove(os.path.join(claude_home, ".credentials.json"))
+    common.os_name = lambda: "linux"
+    plant("Claude Code-credentials")
+    check("login kind claude: on Linux the account file without a token file is none",
+          profiles.login_kind(MODEL, "claude", "", kenv) == "none")
+    check("login state claude: doctor still reads the account file as logged in",
+          profiles.login_state(MODEL, "claude", "", kenv) is True)
+    os.remove(os.path.join(HOME, ".claude.json"))
+    shutil_rm(kc_dir, ignore_errors=True)
     common.os_name = saved
 
 

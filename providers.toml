@@ -62,6 +62,11 @@ files = ["account:.claude.json"]
 marker = "oauthAccount"
 env = ["ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "CLAUDE_CODE_OAUTH_TOKEN", "CLAUDE_CODE_USE_BEDROCK", "CLAUDE_CODE_USE_VERTEX"]
 definitive = true
+# `.claude.json` names the account; the token is `.credentials.json` (Linux)
+# or a macOS Keychain item, "<service>-<first 8 hex of sha256(dir)>" for a
+# profile directory.
+token_files = ["home:.credentials.json"]
+keychain = [{ service = "Claude Code-credentials", profile = true }]
 note = "on macOS the token itself lives in the Keychain, one entry per profile directory"
 
 # `ak usage` source (lib/usage.py). The endpoint is vendor-internal and
