@@ -589,6 +589,18 @@ def daemon_args(cli, ctx, env):
     return list(cli["daemon"]["off"]) if daemon_state(cli, ctx, env) in ("off", "missing") else []
 
 
+def daemon_marker(cli, ctx, env):
+    """The flags that hand the launch's account marker to a daemon this launch
+    reuses (present): its tool shells keep the environment of whoever started
+    it, not this launch's (`ak capacity --self` would name nobody, or another
+    kind). A daemon this launch starts inherits the marker; none when off."""
+    daemon = cli.get("daemon") or {}
+    account = env.get("AGENTKIT_ACTIVE_ACCOUNT")
+    if not daemon.get("marker") or not account or daemon_state(cli, ctx, env) != "present":
+        return []
+    return [arg.replace("{account}", account) for arg in daemon["marker"]]
+
+
 def set_names(model, cli_name, name, env):
     """The NAMES of the provider keys and login token this account would read
     that are set (never a value)."""

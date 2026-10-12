@@ -161,6 +161,11 @@ record = "home:packages/app-server-daemon"
 executable = "home:packages/app-server-daemon/current/bin/codex"
 off = ["--no-daemon"]
 env = "AGENTKIT_CODEX_NO_DAEMON"
+# A daemon that is already running keeps the environment of whoever started
+# it, and Codex runs its tool shells from it: an interactive launch that will
+# reuse it (daemon present) passes the account marker per session, so
+# `ak capacity --self` inside the session names this launch's account.
+marker = ["-c", "shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT=\"{account}\""]
 
 
 [clis.cursor]

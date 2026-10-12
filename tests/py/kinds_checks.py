@@ -142,6 +142,9 @@ cases = {
     "a wrong schema": base_text.replace("schema = 1", "schema = 2"),
     "a key in the autonomy flag": base_text.replace('auto = ["--approve"]', 'auto = ["--approve", "{key}"]'),
     "an http artifact": base_text.replace("https://downloads.claude.ai/", "http://downloads.claude.ai/"),
+    "a daemon marker that names no {account}": base_text.replace('AGENTKIT_ACTIVE_ACCOUNT=\\"{account}\\"', 'AGENTKIT_ACTIVE_ACCOUNT=\\"x\\"'),
+    "a daemon marker that is not a list": base_text.replace('marker = ["-c", ', 'marker = "-c" #'),
+    "an unknown daemon key": base_text.replace('env = "AGENTKIT_CODEX_NO_DAEMON"', 'env = "AGENTKIT_CODEX_NO_DAEMON"\nextra = 1'),
 }
 for label, text in cases.items():
     if text == base_text:

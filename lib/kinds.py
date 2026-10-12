@@ -238,10 +238,14 @@ class Model(object):
                 bad("%s.lease: one of %s" % (where, ", ".join(LEASES)))
             daemon = cli.get("daemon")
             if daemon is not None:
-                if set(daemon) != {"record", "executable", "off", "env"} \
+                if not {"record", "executable", "off", "env"} <= set(daemon) <= {"record", "executable", "off", "env", "marker"} \
                         or not all(isinstance(daemon[f], str) and daemon[f] for f in ("record", "executable", "env")) \
-                        or not isinstance(daemon["off"], list) or not daemon["off"]:
-                    bad("%s.daemon: a table of record, executable, off (a list) and env" % where)
+                        or not isinstance(daemon["off"], list) or not daemon["off"] \
+                        or not isinstance(daemon.get("marker", []), list) \
+                        or not all(isinstance(a, str) and a for a in daemon.get("marker", [])) \
+                        or ("marker" in daemon and not any("{account}" in a for a in daemon["marker"])):
+                    bad("%s.daemon: a table of record, executable, off (a list), env and an optional marker "
+                        "(a list naming {account})" % where)
                 else:
                     for ref in (daemon["record"], daemon["executable"]):
                         if ref.split(":", 1)[0] not in roots:

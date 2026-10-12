@@ -335,7 +335,11 @@ profiles_codex_daemon() {
   mkdir -p "${BOX}/home/.codex/${d}"
   printf "${native}rest" > "${BOX}/home/.codex/${d}/codex"; chmod +x "${BOX}/home/.codex/${d}/codex"
   out="$(ak -- codex -c)"
-  expect_eq "codex daemon: a daemon built for this OS is used, no flag" "$(argv_of "${out}")" "resume|--last"
+  expect_eq "codex daemon: a daemon built for this OS is reused, no --no-daemon; the account marker goes first" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"|resume|--last'
+  out="$(ak -- codex -- -c 'shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"')"
+  expect_eq "codex daemon: a marker the user passed is not repeated" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"'
   out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex)"
   expect_eq "codex daemon: AGENTKIT_CODEX_NO_DAEMON=1 adds --no-daemon anyway" "$(argv_of "${out}")" "--no-daemon"
 
@@ -353,11 +357,23 @@ profiles_codex_daemon() {
   out="$(ak -- codex @host)"
   expect_eq "codex daemon: a daemon built for another OS (a host home in a container) adds --no-daemon" \
     "$(argv_of "${out}")" "--no-daemon"
+  mkdir -p "${root}/codex/live/${d}"
+  printf "${native}rest" > "${root}/codex/live/${d}/codex"; chmod +x "${root}/codex/live/${d}/codex"
+  out="$(ak AGENTKIT_ACTIVE_ACCOUNT=codex/@ghost -- codex @live -c)"
+  expect_eq "codex daemon: a reused profile daemon gets that launch's marker (not an inherited one)" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@live"|resume|--last'
+  out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex @live)"
+  expect_eq "codex daemon: no marker when the daemon is turned off (the shells inherit the launch)" \
+    "$(argv_of "${out}")" "--no-daemon"
+  mkdir -p "${root}/codex/live2"
+  out="$(ak -- codex @live2)"
+  expect_eq "codex daemon: no marker when no daemon is recorded (the one codex starts inherits the launch)" \
+    "$(argv_of "${out}")" ""
 
   ak_split -- doctor --json
   doc="${BOX}/doctor.json"; cp "${BOX}/out" "${doc}"
   expect_eq "codex daemon: doctor --json reports each account" "$(json_get "${doc}" 'd["daemons"]')" \
-    '{"codex": {"@default": "present", "@host": "missing", "@work": "missing"}}'
+    '{"codex": {"@default": "present", "@host": "missing", "@live": "present", "@live2": "absent", "@work": "missing"}}'
   expect_eq "codex daemon: doctor --json still matches doctor-v1" \
     "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/doctor-v1.json" "${doc}")" "valid"
   ak_split AGENTKIT_CODEX_NO_DAEMON=1 -- doctor --json
