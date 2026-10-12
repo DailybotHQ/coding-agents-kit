@@ -32,8 +32,8 @@ import usage
 from common import AkError, EXIT_OK, EXIT_NOT_READY
 
 SCHEMA = "capacity-v1"
-DEFAULT_LOW = 25
-DEFAULT_CRITICAL = 10
+DEFAULT_LOW = pick.DEFAULT_LOW
+DEFAULT_CRITICAL = pick.DEFAULT_CRITICAL
 VERDICTS = ("ok", "low", "critical", "unknown")
 
 USAGE = """usage: ak capacity [<kind-or-cli>] [@profile] [--self] [--model NAME] [--low PCT] [--critical PCT]
@@ -46,27 +46,14 @@ same arithmetic as ak pick. Cheap: a fresh cached reading is reused.
   --critical PCT    critical at or below PCT% (default 10; AGENTKIT_CAPACITY_CRITICAL)
   --max-age S       reuse a cached reading up to S seconds old (default 300; 0 = live)
 The usage cache holds usage numbers only; ak usage is the only command that
-always reads live. AGENTKIT_CAPACITY_CAP=[<cli>]@profile=PCT lowers a reading
+always reads live. AGENTKIT_CAPACITY_CAP=[<kind-or-cli>]@profile=PCT lowers a reading
 (drills), never raises it.
 Exit: 0 a reading (any verdict) · 2 usage · 3 unknown account or nothing matches
 """
 
 
-def _pct(text, what):
-    if not isinstance(text, str) or not text.isdigit() or int(text) > 100:
-        raise AkError("%s takes a percent from 0 to 100" % what)
-    return int(text)
-
-
-def thresholds(env, low=None, critical=None):
-    low = low if low is not None else (_pct(env["AGENTKIT_CAPACITY_LOW"], "AGENTKIT_CAPACITY_LOW")
-                                       if env.get("AGENTKIT_CAPACITY_LOW") else DEFAULT_LOW)
-    critical = critical if critical is not None else (
-        _pct(env["AGENTKIT_CAPACITY_CRITICAL"], "AGENTKIT_CAPACITY_CRITICAL")
-        if env.get("AGENTKIT_CAPACITY_CRITICAL") else DEFAULT_CRITICAL)
-    if critical > low:
-        raise AkError("the critical threshold (%d) must not be above the low one (%d)" % (critical, low))
-    return low, critical
+_pct = pick._pct
+thresholds = pick.thresholds      # one definition, shared with ak pick's cap rule
 
 
 def verdict(status, headroom, low, critical):
@@ -98,7 +85,7 @@ def self_account(env):
 def assess(row, opts, caps, low, critical, leases, now):
     """The capacity-v1 document for one usage-v1 row (plus _source/_age)."""
     cand = pick.evaluate(row, opts["model"], pick.DEFAULT_RESERVE, (), now)
-    cap = pick.apply_cap(cand, caps)
+    cap = pick.apply_cap(cand, caps, low)
     headroom = cand["headroom_pct"]
     result = verdict(row["status"], headroom, low, critical)
     if cap is not None and headroom is None and result == "unknown":
@@ -193,7 +180,7 @@ def main(model, args, env, now=None, stdout=None):
         usage.emit(stdout, USAGE)
         return EXIT_OK
     low, critical = thresholds(env, opts["low"], opts["critical"])
-    caps = pick.parse_caps(env)
+    caps = pick.parse_caps(env, model)
     if opts["self"]:
         opts["target"], opts["profile"] = self_account(env)
     if opts["profile"] is None:

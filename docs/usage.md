@@ -315,8 +315,9 @@ A candidate that is the CLI's default account (`AGENTKIT_DEFAULT_PROFILE_<CLI>`)
 carries `"default": true` (since 0.5.2); the text line ends with
 `(ak claude default)`.
 
-Run it once before a batch of work, never in a loop: each call asks every
-vendor, as `ak usage` does. Using several accounts at once:
+Run it once before a batch of work, never in a loop: a call asks every
+vendor whose reading is not in the [usage cache](#the-usage-cache) (younger
+than `--max-age`), as `ak usage` does. Using several accounts at once:
 [Orchestration](orchestration.md).
 
 ## Windows, macOS and Linux
@@ -379,6 +380,9 @@ claude @work1  ok  64% free  binding 5h  resets in 2h 10m  cached 42s ago
 `ak usage` always reads live, and each reading refreshes a small cache:
 one file per account under `$XDG_STATE_HOME/agentkit/usage-cache/`
 (`~/.local/state/agentkit/` by default; `AGENTKIT_STATE_DIR` moves it). The
+state directory is machine-wide: an `XDG_STATE_HOME` inside a profile (what
+`ak env` prints for an `xdg`-isolated kind such as OpenCode) is ignored, so
+every shell and pane shares one cache and one lease store. The
 cache holds **usage numbers only** — the windows' ids, labels, percentages
 and resets, the plan name and the row status; never a token, key or path —
 in `0600` files, written atomically. `ak capacity` and `ak pick` reuse a
@@ -391,8 +395,12 @@ boundary costs at most one vendor request per account every five minutes.
 ### Drill cap: `AGENTKIT_CAPACITY_CAP`
 
 `AGENTKIT_CAPACITY_CAP=@work1=8,codex@2=20` caps the reported headroom of
-those accounts (`@profile` matches that profile of every CLI; `<cli>@profile`
-one CLI): `min(real, cap)`, with `"capped": true`. It can only make an
+those accounts (`@profile` matches that profile of every CLI;
+`<kind-or-cli>@profile` one account — a kind names the account its quota
+lives on, so `claude-glm@work` caps the Z.AI row `zai @work`; a name that is
+no kind, CLI or provider is exit 2): `min(real, cap)`, with `"capped": true`
+(a cap above the real reading changes nothing). In `ak pick`, a capped
+account that falls below a `--need` percent no longer qualifies. It can only make an
 account look **poorer**, never richer — it exists to rehearse a handoff
 (make one lane `critical` on purpose), not to stretch a limit. An account
 with no readable quota stays `unknown` unless the cap is at or below the low

@@ -123,6 +123,13 @@ for bad in ({"AGENTKIT_CAPACITY_LOW": "x"}, {"AGENTKIT_CAPACITY_LOW": "101"}, {"
     check("capacity thresholds: %s is a usage error" % bad, raises(lambda: capacity.thresholds(bad), 2))
 
 # ----------------------------------------------------------------- cap
+import kinds  # noqa: E402
+MODEL = kinds.load()
+check("capacity cap: a kind maps to the account its quota lives on (claude-glm -> zai rows)",
+      pick.parse_caps({"AGENTKIT_CAPACITY_CAP": "claude-glm@work=5,claude@2=7,zai@3=1"}, MODEL)
+      == [("zai", "@work", 5), ("claude", "@2", 7), ("zai", "@3", 1)])
+check("capacity cap: a mistyped CLI is refused (exit 2), never a silent no-op",
+      raises(lambda: pick.parse_caps({"AGENTKIT_CAPACITY_CAP": "codx@work=1"}, MODEL), 2))
 check("capacity cap: entries parse, with and without a CLI",
       pick.parse_caps({"AGENTKIT_CAPACITY_CAP": "@work=5, codex@2=20,@Default=0"})
       == [(None, "@work", 5), ("codex", "@2", 20), (None, "@default", 0)])
@@ -152,6 +159,18 @@ check("capacity cap: a cap of 0 makes the account ineligible in pick", not chose
 chosen, _, _ = pick.choose([row("cursor", "@work", [], status="unsupported", connected=True)], now=NOW,
                            allow_unknown=True, caps=[(None, "@work", 5)])
 check("capacity cap: --allow-unknown never chooses an unmeasured account capped low", not chosen, chosen)
+for low, want in ((40, []), (25, ["@work"])):
+    chosen, _, _ = pick.choose([row("cursor", "@work", [], status="unsupported", connected=True)], now=NOW,
+                               allow_unknown=True, caps=[(None, "@work", 30)], low=low)
+    check("capacity cap: pick marks a capped unmeasured account poor at the same low threshold as capacity (low %d)" % low,
+          [c["profile"] for c in chosen] == want, chosen)
+doc = assess(row("cursor", "@work", [], status="unsupported"), low=40, caps=[(None, "@work", 30)])
+check("capacity cap: ... and capacity agrees (low 40, cap 30 -> low)", doc["verdict"] == "low", doc)
+chosen, cands, _ = pick.choose([copy.deepcopy(rich)], now=NOW, needs=[("5h", 50)], caps=[(None, "@work", 5)])
+check("capacity cap: a capped account no longer meets --need (cap 5 < need 50)",
+      not chosen and "capped at 5%" in (cands[0]["excluded_reason"] or ""), cands)
+chosen, _, _ = pick.choose([copy.deepcopy(rich)], now=NOW, needs=[("5h", 50)], caps=[(None, "@work", 60)])
+check("capacity cap: a cap above the need keeps the account", [c["profile"] for c in chosen] == ["@work"], chosen)
 
 # ------------------------------------------------------------- --self
 check("capacity self: AGENTKIT_ACTIVE_ACCOUNT names kind and profile",
@@ -199,6 +218,11 @@ check("cache: the state dir follows AGENTKIT_STATE_DIR, then XDG_STATE_HOME, the
       state.root({"AGENTKIT_STATE_DIR": "/s"}) == "/s"
       and state.root({"XDG_STATE_HOME": "/x", "HOME": "/h"}) == os.path.join("/x", "agentkit")
       and state.root({"HOME": "/fake", "AGENTKIT_REAL_HOME": "/real"}) == os.path.join("/real", ".local", "state", "agentkit"))
+check("cache: an XDG_STATE_HOME inside the profiles tree (an ak env of an xdg kind) never moves the kit state",
+      state.root({"HOME": "/h", "XDG_STATE_HOME": "/h/.local/share/agentkit/profiles/opencode/x/state"})
+      == os.path.join("/h", ".local", "state", "agentkit")
+      and state.root({"HOME": "/h", "AGENTKIT_PROFILES_DIR": "/p", "XDG_STATE_HOME": "/p/opencode/x/state"})
+      == os.path.join("/h", ".local", "state", "agentkit"))
 
 
 class FakeRow(object):
@@ -249,6 +273,40 @@ if os.name == "posix":
     check("lease: the store is 0600 and its directory 0700",
           os.stat(os.path.join(ENV["AGENTKIT_STATE_DIR"], "leases", "leases.json")).st_mode & 0o777 == 0o600
           and os.stat(os.path.join(ENV["AGENTKIT_STATE_DIR"], "leases")).st_mode & 0o777 == 0o700)
+# Contention between processes, made deterministic: every child starts at the same instant and
+# sleeps between reading the store and writing it (fault injection), so without the mutex several
+# would see "no lease" and all win; with it, exactly one does.
+import subprocess  # noqa: E402
+RACE_ENV = {"AGENTKIT_STATE_DIR": os.path.join(TMP, "race-state"), "HOME": ENV["HOME"]}
+child = os.path.join(TMP, "race_child.py")
+with open(child, "w") as handle:
+    handle.write("""import sys, time
+sys.path.insert(0, sys.argv[1])
+import lease
+from common import AkError
+start, owner, state_dir = float(sys.argv[2]), sys.argv[3], sys.argv[4]
+real_load = lease._load
+def slow_load(env):
+    records = real_load(env)
+    time.sleep(0.3)
+    return records
+lease._load = slow_load
+while time.time() < start:
+    time.sleep(0.005)
+try:
+    lease.take({"AGENTKIT_STATE_DIR": state_dir}, ("codex", "@race", True), owner, 3600, None, time.time())
+    print("won")
+except AkError as exc:
+    print("lost %d" % exc.code)
+""")
+start_at = time.time() + 1.5
+procs = [subprocess.Popen([sys.executable, child, os.path.join(ROOT, "lib"), str(start_at), "local:race:p%d" % i,
+                           RACE_ENV["AGENTKIT_STATE_DIR"]], stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+                          universal_newlines=True) for i in range(5)]
+outcomes = [p.communicate(timeout=60)[0].strip() for p in procs]
+held = [r for r in lease.active(RACE_ENV, time.time()) if r["cli"] == "codex"]
+check("lease race: five processes at once, exactly one gets the exclusive Codex lease",
+      outcomes.count("won") == 1 and len(held) == 1, outcomes)
 lock = os.path.join(ENV["AGENTKIT_STATE_DIR"], "leases", ".lock")
 os.mkdir(lock)
 old = time.time() - lease.LOCK_STALE - 5
@@ -261,15 +319,35 @@ os.mkdir(lock)
 check("lease: a live lock makes a writer wait, then fail (exit 70), never write unlocked",
       raises(lambda: lease.take(ENV, ("claude", "@busy", False), "local:w1:p1", 3600, None, NOW + 100), 70)
       and not any(r["profile"] == "@busy" for r in lease.active(ENV, NOW + 100)))
-open(os.path.join(lock, "pin"), "w").close()                 # a stale lock that cannot be removed
-os.utime(lock, (old, old))
-started = time.time()
-check("lease: a stale lock that cannot be removed fails at the deadline instead of spinning",
-      raises(lambda: lease.take(ENV, ("claude", "@pinned", False), "local:w1:p1", 3600, None, NOW + 100), 70)
-      and time.time() - started < 5)
-lease.LOCK_WAIT = saved_wait
-os.unlink(os.path.join(lock, "pin"))
+check("lease: a lock held by another process is never removed by a writer that gave up", os.path.isdir(lock))
 os.rmdir(lock)
+os.mkdir(lock)
+with open(os.path.join(lock, "token"), "w") as handle:
+    handle.write("someone-else")
+os.utime(lock, (old, old))
+check("lease: a stale lock with another holder's token is broken (renamed aside, then removed)",
+      not raises(lambda: lease.take(ENV, ("claude", "@stale2", False), "local:w1:p1", 3600, None, NOW + 100))
+      and not os.path.isdir(lock) and not [n for n in os.listdir(os.path.dirname(lock)) if n.startswith(".lock.stale")])
+if os.name == "posix" and os.geteuid() != 0:
+    os.mkdir(lock)
+    os.utime(lock, (old, old))
+    leases_dir = os.path.dirname(lock)
+    os.chmod(leases_dir, 0o500)                                 # the stale lock cannot be renamed or removed
+    started = time.time()
+    try:
+        check("lease: a stale lock that cannot be removed fails at the deadline instead of spinning",
+              raises(lambda: lease.take(ENV, ("claude", "@pinned", False), "local:w1:p1", 3600, None, NOW + 100), 70)
+              and time.time() - started < 5)
+    finally:
+        os.chmod(leases_dir, 0o700)
+    os.rmdir(lock)
+lease.LOCK_WAIT = saved_wait
+lk = lease._Lock(ENV)
+with lk:
+    with open(os.path.join(lk.path, "token"), "w") as handle:
+        handle.write("a-newer-holder")                         # the lock was broken and re-taken meanwhile
+check("lease: leaving the lock never removes a lock whose token is not ours", os.path.isdir(lk.path))
+shutil.rmtree(lk.path)
 with open(os.path.join(ENV["AGENTKIT_STATE_DIR"], "leases", "leases.json"), "w") as handle:
     handle.write("garbage")
 check("lease: a corrupt store reads as empty", lease.active(ENV, NOW) == [])

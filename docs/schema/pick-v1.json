@@ -55,7 +55,7 @@
         "resets_at": { "type": ["string", "null"], "description": "When the binding window resets (ISO-8601 UTC)." },
         "excluded_reason": { "type": ["string", "null"], "description": "One line; null for an eligible account." },
         "leases": { "type": "integer", "minimum": 0, "description": "Since 0.6.0: active leases on this account (ak lease); with --owner, only those held by other owners." },
-        "capped": { "const": true, "description": "Since 0.6.0, present only when AGENTKIT_CAPACITY_CAP lowered (or marked) this account's headroom." }
+        "capped": { "const": true, "description": "Since 0.6.0, present only when AGENTKIT_CAPACITY_CAP applies to this account; headroom_pct is then min(real, cap) (a cap above the real reading changes nothing)." }
       }
     }
   }

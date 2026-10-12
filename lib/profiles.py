@@ -699,6 +699,9 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    # The running account for `ak capacity --self`; an inherited marker would
+    # name the outer account. A CLI here, as AGENTKIT_ACTIVE_PROFILE does.
+    env["AGENTKIT_ACTIVE_ACCOUNT"] = "%s/%s" % (cli_name, label(name))
     apply_token(model.clis[cli_name], name, env)   # its own login token or none, never @default's
     # Same hygiene as a launch: no per-profile key variables; the opt-out is
     # inherited, autonomy is not exported.

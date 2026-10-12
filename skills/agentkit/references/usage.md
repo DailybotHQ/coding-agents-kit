@@ -5,9 +5,11 @@ or what a row of `ak usage` means, or before you start a long task or
 several delegates. For adding accounts and logging in, read
 [accounts.md](accounts.md).
 
-`ak usage` and `ak pick` are **read-only**: they never refresh a login,
-never spend a reset, never print a token and never write under a profile.
-But they ask each vendor with the user's own logins, so run them once per
+`ak usage` and `ak pick` are **read-only** for the user's accounts: they
+never refresh a login, never spend a reset, never print a token and never
+write under a profile; the only file they write is the kit's usage cache
+(usage numbers only), which `ak pick` and `ak capacity` reuse for five
+minutes. But they ask each vendor with the user's own logins, so run them once per
 batch of work and when the user asks, never in a loop.
 
 ## Reading the table

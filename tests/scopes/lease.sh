@@ -39,6 +39,20 @@ scope_lease() {
   ak_split -- lease codex @work --owner local:w1:p2; status=$?
   expect_eq "lease release: the account is free for the next owner" "${status}" 0
 
+  # Contention between processes: six owners race for one Codex account; exactly one wins.
+  ak_split -- lease release codex @work --owner local:w1:p2
+  local i wins=0
+  for i in 1 2 3 4 5 6; do
+    ( ak -- lease codex @work --owner "local:race:p${i}" >/dev/null 2>&1; echo $? > "${BOX}/race.${i}" ) &
+  done
+  wait
+  for i in 1 2 3 4 5 6; do [[ "$(cat "${BOX}/race.${i}")" == 0 ]] && wins=$((wins + 1)); done
+  expect_eq "lease race: six concurrent owners, exactly one gets the Codex lease" "${wins}" 1
+  expect_eq "lease race: the store holds exactly one Codex lease" \
+    "$(ak -- lease ls --json | json_get - 'len([l for l in d["leases"] if l["cli"] == "codex"])')" 1
+  check "lease race: no lock or stale lock is left behind" \
+    bash -c '! ls -a "$1" | grep -q "^\.lock"' _ "$(dirname "${store}")"
+
   ak_split -- lease codex @ghost --owner local:w1:p1; status=$?
   expect_eq "lease cli: an account the kit cannot see exits 3" "${status}" 3
   ak_split -- lease codex @work --owner "bad owner"; status=$?

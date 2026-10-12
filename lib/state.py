@@ -36,13 +36,27 @@ WINDOW_KEYS = ("id", "label", "used_pct", "resets_at", "window_seconds", "used",
 CACHED = ("ok", "rate_limited")
 
 
+def _profiles_root(env, home):
+    data = env.get("AGENTKIT_HOME") or os.path.join(home, ".local", "share", "agentkit")
+    return env.get("AGENTKIT_PROFILES_DIR") or os.path.join(data, "profiles")
+
+
+def _inside(path, parent):
+    path, parent = os.path.realpath(path), os.path.realpath(parent)
+    return path == parent or path.startswith(parent.rstrip(os.sep) + os.sep)
+
+
 def root(env=None):
     env = os.environ if env is None else env
     if env.get("AGENTKIT_STATE_DIR"):
         return env["AGENTKIT_STATE_DIR"]
-    if env.get("XDG_STATE_HOME"):
-        return os.path.join(env["XDG_STATE_HOME"], "agentkit")
     home = env.get("AGENTKIT_REAL_HOME") or env.get("HOME") or env.get("USERPROFILE") or common.home()
+    xdg = env.get("XDG_STATE_HOME")
+    # An XDG_STATE_HOME inside the profiles tree is a profile's own (an
+    # `ak env` of an xdg-isolated kind printed it into a shell or pane): the
+    # kit's state stays machine-wide, never under a profile.
+    if xdg and not _inside(xdg, _profiles_root(env, home)):
+        return os.path.join(xdg, "agentkit")
     return os.path.join(home, ".local", "state", "agentkit")
 
 

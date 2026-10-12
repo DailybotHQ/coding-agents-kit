@@ -18,9 +18,11 @@ every read. Nothing secret is stored: owners, profile names, times and a
 purpose text whose token-shaped words are refused.
 """
 
+import binascii
 import json
 import os
 import re
+import shutil
 import sys
 import time
 
@@ -124,21 +126,53 @@ def _public(rec):
 
 
 class _Lock(object):
-    """A mutex every OS provides atomically: mkdir of one directory."""
+    """A mutex every OS provides atomically: mkdir of one directory, with a
+    random token inside so a holder only ever removes its own lock. A lock
+    older than LOCK_STALE (its holder died) is broken by an atomic rename,
+    and only when the renamed lock still carries the token that was judged
+    stale; anything else is put back."""
 
     def __init__(self, env):
         self.path = os.path.join(state.ensure_dir(_dir(env)), ".lock")
+        self.token = binascii.hexlify(os.urandom(8)).decode()
+
+    @staticmethod
+    def _token_of(path):
+        try:
+            with open(os.path.join(path, "token")) as handle:
+                return handle.read().strip()
+        except OSError:
+            return None
+
+    def _break_stale(self):
+        seen = self._token_of(self.path)
+        if time.time() - os.stat(self.path).st_mtime <= LOCK_STALE:
+            return
+        aside = "%s.stale-%s" % (self.path, self.token)
+        os.rename(self.path, aside)                  # atomic: one breaker wins
+        if self._token_of(aside) != seen:            # a fresh lock replaced the stale one meanwhile
+            try:
+                os.rename(aside, self.path)
+            except OSError:
+                pass
+            return
+        shutil.rmtree(aside, ignore_errors=True)
 
     def __enter__(self):
         deadline = time.time() + LOCK_WAIT
         while True:
             try:
                 os.mkdir(self.path, 0o700)
+                try:
+                    with open(os.path.join(self.path, "token"), "w") as handle:
+                        handle.write(self.token)
+                except OSError:
+                    shutil.rmtree(self.path, ignore_errors=True)
+                    raise
                 return self
             except FileExistsError:
                 try:
-                    if time.time() - os.stat(self.path).st_mtime > LOCK_STALE:
-                        os.rmdir(self.path)      # a holder died inside the lock
+                    self._break_stale()
                 except OSError:
                     pass                         # gone already, or not removable: the deadline decides
                 if time.time() > deadline:
@@ -146,10 +180,12 @@ class _Lock(object):
                 time.sleep(0.05)
 
     def __exit__(self, *exc):
-        try:
-            os.rmdir(self.path)
-        except OSError:
-            pass
+        if self._token_of(self.path) == self.token:      # never remove a lock another process holds
+            try:
+                os.unlink(os.path.join(self.path, "token"))
+                os.rmdir(self.path)
+            except OSError:
+                pass
         return False
 
 

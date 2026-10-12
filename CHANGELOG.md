@@ -37,9 +37,11 @@ out. Every new surface is additive.
   reuse a reading younger than `--max-age` (300 s; `0` reads live) and write
   back what they read live; `ak usage` is the only command that always reads
   live, and it refreshes the cache.
-- **`AGENTKIT_CAPACITY_CAP=[<cli>]@profile=PCT[,…]`** — a lower-only drill
-  cap (`min(real, cap)`, `"capped": true`) applied by `ak capacity` and
-  `ak pick`; an invalid value exits 2.
+- **`AGENTKIT_CAPACITY_CAP=[<kind-or-cli>]@profile=PCT[,…]`** — a
+  lower-only drill cap (`min(real, cap)`, `"capped": true`) applied by
+  `ak capacity` and `ak pick` (where a capped account below a `--need`
+  percent no longer qualifies); a kind names the account its quota lives on;
+  an invalid value or an unknown name exits 2.
 - **`ak lease <kind> @profile --owner ADDR [--ttl DUR] [--purpose TEXT]`,
   `ak lease release …`, `ak lease ls [--json]`** — advisory, expiring
   account leases (schema `leases-v1`), changed under a portable lock and
@@ -59,9 +61,12 @@ out. Every new surface is additive.
 
 ### Changed
 
-- `ak pick` and `ak capacity` write the kit's usage cache (and nothing else);
-  they still never write under a profile or the env file, refresh a login or
-  spend a reset.
+- `ak usage`, `ak pick` and `ak capacity` write the kit's usage cache (and
+  nothing else); they still never write under a profile or the env file,
+  refresh a login or spend a reset. `ak pick` reuses readings up to 300 s old
+  by default (`--max-age 0` reads live).
+- `ak profiles run` sets `AGENTKIT_ACTIVE_ACCOUNT` for its command too, so an
+  inherited marker never names the outer account.
 
 ## [0.5.3] - 2026-10-12
 

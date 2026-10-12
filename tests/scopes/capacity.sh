@@ -75,6 +75,8 @@ scope_capacity() {
   expect_eq "capacity cap: a cap above the real reading changes nothing" "$(json_get "${BOX}/out" 'd["headroom_pct"]')" "5"
   ak_split "${url}" AGENTKIT_CAPACITY_CAP=work=5 -- capacity claude @work; status=$?
   expect_eq "capacity cap: an invalid cap exits 2 (never runs uncapped)" "${status}" 2
+  ak_split "${url}" AGENTKIT_CAPACITY_CAP=claud@work=5 -- capacity claude @work; status=$?
+  expect_eq "capacity cap: a mistyped CLI in the cap exits 2" "${status}" 2
   ak_split "${url}" AGENTKIT_CAPACITY_CAP=@default=0 -- pick claude --count 2 --json
   expect_eq "capacity cap: ak pick applies the same cap (@default at 0 is not chosen)" \
     "$(json_get "${BOX}/out" '[c["profile"] for c in d["chosen"]]')" '["@work"]'
@@ -101,6 +103,16 @@ EOF
   out="$(ak -- claude @work)"
   expect_line "capacity self: the launch marker holds the kind and profile name only" "${out}" "AGENTKIT_ACTIVE_ACCOUNT=claude/@work"
   expect_line "capacity self: AGENTKIT_ACTIVE_PROFILE is unchanged" "${out}" "AGENTKIT_ACTIVE_PROFILE=claude/work"
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/opencode/iso"
+  out="$(ak AGENTKIT_ACTIVE_ACCOUNT=claude/@work -- profiles run opencode @iso -- env)"
+  expect_line "capacity self: ak profiles run replaces an inherited marker" "${out}" "AGENTKIT_ACTIVE_ACCOUNT=opencode/@iso"
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/codex/work"
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/opencode/fresh/state"     # never launched: no mirror links
+  ak XDG_STATE_HOME="${BOX}/home/.local/share/agentkit/profiles/opencode/fresh/state" -- lease codex @work --owner local:x:p1 >/dev/null
+  check "capacity state: an XDG_STATE_HOME printed by ak env opencode keeps the lease store machine-wide" \
+    bash -c '[[ -f "$1/leases/leases.json" && ! -e "$2" ]]' _ \
+    "${BOX}/home/.local/state/agentkit" "${BOX}/home/.local/share/agentkit/profiles/opencode/fresh/state/agentkit"
+  ak -- lease release codex @work --owner local:x:p1 >/dev/null
   out="$(ak -- env claude @work)"
   expect_lacks "capacity self: ak env never prints the internal marker" "${out}" "AGENTKIT_ACTIVE_ACCOUNT"
   mkdir -p "${BOX}/home/.local/share/agentkit/profiles/opencode/iso"
