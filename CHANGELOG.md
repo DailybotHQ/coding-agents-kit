@@ -22,7 +22,10 @@ Interface stays **1**. Patch: a Cursor login on Linux is recognised.
   `~/.config/cursor/auth.json` (not `~/.cursor/auth.json`), so `ak usage` and
   `ak doctor` reported `n/d` / `login: unknown` for a logged-in Cursor in a
   container or on a Linux host. The login probe now also reads the `xdg` root
-  (`~/.config/cursor`); profiles are unchanged (`<profile>/home/.cursor`).
+  (`~/.config/cursor`); profiles are unchanged (`<profile>/home/.cursor`): a
+  profile's HOME links the real `~/.config` in, so it never borrows the
+  default account's login.
+- The bundled skills' versions and pinned install lines follow the release.
 
 ## [0.5.0] - 2026-10-11
 

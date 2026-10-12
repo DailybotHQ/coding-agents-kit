@@ -157,8 +157,10 @@ docs = "https://cursor.com/docs/cli"
 
 [clis.cursor.roots]
 home = { default = "~/.cursor", profile = "{dir}/home/.cursor" }
-# Linux keeps the default login at ~/.config/cursor/auth.json (XDG).
-xdg = { default = "~/.config/cursor", profile = "{dir}/home/.config/cursor" }
+# Linux keeps the default login at ~/.config/cursor/auth.json (XDG). A profile's
+# HOME links the real ~/.config in, so its xdg root stays its own .cursor: a
+# profile never reads the default account's login.
+xdg = { default = "~/.config/cursor", profile = "{dir}/home/.cursor" }
 
 [clis.cursor.session]
 continue = ["--continue"]
