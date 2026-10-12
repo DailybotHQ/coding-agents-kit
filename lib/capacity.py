@@ -89,7 +89,9 @@ def home_accounts(env, model):
     launch marker (Codex runs its tool shells from an app-server daemon that
     kept the environment of whoever started it) yet keep the CLI's home
     variable. Only `isolation = "env"` CLIs, only a directory that is exactly
-    <profiles root>/<cli>/<name>; the CLI's default home is never derived."""
+    <profiles root>/<cli>/<name>; the CLI's default home is never derived.
+    It names the CLI's own account: a provider-key kind on that profile
+    (codex-glm) is known only from the launch marker."""
     home = env.get("AGENTKIT_REAL_HOME") or env.get("HOME") or common.home()
     root = os.path.realpath(state._profiles_root(env, home))
     found = []
@@ -98,7 +100,7 @@ def home_accounts(env, model):
         if not value or not os.path.isdir(value):
             continue
         parent, name = os.path.split(os.path.realpath(value))
-        if parent != os.path.join(root, cli_name):
+        if parent != os.path.realpath(os.path.join(root, cli_name)):
             continue
         try:
             label = usage._profile_label(profiles.normalize(name))

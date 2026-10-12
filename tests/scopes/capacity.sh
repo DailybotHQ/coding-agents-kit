@@ -141,6 +141,11 @@ EOF
   ak_split CODEX_HOME="${BOX}/codex-link" -- capacity --self --json; status=$?
   expect_eq "capacity self: a home reached through a symlink resolves to the profile" \
     "${status}:$(json_get "${BOX}/out" 'd["profile"]')" '0:@work'
+  mkdir -p "${BOX}/linked-profiles/codex"; mv "${proot}/codex/work" "${BOX}/linked-profiles/codex/work"
+  rmdir "${proot}/codex" 2>/dev/null; ln -s "${BOX}/linked-profiles/codex" "${proot}/codex"
+  ak_split CODEX_HOME="${proot}/codex/work" -- capacity --self --json; status=$?
+  expect_eq "capacity self: a CLI folder of the profile tree that is a symlink still resolves" \
+    "${status}:$(json_get "${BOX}/out" 'd["profile"]')" '0:@work'
   ak_split "${url}" AGENTKIT_ACTIVE_ACCOUNT=claude/@default CODEX_HOME="${proot}/codex/work" -- capacity --self --json
   expect_eq "capacity self: the launch marker wins over a home variable" "$(json_get "${BOX}/out" '[d["cli"], d["profile"]]')" '["claude", "@default"]'
   mkdir -p "${BOX}/home/.codex" "${BOX}/elsewhere/codex/work" "${proot}/codex/work/nested"

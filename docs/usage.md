@@ -388,8 +388,10 @@ claude @work1  ok  64% free  binding 5h  resets in 2h 10m  cached 42s ago
   [Profiles](profiles.md#codex-and-its-app-server-daemon)); and with no
   marker at all, `--self` takes the account from a CLI home variable that
   names a profile directory inside `ak`'s own tree (`CODEX_HOME=<profiles>/codex/work1`
-  is `codex @work1`). The CLI's default home, a folder outside the tree, or
-  two such variables at once: exit 3, "unknown account" — never a guess.
+  is `codex @work1`, the CLI's own account: a provider-key kind on that
+  profile, such as `codex-glm`, is known only from the marker). The CLI's
+  default home, a folder outside the tree, or two such variables at once:
+  exit 3, "unknown account" — never a guess.
 - **Exit codes:** 0 for every reading — the verdict is in the output, not
   the exit code · 2 usage or an invalid threshold or cap · 3 unknown account
   or nothing matches · ≥ 64 internal.
