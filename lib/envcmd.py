@@ -76,6 +76,14 @@ def compute(model, kind_name, head, env):
         extra.append("the provider config ak writes before launch")
     if prep.kind.data.get("pre"):
         extra.append("`%s %s` before launch" % (prep.kind.executable, prep.kind.data["pre"][0]))
+    if (prep.env.get("XDG_STATE_HOME") != before.get("XDG_STATE_HOME") and before.get("XDG_STATE_HOME")
+            and not before.get("AGENTKIT_STATE_DIR")):
+        # A custom XDG_STATE_HOME is replaced in the pane: ak's own state (usage
+        # cache, leases) would then fall back to ~/.local/state. A note only;
+        # the printed lines stay interface 1.
+        notes.append("your XDG_STATE_HOME is custom: also set AGENTKIT_STATE_DIR=%s in the pane (or export it "
+                     "in your shell) so ak's leases and usage cache stay shared"
+                     % prep.env.get("AGENTKIT_STATE_DIR", ""))
     if extra:
         notes.append("%s also needs %s, which an environment cannot carry: run `ak %s%s` in the pane"
                      % (kind_name, " and ".join(extra), kind_name, " @" + prep.profile if prep.profile else ""))

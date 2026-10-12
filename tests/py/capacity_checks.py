@@ -348,6 +348,21 @@ with lk:
         handle.write("a-newer-holder")                         # the lock was broken and re-taken meanwhile
 check("lease: leaving the lock never removes a lock whose token is not ours", os.path.isdir(lk.path))
 shutil.rmtree(lk.path)
+lk = lease._Lock(ENV)
+lost = False
+with lk:
+    with open(os.path.join(lk.path, "token"), "w") as handle:
+        handle.write("a-third-process")                        # a breaker moved our lock aside; another took it
+    lost = raises(lambda: lease._save_held(lk, ENV, [], NOW), 70)
+check("lease: a holder whose lock was taken over refuses to write (exit 70)", lost)
+shutil.rmtree(lk.path)
+aside = lk.path + ".stale-old"
+os.mkdir(aside)
+os.utime(aside, (old, old))
+os.mkdir(lk.path)
+os.utime(lk.path, (old, old))
+lease.take(ENV, ("claude", "@sweep", False), "local:w1:p1", 3600, None, NOW + 100)
+check("lease: breaking a stale lock also sweeps lock directories left aside long ago", not os.path.isdir(aside))
 with open(os.path.join(ENV["AGENTKIT_STATE_DIR"], "leases", "leases.json"), "w") as handle:
     handle.write("garbage")
 check("lease: a corrupt store reads as empty", lease.active(ENV, NOW) == [])

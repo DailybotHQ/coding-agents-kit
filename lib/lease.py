@@ -144,9 +144,23 @@ class _Lock(object):
         except OSError:
             return None
 
+    def held(self):
+        """Is the lock still ours? A stale-lock breaker racing a fresh holder
+        can move a live lock aside; the holder then must not write."""
+        return self._token_of(self.path) == self.token
+
+    def _sweep_aside(self):
+        directory = os.path.dirname(self.path)
+        for name in os.listdir(directory):
+            path = os.path.join(directory, name)
+            if name.startswith(".lock.stale-") and time.time() - os.stat(path).st_mtime > LOCK_STALE:
+                shutil.rmtree(path, ignore_errors=True)
+
     def _break_stale(self):
         seen = self._token_of(self.path)
         if time.time() - os.stat(self.path).st_mtime <= LOCK_STALE:
+            return
+        if self._token_of(self.path) != seen:        # re-check right before the rename: narrows the race
             return
         aside = "%s.stale-%s" % (self.path, self.token)
         os.rename(self.path, aside)                  # atomic: one breaker wins
@@ -157,6 +171,7 @@ class _Lock(object):
                 pass
             return
         shutil.rmtree(aside, ignore_errors=True)
+        self._sweep_aside()
 
     def __enter__(self):
         deadline = time.time() + LOCK_WAIT
@@ -189,6 +204,13 @@ class _Lock(object):
         return False
 
 
+def _save_held(lock, env, records, now):
+    if not lock.held():
+        raise AkError("the lease store lock was taken over while this command held it; try again",
+                      common.EXIT_INTERNAL)
+    _save(env, records, now)
+
+
 def _save(env, records, now):
     state.write_json(_store(env), {"schema": STORE_SCHEMA,
                                    "leases": [r for r in records if r["expires_epoch"] > now]})
@@ -199,7 +221,7 @@ def take(env, account, owner, ttl, purpose, now, kind=None):
     Returns (record, renewed). Raises AkError(EXIT_HELD) when an exclusive
     account is held by someone else."""
     cli, profile, exclusive = account
-    with _Lock(env):
+    with _Lock(env) as lock:
         records = [r for r in _load(env) if r["expires_epoch"] > now]
         mine = [r for r in records if r["cli"] == cli and r["profile"] == profile and r["owner"] == owner]
         others = [r for r in records if r["cli"] == cli and r["profile"] == profile and r["owner"] != owner]
@@ -218,19 +240,19 @@ def take(env, account, owner, ttl, purpose, now, kind=None):
                    "purpose": purpose, "created_epoch": int(now), "expires_epoch": int(now + ttl)}
             records.append(rec)
             renewed = False
-        _save(env, records, now)
+        _save_held(lock, env, records, now)
     return _public(rec), renewed
 
 
 def release(env, account, owner, now):
     """Drop `owner`'s lease on the account. False when it held none."""
     cli, profile = account[0], account[1]
-    with _Lock(env):
+    with _Lock(env) as lock:
         records = [r for r in _load(env) if r["expires_epoch"] > now]
         keep = [r for r in records if not (r["cli"] == cli and r["profile"] == profile and r["owner"] == owner)]
         if len(keep) == len(records):
             return False
-        _save(env, keep, now)
+        _save_held(lock, env, keep, now)
     return True
 
 

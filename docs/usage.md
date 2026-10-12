@@ -382,8 +382,11 @@ one file per account under `$XDG_STATE_HOME/agentkit/usage-cache/`
 (`~/.local/state/agentkit/` by default; `AGENTKIT_STATE_DIR` moves it). The
 state directory is machine-wide: an `XDG_STATE_HOME` inside a profile (what
 `ak env` prints for an `xdg`-isolated kind such as OpenCode) is ignored, so
-every shell and pane shares one cache and one lease store. The
-cache holds **usage numbers only** — the windows' ids, labels, percentages
+every shell and pane shares one cache and one lease store. If you set a
+custom `XDG_STATE_HOME`, also export `AGENTKIT_STATE_DIR` in your shell (or
+pass the value `ak env` names on stderr to the pane): a pane that only gets
+`ak env`'s lines would otherwise fall back to `~/.local/state/agentkit`.
+The cache holds **usage numbers only** — the windows' ids, labels, percentages
 and resets, the plan name and the row status; never a token, key or path —
 in `0600` files, written atomically. `ak capacity` and `ak pick` reuse a
 reading younger than `--max-age` (300 s by default; `0` reads live) and write

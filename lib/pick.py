@@ -409,7 +409,7 @@ def main(model, args, env, now=None, stdout=None):
         common.warn("nothing to pick from: no profile or login matches. Try: ak usage")
         return EXIT_NOTHING
     caps = parse_caps(env, model)
-    low = thresholds(env)[0]
+    low = thresholds(env)[0] if caps else DEFAULT_LOW     # the threshold matters only for a capped account
     results = usage.mark_defaults(model, usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"]), env)
     results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
     chosen, candidates, soonest = choose(results, opts["model"], opts["reserve"], opts["needs"], opts["count"],

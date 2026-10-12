@@ -75,6 +75,8 @@ scope_capacity() {
   expect_eq "capacity cap: a cap above the real reading changes nothing" "$(json_get "${BOX}/out" 'd["headroom_pct"]')" "5"
   ak_split "${url}" AGENTKIT_CAPACITY_CAP=work=5 -- capacity claude @work; status=$?
   expect_eq "capacity cap: an invalid cap exits 2 (never runs uncapped)" "${status}" 2
+  ak_split "${url}" AGENTKIT_CAPACITY_LOW=5 -- pick claude; status=$?
+  expect_eq "capacity cap: a capacity-only threshold (LOW=5, no cap) never breaks ak pick" "${status}" 0
   ak_split "${url}" AGENTKIT_CAPACITY_CAP=claud@work=5 -- capacity claude @work; status=$?
   expect_eq "capacity cap: a mistyped CLI in the cap exits 2" "${status}" 2
   ak_split "${url}" AGENTKIT_CAPACITY_CAP=@default=0 -- pick claude --count 2 --json
@@ -113,6 +115,11 @@ EOF
     bash -c '[[ -f "$1/leases/leases.json" && ! -e "$2" ]]' _ \
     "${BOX}/home/.local/state/agentkit" "${BOX}/home/.local/share/agentkit/profiles/opencode/fresh/state/agentkit"
   ak -- lease release codex @work --owner local:x:p1 >/dev/null
+  out="$(ak XDG_STATE_HOME="${BOX}/custom-state" -- env opencode @iso)"
+  expect_has "capacity state: with a custom XDG_STATE_HOME, ak env names AGENTKIT_STATE_DIR on stderr" "${out}" \
+    "AGENTKIT_STATE_DIR=${BOX}/custom-state/agentkit"
+  expect_lacks "capacity state: ... and its printed lines stay interface 1 (no AGENTKIT_STATE_DIR line)" \
+    "$(ak_split XDG_STATE_HOME="${BOX}/custom-state" -- env opencode @iso; cat "${BOX}/out")" "AGENTKIT_STATE_DIR="
   out="$(ak -- env claude @work)"
   expect_lacks "capacity self: ak env never prints the internal marker" "${out}" "AGENTKIT_ACTIVE_ACCOUNT"
   mkdir -p "${BOX}/home/.local/share/agentkit/profiles/opencode/iso"
