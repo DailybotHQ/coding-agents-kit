@@ -660,6 +660,7 @@ profiles_trust_grok() {
   fi
   printf 'gitdir: %s/nowhere\n' "${repo}" > "${wt}/.git"
   rm -f "${gt}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by ak_split
   ( BOX_CWD="${wt}"; ak_split -- grok @work --trust-cwd; echo "$?" > "${BOX}/wt-status" )
   expect_eq "profiles trust-cwd: grok: an unreadable worktree link trusts the worktree itself (never a parent guess)" \
     "$(cat "${BOX}/wt-status"):$(grep '^\[folders\.' "${gt}")" "0:[folders.\"${wt}\"]"
