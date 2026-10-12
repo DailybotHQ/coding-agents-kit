@@ -32,9 +32,14 @@ codex   resets: use one with /usage in codex
 zai · Z.AI GLM Coding Plan
   @default  pro   5-hour            ████░░░░░░  36%  in 1h 51m  4.36K/12K
                   7-day             ██████░░░░  60%  in 5d 3h   36.31K/60K
-connected · no quota to read
-  cursor       @default  logged in        web session only
-  xai          @default  XAI_API_KEY set  needs a management key
+cursor · Cursor Agent
+  @default  -     n/d               logged in: web session only
+antigravity · Antigravity CLI
+  @acc1     AI Pro  5-hour Gemini          ███▍░░░░░░  34%  in 1h 17m
+                    7-day Gemini           ▊░░░░░░░░░   7%  in 2d 23h
+  @acc2     -       no login               log in: ak antigravity @acc2
+xai · xAI
+  @default  -     n/d               XAI_API_KEY set: needs a management key
 ```
 
 One block per CLI or provider, its title line first (`claude · Claude
@@ -60,10 +65,14 @@ Reading the example:
 - `zai @default` has 64% of its 5-hour window but only 40% of its week left:
   the week binds.
 - `cursor` and `xai` are **connected** (a login found, a key set) but have
-  no quota the kit can read: they work, with unknown headroom.
+  no quota the kit can read (`n/d`): they work, with unknown headroom.
+- `antigravity @acc1` is a Google login in a container (its tier is the
+  plan; the quota is per family of models, not per model: `5-hour` and `7-day`
+  windows for the Gemini models and for the Claude and GPT models);
+  `@acc2` has **no login** and the row says how to log in.
 
-Accounts with no readable quota and no connection fold into a closing `n/d`
-line. `ak usage -v` lists every row with its full reason.
+Every account is listed under its CLI, quota or not, so the table also says
+which accounts are connected. `ak usage -v` gives every row its full reason.
 
 ```bash
 ak usage                       # the table
@@ -135,7 +144,7 @@ requests; a reading younger than `--max-age`, 300 s, comes from the usage
 cache) and returns the account with the most usable room for a kind:
 
 1. Only `ok` rows are eligible; `unsupported` ones join last with
-   `--allow-unknown` (verdict `unknown`: Grok, Cursor, Antigravity). Every
+   `--allow-unknown` (verdict `unknown`: Grok, Cursor, Antigravity on macOS). Every
    other status is excluded with that reason. Each profile is one account,
    the one the launch uses (`grok @default` is the grok login, not also the
    xAI key), as in `ak capacity` and `ak lease`.
@@ -220,7 +229,7 @@ One account, one verdict, `ak pick`'s headroom:
 | `ok` | headroom above the low threshold (25) | continue |
 | `low` | at or below 25 | finish the current task; start none you cannot finish; tell the lead |
 | `critical` | at or below 10, or rate limited | reach a safe point, write a handoff note, tell the lead, stop |
-| `unknown` | no readable quota (Cursor, Grok, Antigravity, a login problem) | continue; hand off on the CLI's own limit warning |
+| `unknown` | no readable quota (Cursor, Grok, Antigravity on macOS, a login problem) | continue; hand off on the CLI's own limit warning |
 
 `AGENTKIT_CAPACITY_LOW` / `AGENTKIT_CAPACITY_CRITICAL` (or `--low` /
 `--critical`) move the thresholds. `--self` names the account `ak` launched

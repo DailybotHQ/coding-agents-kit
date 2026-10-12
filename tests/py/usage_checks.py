@@ -25,9 +25,10 @@ sys.path.insert(0, HERE)
 
 import common  # noqa: E402
 import kinds  # noqa: E402
+import profiles  # noqa: E402
 import usage  # noqa: E402
 from common import AkError  # noqa: E402
-from fake_usage_server import FakeUsageServer  # noqa: E402
+from fake_usage_server import FakeUsageServer, digest as usage_digest  # noqa: E402
 
 FAILS = []
 PLANTED_LOGIN = "PLANTED-TOKEN-7f3a9c0001"
@@ -167,13 +168,14 @@ login(os.path.join(PROFILES, "claude", "work", ".credentials.json"))
 login(os.path.join(PROFILES, "claude", "2", ".credentials.json"))
 login(os.path.join(PROFILES, "codex", "work", "auth.json"))
 os.makedirs(os.path.join(PROFILES, "cursor", "work"))
+os.makedirs(os.path.join(PROFILES, "grok", "work"))
 ENV = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "ZAI_CODING_API_KEY_2": PLANTED_PROVIDER + "-2"})
 
 code, rows = rows_of([], ENV)
 order = [(r["cli"], r["profile"]) for r in rows]
 check("usage core: one row per credential identity in the documented order",
       order == [("claude", "@default"), ("claude", "@2"), ("claude", "@work"), ("codex", "@default"), ("codex", "@work"),
-                ("cursor", "@default"), ("cursor", "@work"), ("zai", "@default"), ("zai", "@2")], str(order))
+                ("cursor", "@default"), ("cursor", "@work"), ("grok", "@work"), ("zai", "@default"), ("zai", "@2")], str(order))
 moved = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "CLAUDE_CONFIG_DIR": os.path.join(PROFILES, "claude", "work")})
 _c, moved_rows = rows_of(["claude"], moved)
 check("usage core: a default home moved onto a profile directory is one account (no @default row twice)",
@@ -199,7 +201,17 @@ check("usage core: a second run is byte-identical", run([], ENV)[1] == text)
 lines = text.splitlines()
 titles = [line for line in lines if line and not line.startswith(" ") and not line.startswith("n/d")]
 check("usage core: one titled block per CLI or provider, in row order, the human name next to the id",
-      [t.split()[0] for t in titles] == ["claude", "codex", "zai"] and "Claude Code" in titles[0], str(titles))
+      [t.split()[0] for t in titles] == ["claude", "codex", "cursor", "grok", "zai"] and "Claude Code" in titles[0], str(titles))
+cursor_lines = lines[lines.index(titles[2]) + 1:lines.index(titles[3]) - 1]
+check("usage core: an account with no readable quota is listed under its CLI, n/d with the reason",
+      len(cursor_lines) == 2 and all("n/d" in line and "web session only" in line for line in cursor_lines), str(cursor_lines))
+grok_line = lines[lines.index(titles[3]) + 1]
+check("usage core: an account with no login says so under its CLI, with how to log in and the reason",
+      grok_line.startswith("  @work") and "no login" in grok_line and "log in: ak grok @work" in grok_line
+      and "per-session only" in grok_line, grok_line)
+check("usage core: nothing folds into a closing n/d line any more", not any(line.startswith("n/d") for line in lines), text)
+grok_row = next(r for r in rows if r["cli"] == "grok")
+check("usage core: --json says the account is not connected", grok_row["status"] == "unsupported" and grok_row.get("connected") is False, str(grok_row))
 check("usage core: a blank line separates the blocks and every account sits indented under its title",
       all(lines[lines.index(t) - 1] == "" for t in titles)
       and all(line.startswith("  @") for line in lines if "@" in line and not line.startswith("n/d")), text)
@@ -548,6 +560,105 @@ check("usage bar: 4% shows the thinnest mark", usage._bar(4, True).startswith(("
 check("usage bar: 14% draws more than 10%", usage._bar(14, True) != usage._bar(10, True), repr(usage._bar(14, True)))
 check("usage bar: 1% in ASCII is one '#'", usage._bar(1, False) == "#" + "-" * 9, repr(usage._bar(1, False)))
 check("usage bar: 99% is not full in either mode", usage._bar(99, True) != "█" * 10 and usage._bar(99, False) != "#" * 10, "")
+
+# ------------------------------------------------------ antigravity source
+
+AGY_HOME = os.path.join(PROFILES, "antigravity", "acc1", "home", ".gemini", "antigravity-cli")
+AGY_LOGIN = "PLANTED-AGY-7f3a9c0003"
+AGY_RENEWAL = "PLANTED-AGY-7f3a9c0004"
+write(os.path.join(AGY_HOME, "antigravity-oauth-token"),
+      json.dumps({"auth_method": "consumer", "id_token": "x",
+                  "token": {"access_token": AGY_LOGIN, "refresh_token": AGY_RENEWAL, "token_type": "Bearer",
+                            "expiry": usage.iso_utc(NOW + 1800)}}))
+os.makedirs(os.path.join(PROFILES, "antigravity", "acc2", "home", ".gemini", "antigravity-cli"))
+AGY_LOAD = {"currentTier": {"id": "g1-pro-tier", "name": "Google AI Pro"}, "cloudaicompanionProject": "aicode-consumers",
+            "paidTier": {"id": "g1-pro-tier"}}
+AGY_QUOTA = {"groups": [
+    {"displayName": "Gemini Models", "description": "Models within this group: Gemini Flash, Gemini Pro", "buckets": [
+        {"bucketId": "gemini-weekly", "displayName": "Weekly Limit Remaining", "window": "weekly",
+         "resetTime": usage.iso_utc(NOW + 90000), "remainingFraction": 0.9266615},
+        {"bucketId": "gemini-5h", "displayName": "Five Hour Limit Remaining", "window": "5h",
+         "resetTime": usage.iso_utc(NOW + 7200), "remainingFraction": 0.25}]},
+    {"displayName": "Claude and GPT models", "buckets": [
+        {"bucketId": "3p-weekly", "window": "weekly", "resetTime": usage.iso_utc(NOW + 500000), "remainingFraction": 1},
+        {"bucketId": "3p-5h", "window": "5h", "resetTime": usage.iso_utc(NOW + 18000)}]}]}
+AGY_ROUTES = {"/agy/v1internal:loadCodeAssist": {"json": AGY_LOAD}, "/agy/v1internal:retrieveUserQuotaSummary": {"json": AGY_QUOTA}}
+ENV_AGY = env_for({"AGENTKIT_USAGE_URL_ANTIGRAVITY_QUOTA": server.base + "/agy"})
+server.set_routes(AGY_ROUTES)
+del server.requests[:]
+code, agy_rows = rows_of(["antigravity"], ENV_AGY)
+acc1 = next((r for r in agy_rows if r["profile"] == "@acc1"), None)
+acc2 = next((r for r in agy_rows if r["profile"] == "@acc2"), None)
+check("usage antigravity: a profile with agy's token file is an ok row with the tier as its plan",
+      acc1 is not None and acc1["status"] == "ok" and acc1["plan"] == "AI Pro" and acc1["source"] == "antigravity-quota", str(acc1))
+check("usage antigravity: one window per group bucket, the 5-hour one first, named by period and family, used = 100 - remaining",
+      acc1 is not None and [(w["id"], w["label"], w["used_pct"], w["window_seconds"]) for w in acc1["windows"]]
+      == [("gemini-5h", "5-hour Gemini", 75, 18000), ("gemini-weekly", "7-day Gemini", 7.3, 604800),
+          ("3p-5h", "5-hour Claude and GPT", 0, 18000), ("3p-weekly", "7-day Claude and GPT", 0, 604800)]
+      and acc1["windows"][0]["resets_at"] == usage.iso_utc(NOW + 7200) and acc1["windows"][1]["resets_at"] == usage.iso_utc(NOW + 90000), str(acc1))
+check("usage antigravity: two POSTs with the login, the tier call first, the quota call with a body",
+      [(q["method"], q["path"]) for q in server.requests] == [("POST", "/agy/v1internal:loadCodeAssist"),
+                                                              ("POST", "/agy/v1internal:retrieveUserQuotaSummary")]
+      and all(q["auth"] == usage_digest("Bearer " + AGY_LOGIN) and q.get("body_length", 0) > 0 for q in server.requests), str(server.requests))
+check("usage antigravity: a profile without the file is no_login with how to log in",
+      acc2 is not None and acc2["status"] == "no_login" and code == 1, str(acc2))
+text = run(["antigravity"], ENV_AGY)[1]
+agy_titles = [line for line in text.splitlines() if line.startswith("antigravity")]
+check("usage antigravity: the table lists both accounts under one antigravity block",
+      agy_titles == ["antigravity \u00b7 Antigravity CLI"] and "@acc1" in text and "AI Pro" in text
+      and "5-hour Gemini" in text and "7-day Claude and GPT" in text and "75%" in text and "@acc2" in text
+      and "log in: ak antigravity @acc2" in text, text)
+for label, routes, want_status, want_text in (
+        ("the tier call refused (403)", {"/agy/v1internal:loadCodeAssist": {"status": 403, "json": {"error": {}}}}, "no_scope", "sign in again"),
+        ("the quota call failing (500)", dict(AGY_ROUTES, **{"/agy/v1internal:retrieveUserQuotaSummary": {"status": 500, "body": "x"}}), "error", "HTTP 500"),
+        ("a tier answer that is not JSON", {"/agy/v1internal:loadCodeAssist": {"body": "nope"}}, "error", "unexpected response shape"),
+        ("a quota answer without groups", dict(AGY_ROUTES, **{"/agy/v1internal:retrieveUserQuotaSummary": {"json": {"x": 1}}}), "error", "unexpected response shape"),
+        ("a quota answer with no group at all", dict(AGY_ROUTES, **{"/agy/v1internal:retrieveUserQuotaSummary": {"json": {"groups": []}}}), "unsupported", "no quota groups")):
+    server.set_routes(routes)
+    _c, mode_rows = rows_of(["antigravity", "@acc1"], ENV_AGY)
+    row = mode_rows[0] if mode_rows else {}
+    check("usage antigravity: %s -> %s" % (label, want_status),
+          row.get("status") == want_status and want_text in (row.get("error") or row.get("reason") or ""), str(row))
+server.set_routes(AGY_ROUTES)
+write(os.path.join(AGY_HOME, "antigravity-oauth-token"), json.dumps({"token": {"access_token": AGY_LOGIN, "expiry": usage.iso_utc(NOW - 5)}}))
+_c, expired_rows = rows_of(["antigravity", "@acc1"], ENV_AGY)
+check("usage antigravity: an expired login is reported without a request", expired_rows[0]["status"] == "expired", str(expired_rows[0]))
+write(os.path.join(AGY_HOME, "antigravity-oauth-token"), json.dumps({"auth_method": "consumer"}))
+_c, bare_rows = rows_of(["antigravity", "@acc1"], ENV_AGY)
+check("usage antigravity: a token file without an access token is no_login", bare_rows[0]["status"] == "no_login", str(bare_rows[0]))
+# The Keychain item of a `shared = true` login entry serves a profile too (one slot per machine).
+_ctx_profile = kinds.Context(MODEL.kind("antigravity"), env_for(), HOME, profile_dir=os.path.join(PROFILES, "antigravity", "acc2"))
+check("usage antigravity: a shared Keychain entry names the same item for a profile; a plain one applies to the default home only",
+      profiles.keychain_services([{"service": "gemini", "account": "antigravity", "shared": True}], _ctx_profile) == [("gemini", "antigravity")]
+      and profiles.keychain_services([{"service": "gemini", "account": "antigravity"}], _ctx_profile) == []
+      and profiles.keychain_services([{"service": "gemini", "account": "antigravity"}], kinds.Context(MODEL.kind("antigravity"), env_for(), HOME)) == [("gemini", "antigravity")])
+# macOS: the default home's login is an opaque Keychain item — connected, quota not readable
+saved_os, saved_has = usage.os_name, profiles.keychain_has
+usage.os_name = lambda: "macos"
+profiles.keychain_has = lambda entries, env, ctx=None: True
+INSTALLED.add("antigravity")
+try:
+    _c, mac_rows = rows_of(["antigravity", "@default"], env_for({"AGENTKIT_USAGE_URL_ANTIGRAVITY_QUOTA": server.base + "/agy"}))
+    mac = mac_rows[0] if mac_rows else {}
+    _c, mac_profile_rows = rows_of(["antigravity", "@acc2"], env_for({"AGENTKIT_USAGE_URL_ANTIGRAVITY_QUOTA": server.base + "/agy"}))
+    check("usage antigravity: on macOS a profile without a login file shares the machine's Keychain login (n/d, connected)",
+          mac_profile_rows and mac_profile_rows[0]["status"] == "unsupported" and mac_profile_rows[0].get("connected") is True, str(mac_profile_rows))
+    check("usage antigravity: on macOS a Keychain login is n/d but connected (the item is opaque)",
+          mac.get("status") == "unsupported" and mac.get("connected") is True and "Keychain" in (mac.get("reason") or ""), str(mac))
+    mac_text = run(["antigravity", "@default"], env_for({"AGENTKIT_USAGE_URL_ANTIGRAVITY_QUOTA": server.base + "/agy"}))[1]
+    check("usage antigravity: the macOS table row says logged in, not readable", "logged in: Keychain login; not readable" in mac_text, mac_text)
+    profiles.keychain_has = lambda entries, env, ctx=None: None
+    _c, off_rows = rows_of(["antigravity", "@default"], env_for({"AGENTKIT_USAGE_URL_ANTIGRAVITY_QUOTA": server.base + "/agy"}))
+    check("usage antigravity: when the Keychain cannot be asked the row is no_login, never a guess",
+          off_rows and off_rows[0]["status"] == "no_login", str(off_rows))
+finally:
+    usage.os_name, profiles.keychain_has = saved_os, saved_has
+    INSTALLED.discard("antigravity")
+secrecy = run(["antigravity", "-v"], ENV_AGY)
+check("usage antigravity: the planted tokens never reach the output",
+      AGY_LOGIN not in secrecy[1] + secrecy[2] and AGY_RENEWAL not in secrecy[1] + secrecy[2])
+shutil.rmtree(os.path.join(PROFILES, "antigravity"))
+server.set_routes({"/claude": {"json": WINDOWS_OK}, "/codex": {"json": WINDOWS_OK}, "/zai": {"json": ZAI_OK}})
 
 server.stop()
 if FAILS:

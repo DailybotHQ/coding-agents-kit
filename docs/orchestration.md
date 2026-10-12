@@ -96,8 +96,9 @@ to watch its own room and hand off **before** it runs dry, not after.
   `headroom / (1 + active leases)`, the lead's own leases counted, so the
   next lane never lands on an account the lead already handed out and several
   leads in one workspace never collide. Kinds with no readable quota (Grok,
-  Cursor, Antigravity) are reached with `--allow-unknown`, after every
-  measured account, verdict `unknown`.
+  Cursor; Antigravity only on macOS, where its login is a Keychain item)
+  are reached with `--allow-unknown`, after every measured account,
+  verdict `unknown`.
 - **Successor.** On a lane's handoff the lead picks a fresh account (`ak pick
   … --owner`, another vendor when the task allows; `--reuse @profile` when the
   successor may take over the spent lane's own account), leases it, and launches

@@ -118,11 +118,12 @@ class Failure(object):
     """A row-level outcome that stops the pipeline: a status and a one-line
     message that never contains a secret."""
 
-    def __init__(self, status, message, short=None):
+    def __init__(self, status, message, short=None, connected=None):
         assert status in STATUSES and status != "ok"
         self.status = status
         self.message = message
         self.short = short
+        self.connected = connected        # an `unsupported` failure may still say the account is connected
 
 
 class ShapeError(Exception):
@@ -154,6 +155,14 @@ class Adapter(object):
         resets_available). Never raises: an extra that is missing or odd is
         simply absent."""
         return {}
+
+    def fetch(self, row, cred, env, timeout):
+        """Optional transport of a source that needs more than one GET
+        (Antigravity: two POSTs). -> (status, bytes) like http_get, built
+        only from http_request so the same rules hold (no redirect, body
+        capped, loopback override, no secret in a message); None (the
+        default) leaves the pipeline's single GET in place."""
+        return None
 
 
 ADAPTERS = {}
@@ -444,7 +453,14 @@ def http_get(url, headers, timeout):
     """One GET: no redirect followed, body capped. -> (status, bytes).
     A failure carries a message built from the exception class only. A
     loopback URL (the test override) never goes through a proxy."""
-    request = urllib.request.Request(url, headers=headers, method="GET")
+    return http_request(url, headers, timeout)
+
+
+def http_request(url, headers, timeout, method="GET", body=None):
+    """One request (GET, or POST with a JSON body): no redirect followed,
+    body capped. -> (status, bytes). See http_get."""
+    data = body.encode("utf-8") if isinstance(body, str) else body
+    request = urllib.request.Request(url, data=data, headers=headers, method=method)
     handlers = [_NoRedirect()]
     if _is_loopback(url):
         handlers.append(urllib.request.ProxyHandler({}))
@@ -504,8 +520,31 @@ def credential_of(row, env, adapter):
         if isinstance(doc, Failure):
             return doc
     if doc is None:
+        opaque = _opaque_keychain_login(row, env)
+        if opaque is not None:
+            return opaque
         return Failure("no_login", "no login found for this profile", short="log in: %s" % _launch_hint(row))
     return adapter.credential_from_file(doc)
+
+
+def _opaque_keychain_login(row, env):
+    """A CLI whose macOS login is a Keychain item the kit cannot parse
+    (`keychain_opaque` in its usage table, with the login's Keychain entries
+    of `[clis.<cli>.login]`): when the item is there, the account is connected
+    but its quota is not readable here — an `unsupported` row that says so,
+    instead of a wrong `no login`. Only the presence is asked, never the
+    secret; None when the rule does not apply or the item is absent."""
+    reason = (row.spec or {}).get("keychain_opaque")
+    if not reason or os_name() != "macos" or row.ctx is None:
+        return None
+    entries = (row.ctx.kind.cli.get("login") or {}).get("keychain")
+    try:
+        present = profiles.keychain_has(entries, env, row.ctx)
+    except Exception:
+        present = None
+    if not present:
+        return None
+    return Failure("unsupported", reason, short="Keychain login; not readable", connected=True)
 
 
 def _launch_hint(row):
@@ -585,7 +624,11 @@ def evaluate(row, env, timeout, now):
     cred = credential_of(row, env, adapter)
     if isinstance(cred, Failure):
         if cred.status == "unsupported":
-            return _result(row, "unsupported", reason=cred.message, short=cred.short)
+            result = _result(row, "unsupported", reason=cred.message, short=cred.short)
+            if cred.connected is not None:
+                result["connected"] = bool(cred.connected)
+                result["_how"] = "logged in" if cred.connected else None
+            return result
         return _result(row, cred.status, error=cred.message, short=cred.short)
     if cred.expires_at is not None and cred.expires_at <= now:
         return _result(row, "expired", error="the login has expired; open this profile once to renew it",
@@ -598,9 +641,13 @@ def evaluate(row, env, timeout, now):
     headers.setdefault("user-agent", "agentkit/%s" % common.VERSION)
     seconds = request_timeout(row, timeout)
     try:
-        status, body = http_get(url, headers, seconds)
+        fetched = adapter.fetch(row, cred, env, seconds)
+        status, body = fetched if fetched is not None else http_get(url, headers, seconds)
     except HttpFailure as exc:
         return _result(row, "error", error=str(exc))
+    except (ValueError, ShapeError) as exc:
+        detail = " (%s)" % exc.__class__.__name__ if env.get("AGENTKIT_DEBUG") == "1" else ""
+        return _result(row, "error", error="unexpected response shape" + detail)
     if status in (301, 302, 303, 307, 308):
         return _result(row, "error", error="unexpected redirect")
     if status in (401, 403):
@@ -978,6 +1025,110 @@ class ZaiQuota(Adapter):
 register(ZaiQuota())
 
 
+class AntigravityQuota(Adapter):
+    """Antigravity CLI (agy) Google login: the account's quota the way agy's
+    own /usage panel shows it, in two POSTs to the Code Assist host written
+    in providers.toml: `loadCodeAssist` (the account's tier and its Cloud AI
+    Companion project, identifying as the Antigravity client by the metadata
+    and by a user agent that names antigravity-cli — any other identity gets
+    the generic tiers and a 403 on the quota) then `retrieveUserQuotaSummary`:
+    one group per family of models (`Gemini Models`, `Claude and GPT models`)
+    with a five-hour and a weekly bucket each. Every bucket is one window,
+    named by its period and the group (`5-hour Gemini`, `7-day Claude and
+    GPT`), the short window first as the other CLIs list theirs; `used_pct`
+    is 100 minus the vendor's remainingFraction, `resets_at` its resetTime.
+    The plan is the tier (`free`, `AI Pro`, …). The login is agy's token
+    file (Linux, containers: `antigravity-oauth-token` in its home); the
+    macOS Keychain item is an opaque blob the kit does not parse
+    (`keychain_opaque`). The refresh token in the file is never read beyond
+    parsing."""
+
+    id = "antigravity-quota"
+    LOAD = "/v1internal:loadCodeAssist"
+    QUOTA = "/v1internal:retrieveUserQuotaSummary"
+    METADATA = {"ideType": "ANTIGRAVITY", "pluginType": "GEMINI"}
+    TIERS = {"free-tier": "free", "g1-pro-tier": "AI Pro", "g1-ultra-tier": "AI Ultra", "standard-tier": "standard"}
+    WINDOWS = {"5h": (18000, "5-hour"), "daily": (86400, "1-day"), "weekly": (604800, "7-day")}
+
+    def credential_from_file(self, doc):
+        token = doc.get("token") if isinstance(doc, dict) else None
+        access = token.get("access_token") if isinstance(token, dict) else None
+        if not isinstance(access, str) or not access:
+            return Failure("no_login", "the login file holds no access token; sign in again", short="sign in again")
+        expiry = parse_time(token.get("expiry"))
+        return Credential(access, epoch_of(expiry) if expiry else None)
+
+    def fetch(self, row, cred, env, timeout):
+        base = resolve_url(row, env).rstrip("/")
+        headers = {k: v.replace("{token}", cred.token) for k, v in row.spec["headers"].items()}
+        headers.setdefault("user-agent", "agentkit/%s" % common.VERSION)
+        status, body = http_request(base + self.LOAD, headers, timeout, "POST", json.dumps({"metadata": self.METADATA}))
+        if status != 200:
+            return status, body
+        if len(body) > MAX_BODY:
+            raise ShapeError("response too large")
+        load = json.loads(body.decode("utf-8-sig"))
+        if not isinstance(load, dict):
+            raise ShapeError("loadCodeAssist is not an object")
+        project = load.get("cloudaicompanionProject")
+        request = {"project": project} if isinstance(project, str) and project else {}
+        status, body = http_request(base + self.QUOTA, headers, timeout, "POST", json.dumps(request))
+        if status != 200:
+            return status, body
+        if len(body) > MAX_BODY:
+            raise ShapeError("response too large")
+        quota = json.loads(body.decode("utf-8-sig"))
+        if not isinstance(quota, dict):
+            raise ShapeError("retrieveUserQuotaSummary is not an object")
+        merged = {"tier": load.get("currentTier"), "groups": quota.get("groups")}
+        return 200, json.dumps(merged).encode("utf-8")
+
+    @staticmethod
+    def _used(entry):
+        remaining = entry.get("remainingFraction")
+        if remaining is None:
+            remaining = 1.0          # the vendor omits a full bucket's fraction
+        if isinstance(remaining, bool) or not isinstance(remaining, (int, float)) or not math.isfinite(float(remaining)):
+            raise ShapeError("remainingFraction is not a number")
+        return (1.0 - float(remaining)) * 100.0
+
+    def parse(self, doc):
+        groups = doc.get("groups") if isinstance(doc, dict) else None
+        if not isinstance(groups, list):
+            raise ShapeError("no groups")
+        tier = doc.get("tier") if isinstance(doc.get("tier"), dict) else {}
+        tier_id = tier.get("id") if isinstance(tier.get("id"), str) else None
+        plan = self.TIERS.get(tier_id) or (tier.get("name") if isinstance(tier.get("name"), str) else None) or tier_id
+        windows, seen = [], {}
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("buckets", []), list):
+                raise ShapeError("group is not an object with buckets")
+            name = group.get("displayName") if isinstance(group.get("displayName"), str) else ""
+            family = re.sub(r"\s+models?$", "", name.strip(), flags=re.IGNORECASE) or "all models"
+            entries = []
+            for entry in group.get("buckets", []):
+                if not isinstance(entry, dict):
+                    raise ShapeError("bucket is not an object")
+                seconds, period = self.WINDOWS.get(entry.get("window"), (None, None))
+                if period is None:
+                    period = clean_text(str(entry.get("window") or "limit"), 16)
+                wid = entry.get("bucketId") if isinstance(entry.get("bucketId"), str) and entry.get("bucketId") else None
+                wid = wid or (re.sub(r"[^a-z0-9]+", "-", ("%s-%s" % (family, period)).lower()).strip("-") or "bucket")
+                entries.append((seconds or 0, wid, "%s %s" % (period, family), self._used(entry), parse_time(entry.get("resetTime")), seconds))
+            entries.sort(key=lambda e: e[0])
+            for _order, wid, label, used, resets, seconds in entries:
+                seen[wid] = seen.get(wid, 0) + 1
+                if seen[wid] > 1:
+                    wid = "%s-%d" % (wid, seen[wid])
+                windows.append(window(wid, label, used, resets, seconds))
+        if not windows:
+            raise NoQuota("the account reports no quota groups")
+        return plan, windows
+
+
+register(AntigravityQuota())
+
+
 # ------------------------------------------------------------- rendering
 
 def _relative(iso, now):
@@ -1056,22 +1207,19 @@ def _note(r, verbose):
 def render_table(results, platform, color, now, verbose=False, names=None):
     """The human table, one block per CLI or provider: a title line
     (`claude · Claude Code`), its accounts indented under one shared header,
-    and a blank line between blocks. Without -v it fits the terminal: rows
-    with no readable quota (n/d) fold into one closing line grouped by cause,
-    and a problem row shows its status and a few-word note. -v lists every
-    row with its full note. Pipes and files are never cut (no width).
+    and a blank line between blocks. Every account is listed under its CLI,
+    quota or not: a row with no readable quota shows `n/d` and how it is
+    connected (`logged in`, `XAI_API_KEY set`) with the few-word reason, and
+    one with no login shows `no login` and how to log in, so the table also
+    answers which accounts are connected. Without -v it fits the terminal
+    (a problem row shows its status and a few-word note); -v gives every row
+    its full note. Pipes and files are never cut (no width).
     names: {cli or provider id: display name} for the titles."""
     utf8 = platform.utf8_stdout()
     width = None if verbose else platform.columns
     names = names or {}
-    every_nd = all(r["status"] == "unsupported" for r in results)
-    fold = not verbose and not every_nd
-    groups, folded = [], []          # [(cli, [(cells, note)], hint)]
-    linked = []                      # n/d but connected: listed at the very end
+    groups = []                      # [(cli, [(cells, note)], hint)]
     for r in results:
-        if r["status"] == "unsupported" and fold:
-            (linked if r.get("connected") else folded).append(r)
-            continue
         if not groups or groups[-1][0] != r["cli"]:
             groups.append((r["cli"], [], []))
         lines, hints = groups[-1][1], groups[-1][2]
@@ -1094,6 +1242,10 @@ def render_table(results, platform, color, now, verbose=False, names=None):
                     hints.append(RESET_HINT)
         elif r["status"] == "ok":
             lines.append((base + ["-"], "no windows reported"))
+        elif r["status"] == "unsupported" and r.get("connected") is False:
+            who = r["cli"] if r["profile"] == "@default" else "%s %s" % (r["cli"], r["profile"])
+            sep = " \u00b7 " if utf8 else " - "
+            lines.append((base + [_paint("no login", "33", color)], "log in: ak %s%s%s" % (who, sep, _note(r, verbose))))
         elif r["status"] == "unsupported":
             how = (r.get("_how") or "") + (": " if r.get("_how") else "")
             lines.append((base + [_paint("n/d", "2", color)], how + _note(r, verbose)))
@@ -1121,28 +1273,7 @@ def render_table(results, platform, color, now, verbose=False, names=None):
             title += _paint("   " + "; ".join(hints), "2", color)
         out.append(title)
         out.extend(render(cells, note) for cells, note in lines)
-    if linked:
-        out.append("")
-        out.extend(_linked_lines(linked, width, color, utf8))
-    if folded:
-        out.append("")
-        out.extend(_folded_lines(folded, width, color))
     return "\n".join(out) + "\n"
-
-
-def _linked_lines(rows, width, color, utf8):
-    """The accounts that are connected (a login or a key) but expose no quota
-    to read: still worth seeing, so they close the table in a block of their
-    own — CLI, profile, how it is connected, why there is no number."""
-    sep = " \u00b7 " if utf8 else " - "
-    cells = [(r["cli"], r["profile"], r.get("_how") or "connected", _note(r, False)) for r in rows]
-    widths = [max(len(c[i]) for c in cells) for i in range(3)]
-    out = [_paint("connected", "1", color) + _paint(sep + "no quota to read", "2", color)]
-    for cli, profile, how, note in cells:
-        lead = " " * INDENT + "  ".join(v + " " * (w - len(v)) for v, w in zip((cli, profile, how), widths))
-        room = max(width - len(lead) - 2, NOTE_MIN) if width else None
-        out.append((lead + "  " + _paint(_fit(note, room), "2", color)).rstrip())
-    return out
 
 
 def display_names(model):
@@ -1150,37 +1281,6 @@ def display_names(model):
     names = {c: d.get("name") for c, d in model.clis.items()}
     names.update({p: d.get("name") for p, d in model.providers.items()})
     return {k: v for k, v in names.items() if v}
-
-
-def _folded_lines(rows, width, color):
-    """`n/d  cursor (web session only) · grok (per-session only)`, wrapped
-    to the terminal, grouped by note so CLIs that share a cause share it."""
-    groups = []
-    for r in rows:
-        who = r["cli"] if r["profile"] == "@default" else "%s %s" % (r["cli"], r["profile"])
-        note = _note(r, False)
-        for entry in groups:
-            if entry[0] == note:
-                entry[1].append(who)
-                break
-        else:
-            groups.append([note, [who]])
-    parts = ["%s (%s)" % (", ".join(names), note) if note else ", ".join(names) for note, names in groups]
-    prefix, indent = "n/d  ", "     "
-    lines, current = [], ""
-    limit = width or 0
-    for part in parts:
-        candidate = part if not current else current + " \u00b7 " + part
-        if limit and current and len(prefix) + len(candidate) > limit:
-            lines.append(current)
-            current = part
-        else:
-            current = candidate
-    lines.append(current)
-    lines = [(prefix if i == 0 else indent) + _fit(line, (limit - len(prefix)) if limit else None)
-             for i, line in enumerate(lines)]
-    lines.append(_paint(indent + "ak usage -v for every row and its reason", "2", color))
-    return [_paint(line, "2", color) if i < len(lines) - 1 else line for i, line in enumerate(lines)]
 
 
 def _visible(text):

@@ -4,7 +4,8 @@ Importable (`FakeUsageServer`) and runnable:
 
     python3 fake_usage_server.py --routes ROUTES.json --port-file PORT --log LOG
 
-Routes map a path to {"status": 200, "json": {...}} or {"body": "text"}, with
+Routes map a path to {"status": 200, "json": {...}} or {"body": "text"} (GET
+and POST alike; a POST body is read and only its length logged), with
 optional "delay" (seconds), "headers", "redirect" (a Location) and
 "by_bearer" ({token: route keys to override for that credential}). The routes
 file is re-read on every request, so a test can change the mode while the
@@ -40,9 +41,20 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return server.routes
 
     def do_GET(self):
+        self._serve("GET")
+
+    def do_POST(self):
+        # The body is read and its length logged, never its content.
+        length = int(self.headers.get("Content-Length") or 0)
+        body = self.rfile.read(length) if length else b""
+        self._serve("POST", len(body))
+
+    def _serve(self, method, body_length=None):
         auth = self.headers.get("Authorization", "")
-        entry = {"path": self.path, "method": "GET", "auth": digest(auth) if auth else "",
+        entry = {"path": self.path, "method": method, "auth": digest(auth) if auth else "",
                  "headers": sorted(k.lower() for k in self.headers.keys())}
+        if body_length is not None:
+            entry["body_length"] = body_length
         self.server.requests.append(entry)
         if self.server.log_file:
             with open(self.server.log_file, "a", encoding="utf-8") as handle:

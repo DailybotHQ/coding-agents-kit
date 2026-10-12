@@ -36,9 +36,9 @@ CONTINUE_STRATEGIES = ("cline-history",)
 # `ak usage` sources: the parser ids lib/usage.py implements. A usage table
 # may only name one of these; adding an adapter means a parser, a fixture and
 # a test (docs/kinds.md, "Usage sources").
-USAGE_ADAPTERS = ("anthropic-oauth", "chatgpt-wham", "zai-quota")
-USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "keychain_profile", "timeout_s", "note",
-              "unsupported", "short")
+USAGE_ADAPTERS = ("anthropic-oauth", "chatgpt-wham", "zai-quota", "antigravity-quota")
+USAGE_KEYS = ("adapter", "url", "headers", "credential", "files", "keychain", "keychain_profile", "keychain_opaque",
+              "timeout_s", "note", "unsupported", "short")
 USAGE_SHORT_MAX = 32  # the table's few-word note; the full reason stays in --json and -v
 USAGE_CREDENTIALS = ("file", "env", "keychain", "cli")
 LEASES = ("shared", "exclusive")   # ak lease: how many holders an account takes
@@ -226,10 +226,11 @@ class Model(object):
                 bad("%s.install: %s" % (where, problem))
             keychain = cli.get("login", {}).get("keychain", [])
             if not isinstance(keychain, list) or not all(isinstance(e, dict) and isinstance(e.get("service"), str)
-                                                         and e["service"] and set(e) <= {"service", "account", "profile"}
-                                                         and e.get("profile", True) is True
+                                                         and e["service"] and set(e) <= {"service", "account", "profile", "shared"}
+                                                         and e.get("profile", True) is True and e.get("shared", True) is True
+                                                         and not (e.get("profile") and e.get("shared"))
                                                          for e in keychain):
-                bad("%s.login.keychain: a list of { service, account?, profile? } tables" % where)
+                bad("%s.login.keychain: a list of { service, account?, profile? | shared? } tables" % where)
             for ref in (cli.get("login", {}).get("files", []) + cli.get("login", {}).get("token_files", [])
                         + cli.get("hooks", {}).get("files", [])):
                 if ref.split(":", 1)[0] not in roots:
