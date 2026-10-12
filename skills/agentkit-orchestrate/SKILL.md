@@ -1,7 +1,7 @@
 ---
 name: agentkit-orchestrate
 description: Run several terminal coding agents at once across the user's accounts and vendors with coding-agents-kit (`ak`) — take inventory of every account's quota, pick the accounts with room (`ak pick --count`), give each writing agent its own git worktree, fan out headless runs (`ak run`), fail over when an account hits a limit, verify every result before merging, and report what was spent. Use when the user asks to split work across several agents or accounts, to run agents in parallel, to get a second opinion from another vendor, to spread a long task over their accounts, or to know which accounts can take the next batch.
-version: "0.6.0"
+version: "0.6.1"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
@@ -102,13 +102,15 @@ checks its **own** room at task boundaries and hands off before it runs dry:
 ```bash
 ak capacity --self --json               # capacity-v1: verdict ok|low|critical|unknown, headroom_pct, resets_at
 ak lease codex @work1 --owner local:w1:p2 --ttl 4h --purpose api-lane
-ak pick codex --owner local:w1:p1 --count 2 --json   # skips Codex accounts leased to others
+ak pick codex --owner local:w1:p1 --count 2 --json   # skips Codex accounts leased to anyone, yours too
+ak pick grok --allow-unknown --owner local:w1:p1     # no readable quota: chosen last, verdict unknown
 ak lease release codex @work1 --owner local:w1:p2
 ```
 
 - **When:** before each task, after any step longer than 20 minutes, and
   whenever the CLI shows a limit warning. `--self` reads the account `ak`
-  launched you on (exit 3 outside an `ak` launch: name it instead). A fresh
+  launched you on — Codex lanes included, whose shells run from the
+  app-server daemon (exit 3 outside an `ak` launch: name it instead). A fresh
   reading comes from the cache (usage numbers only; `ak usage` is the only
   command that always reads live), so this is cheap — still never in a loop
   or on a timer.
@@ -122,9 +124,14 @@ ak lease release codex @work1 --owner local:w1:p2
 - **Leases:** the lead leases the account it gives each lane (`--owner` its
   pane address) and releases it when the lane is done or handed off. Codex
   takes one lease (one writer per `auth.json`); other accounts take several,
-  and `ak pick --owner` ranks them by `headroom / (1 + others' leases)`.
+  and `ak pick --owner` ranks them by `headroom / (1 + active leases)` —
+  your own leases count too, so the next lane never lands on an account you
+  already handed out. Grok, Cursor and Antigravity have no readable quota:
+  `ak pick <kind> --allow-unknown` reaches them, after every measured
+  account, with verdict `unknown`.
 - **Successor:** the lead picks an account with `ak pick <kind> --owner
-  <lead>` (prefer another vendor when the task allows), leases it, and
+  <lead>` (prefer another vendor when the task allows; `--reuse @profile`
+  when the successor may take over the lane's own account), leases it, and
   launches the successor in the same checkout to resume from the note.
 - **The pool:** work moves only among accounts the developer declared for
   the work, within each vendor's terms; agents never create accounts, renew

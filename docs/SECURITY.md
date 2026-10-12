@@ -121,10 +121,15 @@ profile and its headroom, nothing else.
   plan name and the row status; never a token, key, key name or path. Only
   `ok` and `rate_limited` readings are kept. `ak usage` is the only command
   that always reads live.
-- **`ak capacity --self`** trusts only the marker `ak` sets for the CLI it
+- **`ak capacity --self`** trusts the marker `ak` sets for the CLI it
   launches (`AGENTKIT_ACTIVE_ACCOUNT=<kind>/@<profile>`: a kind and a profile
-  name, no path or secret; `ak env` never prints it). Outside an `ak` launch
-  it refuses (exit 3) instead of guessing.
+  name, no path or secret; `ak env` never prints it; for a reused Codex
+  daemon it travels as a per-session config override on the command line,
+  which holds the same two names). Without it, only a CLI home variable that
+  names a directory exactly `<profiles root>/<cli>/<name>` (real paths
+  compared) identifies the account; the default home, a path outside the
+  tree, or two candidates refuse (exit 3) instead of guessing. The value is
+  read as a path and never printed.
 - **Drill cap** (`AGENTKIT_CAPACITY_CAP`): lower-only by construction
   (`min(real, cap)`); an invalid value is exit 2, so it never fails open.
 - **Leases** (`<state>/leases/leases.json`, `0600`): advisory records —
@@ -170,11 +175,15 @@ account's quota from it.
 
 On explicit request only (`--trust-cwd`, `AGENTKIT_TRUST_CWD=1`), `ak`
 writes one entry into the profile's own CLI config — Claude's
-`.claude.json` (`projects[<folder>].hasTrustDialogAccepted`) or Codex's
-`config.toml` (`[projects."<folder>"] trust_level = "trusted"`) — so the CLI
-skips its folder-trust screen for that folder. The write is atomic, keeps
-every other key and the file mode, never rewrites an existing Codex table,
-and happens nowhere else. It does not change the permission posture and
+`.claude.json` (`projects[<folder>].hasTrustDialogAccepted`), Codex's
+`config.toml` (`[projects."<folder>"] trust_level = "trusted"`) or Grok's
+`trusted_folders.toml` (`[folders."<repository root>"] trusted = true`) — so
+the CLI skips its folder-trust screen for that folder. Grok's entry names
+the repository's main working tree, the folder Grok itself asks about, found
+from git's own files without running anything. The write is atomic, keeps
+every other key and the file mode (a new file is `0600`), never rewrites an
+existing Codex or Grok table, refuses a link that leaves the profile, and
+happens nowhere else. It does not change the permission posture and
 never answers the bypass-permissions acknowledgement or any other screen.
 No agent ever answers Claude's bypass-permissions acknowledgement: it is a
 one-time step the developer takes per profile. The orchestration skill lets

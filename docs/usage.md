@@ -203,8 +203,8 @@ pick` ranks first. See [Profiles](profiles.md#a-default-profile-per-cli).
 
 ```
 ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S]
-        [--json] [--timeout SECONDS]
+        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR [--reuse @profile]...]
+        [--max-age S] [--json] [--timeout SECONDS]
 ```
 
 `ak pick` reads the same rows as `ak usage` — same enumeration, filter and
@@ -214,6 +214,12 @@ file); a reading younger than `--max-age` comes from the
 [usage cache](#the-usage-cache) — and returns the account with the most usable
 room for a kind. `<kind-or-cli>` resolves as in `ak usage` (`claude-glm`
 selects the Z.AI rows); `@profile` turns it into a check of one account.
+Since 0.6.1 each profile is **one account**, the one the launch uses — the
+same resolution as `ak capacity` and `ak lease`: when several rows match
+(an xAI key makes `grok @default` match the grok login and the key), the
+row of the named CLI or provider itself wins (`grok @default` is the grok
+login; `ak pick xai` reaches the key), else, for a kind served by a provider
+key, the provider's row (`claude-glm @work` is `zai @work`).
 
 The policy, in plain words:
 
@@ -221,7 +227,10 @@ The policy, in plain words:
    `rate_limited` and `error` rows are left out with that status as the
    reason. `unsupported` rows are left out (`no readable quota`) unless
    `--allow-unknown`, which admits the connected ones after every measured
-   account.
+   account (verdict `unknown`). When only such accounts were refused, the
+   warning names `--allow-unknown`. This is the path for Grok, Cursor and
+   Antigravity lanes: capacity unknown means *continue, and hand off on the
+   CLI's own limit warning*.
 2. **Which windows count.** Every window without a model scope (`5h`, `7d`,
    the provider's windows). A model-only window (`7d-<model>`) counts only
    when `--model` names that model. So without `--model`, a Team account
@@ -241,9 +250,15 @@ The policy, in plain words:
    never count as headroom.
 7. **Leases** ([`ak lease`](#leases-ak-lease)). Every candidate shows
    `leases`, the active leases on that account. With `--owner ADDR` they also
-   count: a Codex account leased to another owner is left out (`leased to …
-   until …`), and the rest rank by `headroom / (1 + leases held by others)`,
-   so lanes spread over the accounts instead of piling on one. Without
+   count — **all of them, the owner's own included** (since 0.6.1): a lead
+   that leases each lane's account under its own address must not get back
+   an account it already handed out. A Codex account leased to anyone, the
+   owner too, is left out (`leased to … until …`; for the owner's own lease
+   the reason names `--reuse`), and the rest rank by
+   `headroom / (1 + active leases)`, so lanes spread over the accounts
+   instead of piling on one. `--reuse @profile` (repeatable) hands the
+   owner's own lease on that account on — it neither blocks nor counts —
+   e.g. to relaunch a lane's successor on the account it held. Without
    `--owner` the ranking is unchanged.
 8. **Drill cap.** `AGENTKIT_CAPACITY_CAP` lowers an account's headroom the
    same way it does for [`ak capacity`](#capacity-of-one-account-ak-capacity)
@@ -257,9 +272,10 @@ The policy, in plain words:
 | `--count N` | up to N distinct accounts, best first (1-16, default 1); a warning when fewer qualify |
 | `--exclude @name` | leave an account out (repeatable), e.g. one already busy |
 | `--allow-unknown` | connected accounts with no readable quota may be chosen, last |
-| `--owner ADDR` | choose for this lease holder: skip Codex accounts leased to others, rank by headroom / (1 + others' leases) |
+| `--owner ADDR` | choose for this lease holder: skip Codex accounts leased to anyone, rank by headroom / (1 + active leases) |
+| `--reuse @name` | with `--owner`: the owner's own lease on `@name` neither blocks nor counts (repeatable) |
 | `--max-age S` | reuse a cached reading up to S seconds old (default 300; 0 = always live) |
-| `--json` | one object, schema `pick-v1` ([`schema/pick-v1.json`](schema/pick-v1.json)); since 0.6.0 `owner`, and per candidate `leases` and `capped` |
+| `--json` | one object, schema `pick-v1` ([`schema/pick-v1.json`](schema/pick-v1.json)); since 0.6.0 `owner`, and per candidate `leases` and `capped`; since 0.6.1 `reuse`, and per candidate `verdict` (`ak capacity`'s rule) |
 | `--timeout SECONDS` | per request, as `ak usage` |
 
 The text output is one line per chosen account:
@@ -363,9 +379,17 @@ claude @work1  ok  64% free  binding 5h  resets in 2h 10m  cached 42s ago
 - **`--self`** reads the account this process runs on: every `ak` launch
   (`ak <kind>`, `ak run`), `@default` included, sets
   `AGENTKIT_ACTIVE_ACCOUNT=<kind>/@<profile>` for the CLI it starts, so an
-  agent inside it runs `ak capacity --self`. A process not launched by `ak`
-  gets exit 3, "unknown account" — never a guess. (`AGENTKIT_ACTIVE_PROFILE`,
+  agent inside it runs `ak capacity --self`. (`AGENTKIT_ACTIVE_PROFILE`,
   set for named profiles since 0.1, is still read as a fallback.)
+  **Codex** runs its tool shells from an app-server daemon that keeps the
+  environment of whoever started it, not of the launch. Since 0.6.1 an
+  interactive `ak codex` that reuses a daemon running here passes the marker
+  for the session (`-c shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT=…`,
+  [Profiles](profiles.md#codex-and-its-app-server-daemon)); and with no
+  marker at all, `--self` takes the account from a CLI home variable that
+  names a profile directory inside `ak`'s own tree (`CODEX_HOME=<profiles>/codex/work1`
+  is `codex @work1`). The CLI's default home, a folder outside the tree, or
+  two such variables at once: exit 3, "unknown account" — never a guess.
 - **Exit codes:** 0 for every reading — the verdict is in the output, not
   the exit code · 2 usage or an invalid threshold or cap · 3 unknown account
   or nothing matches · ≥ 64 internal.

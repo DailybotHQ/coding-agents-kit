@@ -47,6 +47,13 @@ lane's own worktree, on a pane the lead launched itself.
 | Claude: "Do you trust the files in this folder?" (No, exit preselected) | select "Yes, I trust this folder", then Enter |
 | Codex: "Trust this folder?" | select the trust option, then Enter |
 
+Grok ("Do you trust the contents of this directory?") names the
+repository's main working tree, not the lane's worktree: it is not the
+screen of the lane's own worktree, so never answer it. `ak grok … --trust-cwd`
+(ak 0.6.1 and later) pre-trusts that folder; with an older `ak`, launch Grok
+from the repository root, or treat the screen as blocked and reroute the
+lane to another vendor.
+
 Send the fewest keys that answer it with `herdr agent send-keys` (Herdr's
 own skill defines the key names), then `herdr pane read <pane>` again to
 confirm the agent moved on, and record it in your report to the user.

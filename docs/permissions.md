@@ -60,7 +60,7 @@ the default.
 
 A new account opened in a new folder stops at its CLI's folder-trust screen
 (Claude: "Do you trust the files in this folder?", Codex: "Trust this
-folder?"). `--trust-cwd` on `ak <kind>` or `ak run`, or
+folder?", Grok: "Do you trust the contents of this directory?"). `--trust-cwd` on `ak <kind>` or `ak run`, or
 `AGENTKIT_TRUST_CWD=1` in the environment (inherited by nested `ak`), marks
 the launch folder (`--cwd` for `ak run`) as trusted in that profile's own
 config before the CLI starts:
@@ -69,6 +69,15 @@ config before the CLI starts:
 | --- | --- | --- |
 | Claude Code | `.claude.json` at the account root (the profile directory; `CLAUDE_CONFIG_DIR` or `~` for `@default`) | `projects["<folder>"].hasTrustDialogAccepted = true`, every other key kept |
 | Codex | `config.toml` in the profile (`CODEX_HOME`) | `[projects."<folder>"]` `trust_level = "trusted"`, appended only when that table is absent |
+| Grok | `trusted_folders.toml` in the profile (`GROK_HOME`, `~/.grok` for `@default`) | `[folders."<repository root>"]` `trusted = true`, `decided_at = <epoch seconds>`, appended only when that table is absent (since 0.6.1) |
+
+Grok asks about the **repository**, not the folder it starts in: the main
+working tree of the git repository around the folder — from a linked
+worktree (`git worktree add`), the repository the worktree belongs to — and
+the folder itself outside a repository. A trusted parent folder does not
+count. `ak` finds that root from the files git writes (`.git`, a worktree's
+`commondir`; no `git` executable needed); a worktree link it cannot read
+leaves the worktree itself, never a guessed parent.
 
 Opt-in only: no flag, no write. Idempotent; one stderr line names the file
 it changed. Other CLIs: a note and no write. It answers no other screen and

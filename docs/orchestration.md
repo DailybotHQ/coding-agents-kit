@@ -92,10 +92,15 @@ to watch its own room and hand off **before** it runs dry, not after.
   <lead-pane>` for each lane's account and `ak lease release …` when the lane
   ends. Codex takes one lease (one writer per `auth.json`); other accounts take
   several. `ak pick <kind> --owner <lead-pane> --count N` skips Codex accounts
-  leased to other leads and ranks the rest by `headroom / (1 + others'
-  leases)`, so several leads in one workspace never collide.
+  leased to anyone — the lead itself included — and ranks the rest by
+  `headroom / (1 + active leases)`, the lead's own leases counted, so the
+  next lane never lands on an account the lead already handed out and several
+  leads in one workspace never collide. Kinds with no readable quota (Grok,
+  Cursor, Antigravity) are reached with `--allow-unknown`, after every
+  measured account, verdict `unknown`.
 - **Successor.** On a lane's handoff the lead picks a fresh account (`ak pick
-  … --owner`, another vendor when the task allows), leases it, and launches
+  … --owner`, another vendor when the task allows; `--reuse @profile` when the
+  successor may take over the spent lane's own account), leases it, and launches
   the successor in the same checkout to resume from the note; it releases the
   spent account's lease once the successor has taken over.
 - **Drill it.** `AGENTKIT_CAPACITY_CAP=@work1=8` makes `@work1` read
@@ -139,7 +144,9 @@ plan's pre-authorization) is the standing grant the lead relies on.
    acknowledgement. No agent ever answers that screen.
 2. **Launch so nothing stops:** `ak <kind> @account --trust-cwd` in the
    lane's worktree (or `ak run … --cwd <worktree> --trust-cwd`) pre-trusts
-   the folder in that account's config. No per-launch approval is needed.
+   the folder in that account's config (Claude, Codex, and since 0.6.1 Grok,
+   which asks about the repository's main working tree even from a linked
+   worktree). No per-launch approval is needed.
 3. **Detect:** `herdr agent list` shows a lane `blocked` (or `idle` with no
    output); `herdr pane read <pane>` shows which screen.
 4. **The one keystroke allowed:** only when `--trust-cwd` was unavailable,
