@@ -60,16 +60,7 @@ _pct = pick._pct
 thresholds = pick.thresholds      # one definition, shared with ak pick's cap rule
 
 
-def verdict(status, headroom, low, critical):
-    if status == "rate_limited":
-        return "critical"
-    if headroom is None:
-        return "unknown"
-    if headroom <= critical:
-        return "critical"
-    if headroom <= low:
-        return "low"
-    return "ok"
+verdict = pick.verdict                # one rule for ak capacity and ak pick's candidates
 
 
 def self_account(env, model=None):
@@ -123,12 +114,8 @@ def assess(row, opts, caps, low, critical, leases, now):
     cand = pick.evaluate(row, opts["model"], pick.DEFAULT_RESERVE, (), now)
     cap = pick.apply_cap(cand, caps, low)
     headroom = cand["headroom_pct"]
-    result = verdict(row["status"], headroom, low, critical)
-    if cap is not None and headroom is None and result == "unknown":
-        # lower-only: an unmeasured account may be marked poor, never rich
-        capped = verdict(row["status"], cap, low, critical)
-        if capped in ("low", "critical"):
-            result = capped
+    # lower-only: an unmeasured account may be marked poor by a cap, never rich
+    result = pick.verdict(row["status"], headroom, low, critical, cap)
     held = [r for r in leases if r["cli"] == row["cli"] and r["profile"] == row["profile"]]
     return {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": usage.iso_utc(now),
             "kind": opts["target"], "cli": row["cli"], "profile": row["profile"], "status": row["status"],
@@ -226,9 +213,7 @@ def main(model, args, env, now=None, stdout=None):
     if not rows:
         raise AkError("unknown account: no %s account %s. Try: ak usage %s"
                       % (opts["target"], opts["profile"], opts["target"]), EXIT_NOT_READY)
-    if len(rows) > 1:
-        raise AkError("%s %s names %d accounts (%s); name one with its CLI or provider"
-                      % (opts["target"], opts["profile"], len(rows), ", ".join("%s %s" % (r.cli, r.profile) for r in rows)))
+    rows = [usage.account_row(model, rows, opts["target"], "capacity")]
     row = usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"])[0]
     doc = assess(row, opts, caps, low, critical, lease.active(env, now), now)
     if opts["json"]:

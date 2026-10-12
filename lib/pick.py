@@ -1,5 +1,6 @@
 """`ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-[--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S] [--json] [--timeout SECONDS]`
+[--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR [--reuse @profile]...] [--max-age S] [--json]
+[--timeout SECONDS]`
 — the account(s) with the most usable headroom for a kind.
 
 It reads the same rows as `ak usage` (same enumeration, filter and parallel
@@ -20,8 +21,14 @@ documented policy (docs/usage.md#choosing-an-account):
   ("spend what expires first"), then providers.toml and profile order;
 - AGENTKIT_CAPACITY_CAP lowers a headroom to min(real, cap), never raises it
   (`cap_of`/`apply_cap`, shared with `ak capacity`);
-- with --owner, an account leased exclusively (Codex) to another owner is
-  excluded and the rest rank by headroom / (1 + leases held by others).
+- with --owner, an account leased exclusively (Codex) to anyone, the owner
+  included, is excluded and the rest rank by headroom / (1 + its active
+  leases): a lead that leases every lane under its own address must not get
+  an account it already handed out. `--reuse @profile` exempts the owner's
+  own lease on that account (handing it on, e.g. to a successor);
+- every candidate carries `verdict` (ok, low, critical, unknown: ak
+  capacity's rule), so an unknown-capacity account chosen with
+  --allow-unknown says so.
 
 `choose()` is pure (rows in, decision out) so the policy is tested without a
 network. Portable: no OS-specific code.
@@ -47,7 +54,8 @@ LONG_SECONDS = 7 * 86400
 SCOPED = re.compile(r"^(5h|7d)-(.+)$")
 
 USAGE = """usage: ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-               [--count N] [--exclude @profile]... [--allow-unknown] [--json] [--timeout SECONDS]
+               [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR [--reuse @profile]...]
+               [--max-age S] [--json] [--timeout SECONDS]
 The account(s) with the most usable headroom for a kind, from the same rows as
 ak usage (read-only: no login is refreshed, no reset is spent).
   --model NAME      model-scoped weekly windows of that model also govern (fable, opus, ...)
@@ -56,8 +64,10 @@ ak usage (read-only: no login is refreshed, no reset is spent).
   --count N         up to N distinct accounts, best first (default 1, max 16)
   --exclude @name   leave an account out (repeatable), e.g. one already busy
   --allow-unknown   connected accounts with no readable quota may be chosen, last
-  --owner ADDR      choose for this lease owner: skip Codex accounts leased to others,
-                    rank by headroom / (1 + leases held by others) (see ak lease)
+  --owner ADDR      choose for this lease owner: skip Codex accounts leased to anyone,
+                    rank by headroom / (1 + active leases) (see ak lease)
+  --reuse @name     with --owner: the owner's own lease on @name neither blocks nor
+                    counts (handing that account on, e.g. to a successor); repeatable
   --max-age S       use cached usage up to S seconds old (default 300; 0 = always live)
 Exit: 0 chosen · 1 none qualifies (the soonest reset is named) · 2 usage · 3 nothing matches
 """
@@ -181,6 +191,24 @@ def thresholds(env, low=None, critical=None):
     return low, critical
 
 
+def verdict(status, headroom, low=DEFAULT_LOW, critical=DEFAULT_CRITICAL, cap=None):
+    """ak capacity's verdict for one reading: critical when rate limited or
+    at/below critical, low at/below low, ok above, unknown with no headroom;
+    an unmeasured account capped at/below low reads as the cap (lower-only)."""
+    def of(room):
+        if status == "rate_limited":
+            return "critical"
+        if room is None:
+            return "unknown"
+        if room <= critical:
+            return "critical"
+        return "low" if room <= low else "ok"
+    result = of(headroom)
+    if cap is not None and headroom is None and result == "unknown" and of(cap) in ("low", "critical"):
+        result = of(cap)
+    return result
+
+
 def _cap_owner(model, name):
     """The usage-row owner a cap's CLI part names: a CLI or provider as is; a
     kind -> its provider's rows when the provider has a usage table, else its
@@ -246,19 +274,21 @@ def apply_cap(cand, caps, low=DEFAULT_LOW, needs=()):
 
 
 def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude=(), allow_unknown=False, now=0,
-           caps=(), leases=None, owner=None, low=DEFAULT_LOW):
+           caps=(), leases=None, owner=None, low=DEFAULT_LOW, reuse=(), critical=DEFAULT_CRITICAL):
     """The decision over usage-v1 rows (already in providers.toml + profile
     order). Returns (chosen, candidates, soonest_reset). `leases` (active
     lease records) adds `leases` to each candidate; with `owner` it also
-    excludes accounts leased exclusively to others and divides headroom by
-    1 + leases held by others."""
+    excludes accounts leased exclusively to anyone (the owner included) and
+    divides headroom by 1 + the active leases, except the owner's own lease on
+    a profile in `reuse`."""
     cands = []
     for index, row in enumerate(rows):
         if row["profile"] in exclude:
             continue
         cand = evaluate(row, model, reserve, needs, now)
         cand["_order"] = index
-        apply_cap(cand, caps, low, needs)
+        cap = apply_cap(cand, caps, low, needs)
+        cand["verdict"] = verdict(row["status"], cand["headroom_pct"], low, critical, cap)
         if (allow_unknown and cand["_unknown"] and cand.get("_connected") and not needs
                 and not cand.get("_unknown_poor")):
             cand["eligible"] = True
@@ -266,14 +296,18 @@ def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude
         cand["_others"] = 0
         if leases is not None:
             held = [r for r in leases if r["cli"] == cand["cli"] and r["profile"] == cand["profile"]]
-            others = [r for r in held if r["owner"] != owner] if owner else held
-            cand["leases"] = len(others)
+            if owner and cand["profile"] in reuse:
+                held = [r for r in held if r["owner"] != owner]
+            cand["leases"] = len(held)
             if owner:
-                cand["_others"] = len(others)
-                blocking = [r for r in others if r.get("exclusive")]
+                cand["_others"] = len(held)
+                blocking = [r for r in held if r.get("exclusive")]
                 if blocking and cand["eligible"]:
                     cand["eligible"] = False
-                    cand["excluded_reason"] = "leased to %s until %s" % (blocking[0]["owner"], blocking[0]["expires_at"])
+                    mine = blocking[0]["owner"] == owner
+                    cand["excluded_reason"] = "leased to %s%s until %s%s" % (
+                        blocking[0]["owner"], " (this owner)" if mine else "", blocking[0]["expires_at"],
+                        "; --reuse %s hands it on" % cand["profile"] if mine else "")
         cands.append(cand)
     far = float("inf")
 
@@ -292,6 +326,26 @@ def choose(rows, model=None, reserve=DEFAULT_RESERVE, needs=(), count=1, exclude
     return [_public(c) for c in chosen], [_public(c) for c in cands], soonest
 
 
+def one_per_profile(model, rows, target):
+    """One row per profile, the account the launch uses (usage.account_row):
+    `ak pick grok` must not offer grok @default and xai @default as two
+    accounts when `ak grok @default` runs one of them. A still ambiguous
+    profile keeps every row (each is named by its CLI or provider)."""
+    groups = {}
+    for r in rows:
+        groups.setdefault(r.profile, []).append(r)
+    keep = []
+    for r in rows:
+        group = groups[r.profile]
+        try:
+            one = usage.account_row(model, group, target, "pick")
+        except AkError:
+            one = None
+        if one is None or one is r:
+            keep.append(r)
+    return keep
+
+
 def _public(cand):
     return {k: v for k, v in cand.items() if not k.startswith("_")}
 
@@ -301,7 +355,7 @@ def _public(cand):
 def parse_args(args):
     opts = {"target": None, "profile": None, "model": None, "needs": [], "reserve": DEFAULT_RESERVE,
             "count": 1, "exclude": [], "allow_unknown": False, "json": False, "timeout": None,
-            "owner": None, "max_age": state.DEFAULT_MAX_AGE}
+            "owner": None, "reuse": [], "max_age": state.DEFAULT_MAX_AGE}
 
     def value(i, flag):
         if i >= len(args):
@@ -349,6 +403,12 @@ def parse_args(args):
         elif arg == "--owner":
             i += 1
             opts["owner"] = lease.check_owner(value(i, arg))
+        elif arg == "--reuse":
+            i += 1
+            text = value(i, arg)
+            if not text.startswith("@"):
+                raise AkError("--reuse takes a profile, e.g. @work")
+            opts["reuse"].append(usage._profile_label(profiles.normalize(text[1:])))
         elif arg == "--max-age":
             i += 1
             opts["max_age"] = state_max_age(value(i, arg))
@@ -371,6 +431,8 @@ def parse_args(args):
         i += 1
     if not opts.get("help") and opts["target"] is None:
         raise AkError("ak pick needs a kind or CLI, e.g. ak pick claude. See: ak pick --help")
+    if opts["reuse"] and not opts["owner"]:
+        raise AkError("--reuse names the owner's own lease: it needs --owner. See: ak pick --help")
     return opts
 
 
@@ -382,6 +444,7 @@ def state_max_age(text):
 
 def render_json(opts, chosen, candidates, soonest, now):
     doc = {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": usage.iso_utc(now), "owner": opts["owner"],
+           "reuse": list(opts.get("reuse", [])),
            "target": opts["target"], "model": opts["model"], "reserve_pct": opts["reserve"],
            "need": [{"window": w, "min_free_pct": p} for w, p in opts["needs"]],
            "count": opts["count"], "chosen": chosen, "candidates": candidates, "soonest_reset": soonest}
@@ -404,17 +467,23 @@ def main(model, args, env, now=None, stdout=None):
         usage.emit(stdout, USAGE)
         return EXIT_OK
     now = usage.common_now() if now is None else now
-    rows = usage.filter_rows(model, usage.enumerate_rows(model, env), opts["target"], opts["profile"])
+    rows = one_per_profile(model, usage.filter_rows(model, usage.enumerate_rows(model, env), opts["target"],
+                                                    opts["profile"]), opts["target"])
     if not rows:
         common.warn("nothing to pick from: no profile or login matches. Try: ak usage")
         return EXIT_NOTHING
     caps = parse_caps(env, model)
-    low = thresholds(env)[0] if caps else DEFAULT_LOW     # the threshold matters only for a capped account
+    try:
+        low, critical = thresholds(env)
+    except AkError:
+        if caps:
+            raise                     # a drill's cap needs valid thresholds
+        low, critical = DEFAULT_LOW, DEFAULT_CRITICAL   # only the verdict uses them: never break ak pick
     results = usage.mark_defaults(model, usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"]), env)
     results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
     chosen, candidates, soonest = choose(results, opts["model"], opts["reserve"], opts["needs"], opts["count"],
                                          opts["exclude"], opts["allow_unknown"], now, caps,
-                                         lease.active(env, now), opts["owner"], low)
+                                         lease.active(env, now), opts["owner"], low, opts["reuse"], critical)
     if opts["json"]:
         usage.emit(stdout, render_json(opts, chosen, candidates, soonest, now))
     else:
@@ -422,6 +491,9 @@ def main(model, args, env, now=None, stdout=None):
     if not chosen:
         hint = (" Soonest reset: %s." % usage._relative(soonest, now)) if soonest else ""
         reasons = "; ".join("%s %s" % (c["profile"], c["excluded_reason"]) for c in candidates[:4])
+        if not opts["allow_unknown"] and any((c["excluded_reason"] or "").startswith("no readable quota") for c in candidates):
+            hint += " With no readable quota, ak pick %s --allow-unknown chooses a connected account (verdict unknown)." \
+                % opts["target"]
         common.warn("no %s account has room (%s).%s" % (opts["target"], reasons, hint))
         return EXIT_NONE
     if len(chosen) < opts["count"]:
