@@ -5,6 +5,7 @@ tools to decide whether ak is usable:
   interface, version, os, kinds{installed, version, logged_in, path, cli,
   provider}, profiles{cli: [names]}, keys[names set], permissions ask|auto,
   aliases{classic, custom}, herdr_hooks{cli: {@profile: present|absent}},
+  default_profiles{cli: label}, daemons{cli: {@profile: state}},
   env_file{path, exists, mode}, problems[]
 
 Login is file presence (plus credential variable *names*); no credential
@@ -105,6 +106,7 @@ def collect(model, env):
                             % (profiles.default_var(cli), setting, cli, setting))
     if common.os_name() == "linux" or _in_container(env):
         problems.extend(_stranded_logins(model, env, prof))
+    daemons = _daemons(model, env, prof, exe_cache)
     alias_state = aliases.load()
     envfile = _env_file_state()
     if envfile["exists"] and envfile["mode"] not in ("600", "400") and common.os_name() != "windows":
@@ -121,6 +123,7 @@ def collect(model, env):
                     "custom": [a["name"] for a in alias_state["custom"]]},
         "herdr_hooks": herdr,
         "default_profiles": defaults,
+        "daemons": daemons,
         "env_file": envfile,
         "problems": problems,
     }
@@ -146,6 +149,24 @@ def _stranded_logins(model, env, prof):
                   ("log in here: %s, then the CLI's login" % target)
             out.append("%s %s: the account is named here but its login token is not (a macOS Keychain login does "
                        "not travel to Linux or a container). Fix: %s" % (cli, profiles.label(name), fix))
+    return out
+
+
+def _daemons(model, env, prof, exe_cache):
+    """Per CLI that records a background daemon (Codex), per account: present,
+    absent, missing (recorded by another machine: launches add the CLI's
+    `off` flags) or off (its variable is 1). Presence only."""
+    out = {}
+    for cli in model.cli_names():
+        spec = model.clis[cli]
+        if not spec.get("daemon") or (not exe_cache.get(cli) and not prof[cli]):
+            continue
+        states = {}
+        for name in [""] + prof[cli]:
+            ctx = kinds.Context(model.kind(cli), env, env.get("HOME") or common.home(),
+                                profile_dir=profiles.path(cli, name) if name else None)
+            states[profiles.label(name)] = profiles.daemon_state(spec, ctx, env)
+        out[cli] = states
     return out
 
 
@@ -206,6 +227,15 @@ def render_text(model, report):
         w("  (none — @default is each CLI's own home; ak profiles add claude @2)")
     for cli, setting in sorted(report.get("default_profiles", {}).items()):
         w("  %-*s default: ak %s -> %s (%s)" % (cw, cli, cli, setting, profiles.default_var(cli)))
+    for cli, states in sorted(report.get("daemons", {}).items()):
+        flags = " ".join(model.clis[cli]["daemon"]["off"])
+        for who, state in sorted(states.items()):
+            if state == "missing":
+                w("  %-*s %s: the daemon its home records is not on this machine; ak %s adds %s"
+                  % (cw, cli, who, cli, flags))
+            elif state == "off":
+                w("  %-*s %s: daemon off (%s=1); ak %s adds %s"
+                  % (cw, cli, who, model.clis[cli]["daemon"]["env"], cli, flags))
     w("")
     w("## Aliases")
     w("  classic preset: %s%s" % ("on" if report["aliases"]["classic"] else "off",

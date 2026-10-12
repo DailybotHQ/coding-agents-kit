@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/setup-verify-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.3/docs/schema/setup-verify-v1.json",
   "title": "ak setup verify --json (setup-verify-v1)",
   "description": "A closed list of named checks about a kit setup, each with a verdict and the one command that repairs it. Read-only: verify never applies a repair. Never contains a secret value. Consumers check `schema` and `interface` first.",
   "type": "object",

@@ -233,6 +233,16 @@ class Model(object):
                         + cli.get("hooks", {}).get("files", [])):
                 if ref.split(":", 1)[0] not in roots:
                     bad("%s: %s names an unknown root" % (where, ref))
+            daemon = cli.get("daemon")
+            if daemon is not None:
+                if set(daemon) != {"record", "executable", "off", "env"} \
+                        or not all(isinstance(daemon[f], str) and daemon[f] for f in ("record", "executable", "env")) \
+                        or not isinstance(daemon["off"], list) or not daemon["off"]:
+                    bad("%s.daemon: a table of record, executable, off (a list) and env" % where)
+                else:
+                    for ref in (daemon["record"], daemon["executable"]):
+                        if ref.split(":", 1)[0] not in roots:
+                            bad("%s.daemon: %s names an unknown root" % (where, ref))
             if "usage" in cli:
                 for problem in usage_problems(cli["usage"], roots=roots):
                     bad("%s.usage: %s" % (where, problem))

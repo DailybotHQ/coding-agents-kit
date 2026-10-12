@@ -12,6 +12,28 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.5.3] - 2026-10-12
+
+Interface stays **1**. Patch: `ak codex` starts in a container whose Codex
+home is shared with another machine.
+
+### Fixed
+
+- **Codex's app-server daemon in a shared home.** A Codex home shared with
+  another machine (a host profile, or one volume shared by several
+  containers) records a daemon installed by that machine, and Codex refused
+  to start (`daemon executable not found`). An interactive `ak codex` now
+  adds `--no-daemon` when the home records a daemon that is not on this
+  machine or not built for its OS, and never when the daemon is present.
+  `AGENTKIT_CODEX_NO_DAEMON=1` forces it. Declared as data
+  (`[clis.codex.daemon]` in `providers.toml`).
+
+### Added
+
+- `ak doctor` reports each account's daemon state (`daemons`: `present`,
+  `absent`, `missing` or `off`; additive in `doctor-v1`), and the text form
+  says when `ak codex` adds `--no-daemon`.
+
 ## [0.5.2] - 2026-10-12
 
 Interface stays **1**. A default profile per CLI, so a bare `ak claude` works

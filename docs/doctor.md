@@ -17,7 +17,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 ```json
 {
   "interface": 1,
-  "version": "0.5.2",
+  "version": "0.5.3",
   "os": "macos",
   "kinds": {
     "claude":     { "cli": "claude", "provider": null,  "installed": true, "path": "/…/claude", "version": "2.1.295 (Claude Code)", "logged_in": true },
@@ -45,6 +45,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 | `aliases` | the `classic` and `providers` presets on/off (`providers` since 0.3.0) and custom alias names |
 | `herdr_hooks` | per Herdr-integrated CLI, per profile: whether Herdr's state hook files are present in that home |
 | `default_profiles` | since 0.5.2: per CLI whose `AGENTKIT_DEFAULT_PROFILE_<CLI>` is set, what a bare `ak <cli>` launches (`@name`, `@default` or `pick`); see [Profiles](profiles.md#a-default-profile-per-cli) |
+| `daemons` | since 0.5.3: per CLI that records a background daemon in its home (Codex), per account: `present`, `absent` (nothing recorded), `missing` (the home records a daemon that is not on this machine, so `ak codex` adds `--no-daemon`) or `off` (`AGENTKIT_CODEX_NO_DAEMON=1`); see [Profiles](profiles.md#a-codex-home-shared-with-another-machine) |
 | `env_file`, `problems` | where the env file is, its mode, and anything to fix. On Linux or in a container, a problem names each account whose file names the account but whose login token is not there (a macOS Keychain login does not travel), with the fix |
 
 Consumers must ignore keys they do not know: minor versions may add some.

@@ -539,6 +539,52 @@ def token_missing(model, cli_name, name, env):
     return False
 
 
+# The first bytes of an executable built for each OS (ELF; Mach-O 32/64 bit,
+# both byte orders, and universal binaries).
+NATIVE_MAGIC = {
+    "linux": (b"\x7fELF",),
+    "macos": (b"\xcf\xfa\xed\xfe", b"\xce\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xfe\xed\xfa\xce",
+               b"\xca\xfe\xba\xbe"),
+}
+
+
+def _runs_here(p):
+    """True when p is an executable file this OS can run: a script, or a
+    binary built for this OS (a macOS binary in a Linux container is not)."""
+    if not os.path.isfile(p) or not os.access(p, os.X_OK):
+        return False
+    magic = NATIVE_MAGIC.get(common.os_name())
+    if magic is None:
+        return True
+    try:
+        with open(p, "rb") as handle:
+            head = handle.read(4)
+    except OSError:
+        return False
+    return head.startswith(b"#!") or head in magic
+
+
+def daemon_state(cli, ctx, env):
+    """The CLI's recorded background daemon (providers.toml `daemon`), by
+    presence only: None when the CLI declares none; off when its variable is
+    1; missing when the home records a daemon whose executable is not here or
+    not built for this OS (a home shared with another machine); present; or
+    absent when nothing is recorded (the CLI installs its own)."""
+    daemon = cli.get("daemon")
+    if not daemon:
+        return None
+    if (env.get(daemon["env"]) or "").strip() == "1":
+        return "off"
+    if _runs_here(ctx.ref_path(daemon["executable"])):
+        return "present"
+    return "missing" if os.path.lexists(ctx.ref_path(daemon["record"])) else "absent"
+
+
+def daemon_args(cli, ctx, env):
+    """The flags that turn the daemon off, when it is off or missing."""
+    return list(cli["daemon"]["off"]) if daemon_state(cli, ctx, env) in ("off", "missing") else []
+
+
 def set_names(model, cli_name, name, env):
     """The NAMES of the provider keys and login token this account would read
     that are set (never a value)."""

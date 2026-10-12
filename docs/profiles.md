@@ -84,6 +84,19 @@ portable (a file or a token variable; never a Keychain item). It asks every
 such account's vendor at each launch and says on stderr which one it chose;
 when none has room it launches `@default`.
 
+## A Codex home shared with another machine
+
+Codex installs an app-server daemon under its home
+(`packages/app-server-daemon/current/bin/codex`) and records it there. A
+home shared with another machine — a host profile mounted into a container,
+or one Codex volume shared by several containers — records a daemon that is
+not on this machine, or one built for another OS, and Codex refuses to
+start (`daemon executable not found`). When the home records a daemon that
+cannot run here, an interactive `ak codex` adds `--no-daemon` (before your
+own arguments, and not twice); where the daemon is present it adds nothing.
+`AGENTKIT_CODEX_NO_DAEMON=1` adds it always. `ak doctor` reports the state
+of each account (`daemons`). A presence check only: the daemon is never run.
+
 ## Creating a profile
 
 The first time you use a profile in a terminal, `ak` asks:
