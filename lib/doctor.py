@@ -90,6 +90,21 @@ def collect(model, env):
         herdr[cli] = {"@default": hooks.presence(model, cli, "", env)}
         for name in prof[cli]:
             herdr[cli]["@" + name] = hooks.presence(model, cli, name, env)
+    defaults = {}
+    for cli in model.cli_names():
+        try:
+            setting = profiles.default_setting(cli, env)
+        except AkError as exc:
+            problems.append("%s; ak %s refuses to launch until it is fixed" % (exc, cli))
+            continue
+        if setting is None:
+            continue
+        defaults[cli] = profiles.default_label(setting)
+        if setting not in ("", profiles.PICK) and setting not in prof[cli]:
+            problems.append("%s=@%s names a profile that does not exist. Fix: ak profiles add %s @%s"
+                            % (profiles.default_var(cli), setting, cli, setting))
+    if common.os_name() == "linux" or _in_container(env):
+        problems.extend(_stranded_logins(model, env, prof))
     alias_state = aliases.load()
     envfile = _env_file_state()
     if envfile["exists"] and envfile["mode"] not in ("600", "400") and common.os_name() != "windows":
@@ -105,9 +120,33 @@ def collect(model, env):
         "aliases": {"classic": alias_state["classic"], "providers": alias_state.get("providers", False),
                     "custom": [a["name"] for a in alias_state["custom"]]},
         "herdr_hooks": herdr,
+        "default_profiles": defaults,
         "env_file": envfile,
         "problems": problems,
     }
+
+
+def _stranded_logins(model, env, prof):
+    """On Linux or in a container: accounts whose file names the account but
+    whose token is not here — a login kept in a macOS Keychain does not
+    travel. One problem per account, with the fix."""
+    out = []
+    for cli in model.cli_names():
+        if model.clis[cli].get("login", {}).get("token_files") is None:
+            continue
+        if not common.resolve_executable(model.clis[cli], env) and not prof[cli]:
+            continue
+        for name in [""] + prof[cli]:
+            if not profiles.token_missing(model, cli, name, env):
+                continue
+            target = "ak %s%s" % (cli, " @" + name if name else "")
+            portable = [n for n in prof[cli] if n != name and profiles.portable_login(model, cli, n, env)]
+            fix = ("log in here (%s, then the CLI's login), or launch an account whose login is a file: "
+                   "%s=@%s" % (target, profiles.default_var(cli), portable[0])) if portable else \
+                  ("log in here: %s, then the CLI's login" % target)
+            out.append("%s %s: the account is named here but its login token is not (a macOS Keychain login does "
+                       "not travel to Linux or a container). Fix: %s" % (cli, profiles.label(name), fix))
+    return out
 
 
 def render_text(model, report):
@@ -165,6 +204,8 @@ def render_text(model, report):
             w("  %-*s %s" % (cw, cli, " ".join("@" + n for n in names)))
     if not any_profile:
         w("  (none — @default is each CLI's own home; ak profiles add claude @2)")
+    for cli, setting in sorted(report.get("default_profiles", {}).items()):
+        w("  %-*s default: ak %s -> %s (%s)" % (cw, cli, cli, setting, profiles.default_var(cli)))
     w("")
     w("## Aliases")
     w("  classic preset: %s%s" % ("on" if report["aliases"]["classic"] else "off",

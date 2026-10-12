@@ -4,8 +4,9 @@ The kit reads only the head of the arguments; everything after the first
 token it does not own (or after `--`) reaches the CLI untouched:
 
   * `@name` is a profile only as the first argument after the kind that is
-    not `--ask`/`--auto` (AGENTKIT_PROFILE is the fallback; a positional
-    profile wins);
+    not `--ask`/`--auto` (AGENTKIT_PROFILE is the fallback, then the CLI's
+    AGENTKIT_DEFAULT_PROFILE_<CLI> for its canonical kind; a positional
+    profile wins, and an explicit @default is always the CLI's own home);
   * autonomy is the default: every launch adds the CLI's own autonomy flag
     (providers.toml). `--ask` (anywhere in the head) or
     AGENTKIT_PERMISSIONS=ask opts out; `--auto` is accepted and explicit;
@@ -162,7 +163,17 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
         raise AkError("%s (%s) is not installed. Install it with: ak install %s"
                       % (kind.cli["name"], kind.executable, kind.cli_name), EXIT_NOT_READY)
     name = profile_name(head)
-    if purpose == "launch":
+    default_var = None
+    if head.profile_token is None:
+        name, default_var = profiles.resolve_default(model, kind, env)
+    if default_var:
+        # A default never creates a profile: it names one that must exist.
+        try:
+            directory = profiles.existing(kind.cli_name, name)
+        except AkError as exc:
+            exc.args = (str(exc) + " (the name came from %s)" % default_var,)
+            raise
+    elif purpose == "launch":
         directory = profiles.ensure(kind.cli_name, name, note=kind.cli.get("login", {}).get("profile_note"))
     else:
         directory = profiles.existing(kind.cli_name, name)

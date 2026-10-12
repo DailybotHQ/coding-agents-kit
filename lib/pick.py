@@ -98,6 +98,8 @@ def evaluate(row, model, reserve, needs, now):
             "status": row["status"], "eligible": False, "headroom_pct": None,
             "binding_window": None, "resets_at": None, "excluded_reason": None,
             "_long_reset": None, "_unknown": False}
+    if row.get("default"):
+        cand["default"] = True      # the account a bare `ak <cli>` launches (additive)
     status = row["status"]
     if status == "unsupported":
         cand["_unknown"] = True
@@ -258,7 +260,7 @@ def render_json(opts, chosen, candidates, soonest, now):
 
 def _line(c, now):
     room = "unknown" if c["headroom_pct"] is None else "%s%%" % c["headroom_pct"]
-    text = "%s %s  headroom %s" % (c["cli"], c["profile"], room)
+    text = "%s %s  headroom %s%s" % (c["cli"], c["profile"], room, "  (ak %s default)" % c["cli"] if c.get("default") else "")
     if c["binding_window"]:
         text += "  binding %s  resets %s" % (c["binding_window"], usage._relative(c["resets_at"], now))
     return text
@@ -276,7 +278,7 @@ def main(model, args, env, now=None, stdout=None):
     if not rows:
         common.warn("nothing to pick from: no profile or login matches. Try: ak usage")
         return EXIT_NOTHING
-    results = usage.fetch_all(rows, env, opts["timeout"], now)
+    results = usage.mark_defaults(model, usage.fetch_all(rows, env, opts["timeout"], now), env)
     results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
     chosen, candidates, soonest = choose(results, opts["model"], opts["reserve"], opts["needs"], opts["count"],
                                          opts["exclude"], opts["allow_unknown"], now)

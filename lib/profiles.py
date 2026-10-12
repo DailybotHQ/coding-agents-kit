@@ -253,6 +253,88 @@ def strip_profile_keys(model, env, keep=()):
                 env.pop(name, None)
 
 
+# ------------------------------------------------------- default profile
+
+DEFAULT_PREFIX = "AGENTKIT_DEFAULT_PROFILE_"
+PICK = "pick"
+PORTABLE_LOGINS = ("file", "token-var")     # a Keychain login stays on its Mac
+
+
+def default_var(cli_name):
+    """AGENTKIT_DEFAULT_PROFILE_<CLI>: the account a bare `ak <cli>` uses."""
+    return DEFAULT_PREFIX + suffix(cli_name)
+
+
+def default_setting(cli_name, env):
+    """The CLI's default profile setting: None (unset: the CLI's own home),
+    PICK, or a profile name ('' = @default, the CLI's own home). `pick` is
+    the opt-in fallback; `@pick` is a profile named pick."""
+    var = default_var(cli_name)
+    raw = (env.get(var) or "").strip()
+    if not raw:
+        return None
+    if raw.lower() == PICK:
+        return PICK
+    name = raw[1:] if raw.startswith("@") else raw
+    try:
+        return normalize(name)
+    except AkError:
+        raise AkError("%s=%s is not a profile: use @<profile>, @default or pick" % (var, raw), EXIT_USAGE)
+
+
+def default_label(setting):
+    return PICK if setting == PICK else label(setting)
+
+
+def resolve_default(model, kind, env):
+    """The profile name a launch without @profile (and without
+    AGENTKIT_PROFILE) uses: the CLI's AGENTKIT_DEFAULT_PROFILE_<CLI>, for
+    its canonical kind only (a provider kind such as claude-glm reads its
+    key per profile, so it keeps the CLI's own home). Returns (name, var)
+    with var None when no default applied."""
+    if kind.name != kind.cli_name:
+        return "", None
+    setting = default_setting(kind.cli_name, env)
+    var = default_var(kind.cli_name)
+    if setting is None:
+        return "", None
+    if setting != PICK:
+        return setting, var
+    name, room = pick_default(model, kind.cli_name, env)
+    if name is None:
+        common.warn("%s=pick: no %s account with a portable login has room; using @default" % (var, kind.cli_name))
+        return "", var
+    common.warn("%s=pick chose %s%s" % (var, label(name), "" if room is None else " (headroom %s%%)" % room))
+    return name, var
+
+
+def portable_login(model, cli_name, name, env):
+    return login_kind(model, cli_name, name, env) in PORTABLE_LOGINS
+
+
+def pick_default(model, cli_name, env, now=None):
+    """The `pick` fallback: among the CLI's accounts with a portable login
+    (a login file or a token variable, never a Keychain item), the one with
+    the most headroom, by `ak pick`'s own policy (read-only). Returns
+    (name or None, headroom_pct or None)."""
+    import pick
+    import usage
+    rows = [r for r in usage.enumerate_rows(model, env) if r.cli == cli_name
+            and portable_login(model, cli_name, _name_of(r.profile), env)]
+    if not rows:
+        return None, None
+    now = usage.common_now() if now is None else now
+    results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in usage.fetch_all(rows, env, None, now)]
+    chosen, _candidates, _soonest = pick.choose(results, allow_unknown=True, now=now)
+    if not chosen:
+        return None, None
+    return _name_of(chosen[0]["profile"]), chosen[0]["headroom_pct"]
+
+
+def _name_of(profile_label):
+    return "" if profile_label == "@default" else profile_label[1:]
+
+
 # ------------------------------------------------------------- login probe
 
 def login_state(model, cli_name, name, env):
@@ -434,6 +516,29 @@ def login_kind(model, cli_name, name, env):
     return "none" if login.get("definitive") else "unknown"
 
 
+def token_missing(model, cli_name, name, env):
+    """True when the account file names an account but no token is here: no
+    token file and no token variable (Claude's `.claude.json` without
+    `.credentials.json`). On Linux or in a container this is a login that
+    stayed behind in a macOS Keychain. Presence only."""
+    import kinds
+    cli = model.clis[cli_name]
+    login = cli.get("login", {})
+    if login.get("token_files") is None or login_kind(model, cli_name, name, env) != "none":
+        return False
+    ctx = kinds.Context(model.kind(cli_name), env, env.get("HOME") or common.home(),
+                        profile_dir=path(cli_name, name) if name else None)
+    for ref in login.get("files", []):
+        p = ctx.ref_path(ref)
+        try:
+            with open(p, "rb") as handle:
+                if not login.get("marker") or login["marker"].encode() in handle.read():
+                    return True
+        except OSError:
+            pass
+    return False
+
+
 def set_names(model, cli_name, name, env):
     """The NAMES of the provider keys and login token this account would read
     that are set (never a value)."""
@@ -453,6 +558,13 @@ def portable(model, env):
         out.append({"cli": cli_name, "profile": "@" + name, "path_relative": "%s/%s" % (cli_name, name),
                     "isolation": cli["isolation"], "login": login_kind(model, cli_name, name, env),
                     "key_names_set": set_names(model, cli_name, name, env)})
+    for row in out:
+        try:
+            setting = default_setting(row["cli"], env)
+        except AkError:
+            setting = None
+        if setting not in (None, PICK) and label(setting) == row["profile"]:
+            row["default"] = True       # what a bare `ak <cli>` launches (additive; `pick` marks none)
     order = {c: i for i, c in enumerate(model.cli_names())}
     out.sort(key=lambda r: (order[r["cli"]], r["profile"] != "@default", r["profile"]))
     return {"schema": "profiles-v1", "interface": common.INTERFACE, "profiles": out}

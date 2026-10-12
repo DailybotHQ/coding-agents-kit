@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.1/docs/schema/usage-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/usage-v1.json",
   "title": "ak usage --json (usage-v1)",
   "description": "Quota and usage of each account the kit can see, one row per credential identity. Never contains a secret value, an account identity (e-mail, organisation, id) or a token. The endpoints behind it are vendor-internal and unofficial: a row whose source changed shape reports status `error`, never a crash. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
@@ -19,6 +19,7 @@
         "properties": {
           "cli": { "type": "string", "description": "The CLI (claude, codex, ...) or the provider (zai) that owns the credential." },
           "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$", "description": "@default or @name." },
+          "default": { "const": true, "description": "Since 0.5.2, present only on the account a bare `ak <cli>` launches by AGENTKIT_DEFAULT_PROFILE_<CLI> (for `pick`: the portable-login account ranked first)." },
           "kinds": { "type": "array", "items": { "type": "string" }, "description": "Every kind that shares this credential identity." },
           "plan": { "type": ["string", "null"], "description": "The provider's own plan label when reported." },
           "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"] },

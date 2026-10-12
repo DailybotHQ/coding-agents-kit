@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.1/docs/schema/profiles-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.5.2/docs/schema/profiles-v1.json",
   "title": "ak profiles --json (profiles-v1)",
   "description": "Every account the kit knows, portable to another host: names and kinds only. Never contains a secret value, an account identity or an absolute path. Another host recreates the set with `ak profiles add <cli> @<name>` and logs each one in. Consumers check `schema` and `interface` first; additional keys may appear in later minor versions.",
   "type": "object",
@@ -20,6 +20,7 @@
           "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$" },
           "path_relative": { "type": ["string", "null"], "pattern": "^[a-z0-9-]+/[a-z0-9._-]+$", "description": "<cli>/<name> under the profiles root (AGENTKIT_PROFILES_DIR); null for @default, which is the CLI's own home." },
           "isolation": { "enum": ["env", "xdg", "cursor-home", "home"] },
+          "default": { "const": true, "description": "Since 0.5.2, present only on the account a bare `ak <cli>` launches by AGENTKIT_DEFAULT_PROFILE_<CLI> (none for `pick`)." },
           "login": { "enum": ["file", "keychain", "token-var", "none", "unknown"], "description": "How the account is logged in, by presence only; unknown when the CLI keeps no detectable login." },
           "key_names_set": { "type": "array", "items": { "type": "string", "pattern": "^[A-Z][A-Z0-9_]*$" }, "description": "Names (never values) of the provider keys and login token this account reads that are set." }
         }
