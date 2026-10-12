@@ -542,7 +542,7 @@ profiles_json() {
 # profile's own CLI config; never without the opt-in.
 profiles_trust_cwd() {
   local root cj ct wd out sum1 sum2 other status
-  box_new profiles-trust claude codex grok
+  box_new profiles-trust claude codex grok pi
   box_posture ask
   root="${BOX}/home/.local/share/agentkit/profiles"
   mkdir -p "${root}/claude/work" "${root}/codex/work" "${root}/grok/work"
@@ -607,7 +607,68 @@ profiles_trust_cwd() {
   ( BOX_CWD="${nl}"; ak_split -- codex @work --trust-cwd; echo "$?" > "${BOX}/nl-status" )
   expect_eq "profiles trust-cwd: a folder name with a control character is refused (exit 2)" "$(cat "${BOX}/nl-status")" 2
 
-  out="$(ak -- grok @work --trust-cwd)"
+  mkdir -p "${root}/pi/work"
+  out="$(ak -- pi @work --trust-cwd)"
   expect_has "profiles trust-cwd: a CLI with no known trust screen gets a note" "${out}" "nothing written"
-  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/grok/work" -type f | wc -l | tr -d ' ')" 0
+  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/pi/work" -type f | wc -l | tr -d ' ')" 0
+  profiles_trust_grok
+}
+
+# grok keeps folder trust in <home>/trusted_folders.toml and asks about the
+# repository (its main working tree), not the folder it was started in.
+profiles_trust_grok() {
+  local root gt wd out sum1 repo wt status
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  gt="${root}/grok/work/trusted_folders.toml"
+  wd="$(cd "${BOX}/work" && pwd -P)"
+  out="$(ak -- grok @work --trust-cwd)"
+  expect_has "profiles trust-cwd: grok: outside a repository the launch folder is trusted" "$(cat "${gt}")" "[folders.\"${wd}\"]"
+  expect_eq "profiles trust-cwd: grok: ... as grok records it (trusted, decided_at epoch seconds)" \
+    "$(sed -n '2p;3s/[0-9]\{9,\}$/EPOCH/p' "${gt}" | paste -sd '|' -)" "trusted = true|decided_at = EPOCH"
+  expect_eq "profiles trust-cwd: grok: a new store is 0600" "$(file_mode "${gt}")" "600"
+  expect_has "profiles trust-cwd: grok: one line names the folder and the file" "${out}" "${wd} trusted in ${gt}"
+  sum1="$(cksum < "${gt}")"
+  ak -- grok @work --trust-cwd >/dev/null
+  expect_eq "profiles trust-cwd: grok: idempotent" "$(cksum < "${gt}")" "${sum1}"
+
+  # A repository: from a subfolder, the repository root is the folder asked about.
+  repo="${BOX}/repo"; mkdir -p "${repo}/.git" "${repo}/src/deep"; repo="$(cd "${repo}" && pwd -P)"
+  # shellcheck disable=SC2034  # BOX_CWD is read by box_run
+  ( BOX_CWD="${repo}/src/deep"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_has "profiles trust-cwd: grok: from a subfolder the repository root is trusted" "$(cat "${gt}")" "[folders.\"${repo}\"]"
+  expect_lacks "profiles trust-cwd: grok: ... not the subfolder" "$(cat "${gt}")" "${repo}/src"
+
+  # A linked worktree (as git writes it): the main working tree is the folder asked about.
+  wt="${BOX}/repo/.worktrees/c"; mkdir -p "${repo}/.git/worktrees/c" "${wt}"; wt="$(cd "${wt}" && pwd -P)"
+  printf 'gitdir: %s/.git/worktrees/c\n' "${repo}" > "${wt}/.git"
+  printf '../..\n' > "${repo}/.git/worktrees/c/commondir"
+  printf '[folders."%s"]\ntrusted = false\ndecided_at = 1\n' "${repo}" > "${gt}"
+  ( BOX_CWD="${wt}"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: grok: from a linked worktree the main working tree is the folder (an existing answer is left alone)" \
+    "$(grep -c '^\[folders\.' "${gt}"):$(grep -c 'trusted = false' "${gt}")" "1:1"
+  rm "${gt}"
+  ( BOX_CWD="${wt}"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: grok: ... and is written when absent (not the worktree path)" \
+    "$(grep '^\[folders\.' "${gt}")" "[folders.\"${repo}\"]"
+  if command -v git >/dev/null 2>&1; then
+    git init -q "${BOX}/real" && git -C "${BOX}/real" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+      && git -C "${BOX}/real" worktree add -q "${BOX}/real-wt" 2>/dev/null
+    rm -f "${gt}"
+    ( BOX_CWD="${BOX}/real-wt"; ak -- grok @work --trust-cwd >/dev/null )
+    expect_eq "profiles trust-cwd: grok: a worktree made by git resolves to its main working tree" \
+      "$(grep '^\[folders\.' "${gt}")" "[folders.\"$(cd "${BOX}/real" && pwd -P)\"]"
+  fi
+  printf 'gitdir: %s/nowhere\n' "${repo}" > "${wt}/.git"
+  rm -f "${gt}"
+  ( BOX_CWD="${wt}"; ak_split -- grok @work --trust-cwd; echo "$?" > "${BOX}/wt-status" )
+  expect_eq "profiles trust-cwd: grok: an unreadable worktree link trusts the worktree itself (never a parent guess)" \
+    "$(cat "${BOX}/wt-status"):$(grep '^\[folders\.' "${gt}")" "0:[folders.\"${wt}\"]"
+  ak -- grok --trust-cwd >/dev/null
+  expect_has "profiles trust-cwd: grok: @default writes grok's own home" "$(cat "${BOX}/home/.grok/trusted_folders.toml")" "[folders.\"${wd}\"]"
+  mkdir -p "${root}/grok/escape"
+  printf '' > "${BOX}/outside.toml"
+  ln -s "${BOX}/outside.toml" "${root}/grok/escape/trusted_folders.toml"
+  ak_split -- grok @escape --trust-cwd; status=$?
+  expect_eq "profiles trust-cwd: grok: a link that leaves the profile is refused (exit 3), the outside file untouched" \
+    "${status}:$(wc -c < "${BOX}/outside.toml" | tr -d ' ')" "3:0"
 }

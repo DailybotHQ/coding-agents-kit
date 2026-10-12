@@ -178,9 +178,9 @@ class Model(object):
             if cli.get("isolation") not in ISOLATIONS:
                 bad("%s: isolation must be one of %s" % (where, ", ".join(ISOLATIONS)))
             trust = cli.get("trust")
-            if trust is not None and (not isinstance(trust, dict) or trust.get("format") not in ("claude-json", "codex-toml")
+            if trust is not None and (not isinstance(trust, dict) or trust.get("format") not in ("claude-json", "codex-toml", "grok-toml")
                                       or ":" not in str(trust.get("file", ""))):
-                bad("%s.trust: needs file = '<root>:<path>' and format claude-json or codex-toml" % where)
+                bad("%s.trust: needs file = '<root>:<path>' and format claude-json, codex-toml or grok-toml" % where)
             token = cli.get("profile_token_var")
             if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", token)):
                 bad("%s: profile_token_var must be an UPPER_CASE variable name" % where)

@@ -360,6 +360,13 @@ docs = "https://x.ai/cli"
 [clis.grok.roots]
 home = { default = "{GROK_HOME:-~/.grok}", profile = "{dir}" }
 
+[clis.grok.trust]
+# grok asks "Do you trust the contents of this directory?" about the
+# repository (its main working tree, also from a linked worktree), and keeps
+# the answer here.
+file = "home:trusted_folders.toml"
+format = "grok-toml"
+
 [clis.grok.session]
 continue = ["--continue"]
 resume = ["--resume", "{id}"]
