@@ -405,8 +405,32 @@ check("pick owner: a Codex account leased to another owner is excluded with the 
 check("pick owner: rank by headroom / (1 + other leases): @b 60/1 before @c 70/3",
       [c["profile"] for c in chosen] == ["@b", "@c"] and by["@c"]["leases"] == 2, chosen)
 chosen, cands, _ = pick.choose(copy.deepcopy(ROWS), count=3, now=NOW, leases=LEASES, owner="lead-2")
-check("pick owner: an owner's own lease neither excludes nor counts against it (@a 80, @b 60, @c 70/2)",
-      [c["profile"] for c in chosen] == ["@a", "@b", "@c"] and {c["profile"]: c["leases"] for c in cands}["@a"] == 0, chosen)
+by = {c["profile"]: c for c in cands}
+check("pick owner: the owner's own exclusive lease excludes the account too, and says how to hand it on",
+      not by["@a"]["eligible"] and "(this owner)" in by["@a"]["excluded_reason"]
+      and "--reuse @a" in by["@a"]["excluded_reason"], by["@a"])
+check("pick owner: the owner's own leases count (@b 60/1 before @c 70/3)",
+      [c["profile"] for c in chosen] == ["@b", "@c"] and by["@c"]["leases"] == 2, chosen)
+chosen, cands, _ = pick.choose(copy.deepcopy(ROWS), count=3, now=NOW, leases=LEASES, owner="lead-2", reuse=["@a"])
+check("pick owner: --reuse @a exempts the owner's own lease on @a only (@a 80, @b 60, @c 70/3)",
+      [c["profile"] for c in chosen] == ["@a", "@b", "@c"] and {c["profile"]: c["leases"] for c in cands} == {"@a": 0, "@b": 0, "@c": 2},
+      chosen)
+chosen, cands, _ = pick.choose(copy.deepcopy(ROWS), count=3, now=NOW, leases=LEASES, owner="lead-2", reuse=["@c"])
+check("pick owner: --reuse @c drops the owner's lease from @c's count, not another owner's (@c 70/2 = 35)",
+      [c["profile"] for c in chosen] == ["@b", "@c"] and {c["profile"]: c["leases"] for c in cands}["@c"] == 1, chosen)
+chosen, cands, _ = pick.choose(copy.deepcopy(ROWS), count=3, now=NOW, leases=LEASES, owner="lead-9", reuse=["@a"])
+check("pick owner: --reuse never exempts another owner's exclusive lease",
+      "@a" not in [c["profile"] for c in chosen], chosen)
+# The drill (F4): a lead leases a lane's account under its own address, then picks for the next lane.
+LANE_ROWS = [row("claude", "@work3", [win("5h", 20, H), win("7d", 10, 3 * D)]),     # 80, leased by the lead
+             row("claude", "@work2", [win("5h", 50, H), win("7d", 10, 3 * D)])]     # 50, free
+chosen, _, _ = pick.choose(copy.deepcopy(LANE_ROWS), now=NOW, leases=[lrec("claude", "@work3", "lead", False)], owner="lead")
+check("pick owner: a lead never gets back the account it already leased to a lane (@work2 50 over @work3 80/2)",
+      [c["profile"] for c in chosen] == ["@work2"], chosen)
+check("pick grammar: --reuse needs --owner", raises(lambda: pick.parse_args(["codex", "--reuse", "@a"]), 2))
+check("pick grammar: --reuse takes a @profile",
+      raises(lambda: pick.parse_args(["codex", "--owner", "a:b", "--reuse", "a"]), 2)
+      and pick.parse_args(["codex", "--owner", "a:b", "--reuse", "@A", "--reuse", "@1"])["reuse"] == ["@a", "@default"])
 chosen, cands, _ = pick.choose(copy.deepcopy(ROWS), count=3, now=NOW, leases=LEASES)
 check("pick owner: without --owner leases are shown, not enforced (v0.5 ranking)",
       [c["profile"] for c in chosen] == ["@a", "@c", "@b"] and {c["profile"]: c["leases"] for c in cands} == {"@a": 1, "@b": 0, "@c": 2},
@@ -419,6 +443,55 @@ doc = json.loads(pick.render_json({"target": "codex", "model": None, "reserve": 
 errors = []
 schema_check.validate(doc, schema("pick-v1.json"), "$", errors)
 check("pick owner: pick --owner --json (leases, capped, owner) matches pick-v1", not errors, errors)
+
+# ------------------------------------------------- unknown capacity (F2)
+UNK = [row("grok", "@default", [], status="unsupported", connected=True),
+       row("claude", "@low", [win("5h", 85, H), win("7d", 10, 3 * D)]),          # 15: low
+       row("grok", "@gone", [], status="unsupported", connected=False)]
+chosen, cands, _ = pick.choose(copy.deepcopy(UNK), count=3, now=NOW)
+check("pick unknown: without --allow-unknown a no-quota account is never chosen",
+      [c["profile"] for c in chosen] == ["@low"], chosen)
+chosen, cands, _ = pick.choose(copy.deepcopy(UNK), count=3, now=NOW, allow_unknown=True)
+check("pick unknown: --allow-unknown chooses a connected one after every measured one, verdict unknown",
+      [(c["profile"], c["verdict"]) for c in chosen] == [("@low", "low"), ("@default", "unknown")], chosen)
+check("pick unknown: a not-connected one stays excluded", not {c["profile"]: c for c in cands}["@gone"]["eligible"])
+chosen, cands, _ = pick.choose(copy.deepcopy(UNK), count=3, now=NOW, allow_unknown=True, caps=[(None, "@default", 5)])
+check("pick unknown: a capped unmeasured account reads critical (as ak capacity) and is not chosen",
+      {c["profile"]: c["verdict"] for c in cands}["@default"] == "critical" and "@default" not in [c["profile"] for c in chosen],
+      cands)
+check("pick verdict: the same rule as ak capacity (rate limited, critical, low, ok, unknown)",
+      [pick.verdict(*a) for a in (("rate_limited", 90), ("ok", 10), ("ok", 25), ("ok", 26), ("ok", None))]
+      == ["critical", "critical", "low", "ok", "unknown"] and capacity.verdict is pick.verdict)
+
+
+class Acct(object):
+    def __init__(self, cli, profile):
+        self.cli, self.profile = cli, profile
+
+
+def names(rows):
+    return [(r.cli, r.profile) for r in rows]
+
+
+GROK = [Acct("grok", "@default"), Acct("xai", "@default")]
+check("resolve: grok @default is the grok login (as ak lease always took it)",
+      names([usage.account_row(MODEL, GROK, "grok", "capacity")]) == [("grok", "@default")])
+check("resolve: xai @default is the xAI key", names([usage.account_row(MODEL, GROK[1:], "xai", "capacity")]) == [("xai", "@default")])
+check("resolve: a provider-served kind is its provider's account (claude-glm @w -> zai @w)",
+      names([usage.account_row(MODEL, [Acct("claude", "@w"), Acct("zai", "@w")], "claude-glm", "lease")]) == [("zai", "@w")])
+try:
+    usage.account_row(MODEL, [Acct("claude", "@w"), Acct("codex", "@w")], "claude-glm", "capacity")
+    amb = None
+except AkError as exc:
+    amb = exc
+check("resolve: a still-ambiguous pair is exit 2 naming the exact commands",
+      amb is not None and amb.code == 2 and "ak capacity claude @w or ak capacity codex @w" in str(amb), amb)
+check("resolve: pick offers one account per profile (grok @default, not also xai @default)",
+      names(pick.one_per_profile(MODEL, [Acct("grok", "@default"), Acct("xai", "@default"), Acct("grok", "@two")], "grok"))
+      == [("grok", "@default"), ("grok", "@two")])
+check("resolve: pick xai keeps the xai rows", names(pick.one_per_profile(MODEL, GROK[1:], "xai")) == [("xai", "@default")])
+check("resolve: pick keeps every row of a still-ambiguous profile",
+      len(pick.one_per_profile(MODEL, [Acct("claude", "@w"), Acct("codex", "@w")], "claude-glm")) == 2)
 
 # --------------------------------------------------- capacity main() end to end
 out, err = io.StringIO(), io.StringIO()

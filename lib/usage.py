@@ -373,6 +373,26 @@ def _order(rows, model):
     return sorted(rows, key=key)
 
 
+def account_row(model, rows, target, verb):
+    """The one account that a kind + @profile names (rows already filtered to
+    that profile), so capacity, lease and pick agree. Several rows: the row of
+    the named CLI or provider itself (`grok @default` is the grok login, not
+    the xAI key), else, for a kind served by a provider key, the provider's
+    row (`claude-glm @work` is `zai @work`). Still several: exit 2 naming the
+    exact alternatives."""
+    if len(rows) <= 1:
+        return rows[0] if rows else None
+    name = model.canonical(target)
+    own = [r for r in rows if r.cli == name]
+    if not own and name in model.kinds and model.kinds[name].get("provider"):
+        own = [r for r in rows if r.cli == model.kinds[name]["provider"]]
+    if len(own) == 1:
+        return own[0]
+    raise AkError("%s %s names %d accounts; name one: %s"
+                  % (target, rows[0].profile, len(rows),
+                     " or ".join("ak %s %s %s" % (verb, r.cli, r.profile) for r in rows)))
+
+
 def filter_rows(model, rows, target, profile):
     if target is not None:
         target = model.canonical(target)

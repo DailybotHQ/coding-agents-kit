@@ -128,6 +128,39 @@ EOF
     "AGENTKIT_STATE_DIR=${BOX}/home/.local/state/agentkit"
   box_posture ""
 
+  # --self without any marker (a Codex tool shell run by its app-server daemon):
+  # the CLI home variable that names a profile inside ak's own tree is the account.
+  local proot="${BOX}/home/.local/share/agentkit/profiles"
+  ak_split "${url}" CLAUDE_CONFIG_DIR="${proot}/claude/work" -- capacity --self --json; status=$?
+  expect_eq "capacity self: no marker, CLAUDE_CONFIG_DIR=<profiles>/claude/work reads claude @work" \
+    "${status}:$(json_get "${BOX}/out" '[d["cli"], d["profile"], d["verdict"]]')" '0:["claude", "@work", "critical"]'
+  ak_split CODEX_HOME="${proot}/codex/work" -- capacity --self --json; status=$?
+  expect_eq "capacity self: no marker, CODEX_HOME=<profiles>/codex/work names codex @work" \
+    "${status}:$(json_get "${BOX}/out" '[d["cli"], d["profile"]]')" '0:["codex", "@work"]'
+  ln -s "${proot}/codex/work" "${BOX}/codex-link"
+  ak_split CODEX_HOME="${BOX}/codex-link" -- capacity --self --json; status=$?
+  expect_eq "capacity self: a home reached through a symlink resolves to the profile" \
+    "${status}:$(json_get "${BOX}/out" 'd["profile"]')" '0:@work'
+  mkdir -p "${BOX}/linked-profiles/codex"; mv "${proot}/codex/work" "${BOX}/linked-profiles/codex/work"
+  rmdir "${proot}/codex" 2>/dev/null; ln -s "${BOX}/linked-profiles/codex" "${proot}/codex"
+  ak_split CODEX_HOME="${proot}/codex/work" -- capacity --self --json; status=$?
+  expect_eq "capacity self: a CLI folder of the profile tree that is a symlink still resolves" \
+    "${status}:$(json_get "${BOX}/out" 'd["profile"]')" '0:@work'
+  ak_split "${url}" AGENTKIT_ACTIVE_ACCOUNT=claude/@default CODEX_HOME="${proot}/codex/work" -- capacity --self --json
+  expect_eq "capacity self: the launch marker wins over a home variable" "$(json_get "${BOX}/out" '[d["cli"], d["profile"]]')" '["claude", "@default"]'
+  mkdir -p "${BOX}/home/.codex" "${BOX}/elsewhere/codex/work" "${proot}/codex/work/nested"
+  ak_split CODEX_HOME="${BOX}/home/.codex" -- capacity --self; status=$?
+  expect_eq "capacity self: the CLI's default home is never derived (exit 3)" "${status}" 3
+  ak_split CODEX_HOME="${BOX}/elsewhere/codex/work" -- capacity --self; status=$?
+  expect_eq "capacity self: a home outside ak's profile tree is never derived (exit 3)" "${status}" 3
+  ak_split CODEX_HOME="${proot}/codex/work/nested" -- capacity --self; status=$?
+  expect_eq "capacity self: a directory below a profile is not a profile (exit 3)" "${status}" 3
+  ak_split CODEX_HOME="${proot}/claude/work" -- capacity --self; status=$?
+  expect_eq "capacity self: another CLI's profile directory is not this CLI's account (exit 3)" "${status}" 3
+  ak_split CODEX_HOME="${proot}/codex/work" CLAUDE_CONFIG_DIR="${proot}/claude/work" -- capacity --self; status=$?
+  expect_eq "capacity self: two CLI homes in the tree are ambiguous (exit 3, never a guess)" "${status}" 3
+  expect_has "capacity self: ... and the refusal names both" "$(cat "${BOX}/err")" "codex @work"
+
   # Secrecy: no token in any output or cache file.
   ak_split "${url}" -- capacity claude @work --json
   expect_lacks "capacity security: no token in stdout or stderr" "$(cat "${BOX}/out" "${BOX}/err")" "planted-cap"

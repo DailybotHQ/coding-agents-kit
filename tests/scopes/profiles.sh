@@ -335,7 +335,11 @@ profiles_codex_daemon() {
   mkdir -p "${BOX}/home/.codex/${d}"
   printf "${native}rest" > "${BOX}/home/.codex/${d}/codex"; chmod +x "${BOX}/home/.codex/${d}/codex"
   out="$(ak -- codex -c)"
-  expect_eq "codex daemon: a daemon built for this OS is used, no flag" "$(argv_of "${out}")" "resume|--last"
+  expect_eq "codex daemon: a daemon built for this OS is reused, no --no-daemon; the account marker goes first" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"|resume|--last'
+  out="$(ak -- codex -- -c 'shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"')"
+  expect_eq "codex daemon: a marker the user passed is not repeated" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"'
   out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex)"
   expect_eq "codex daemon: AGENTKIT_CODEX_NO_DAEMON=1 adds --no-daemon anyway" "$(argv_of "${out}")" "--no-daemon"
 
@@ -353,11 +357,23 @@ profiles_codex_daemon() {
   out="$(ak -- codex @host)"
   expect_eq "codex daemon: a daemon built for another OS (a host home in a container) adds --no-daemon" \
     "$(argv_of "${out}")" "--no-daemon"
+  mkdir -p "${root}/codex/live/${d}"
+  printf "${native}rest" > "${root}/codex/live/${d}/codex"; chmod +x "${root}/codex/live/${d}/codex"
+  out="$(ak AGENTKIT_ACTIVE_ACCOUNT=codex/@ghost -- codex @live -c)"
+  expect_eq "codex daemon: a reused profile daemon gets that launch's marker (not an inherited one)" \
+    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@live"|resume|--last'
+  out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex @live)"
+  expect_eq "codex daemon: no marker when the daemon is turned off (the shells inherit the launch)" \
+    "$(argv_of "${out}")" "--no-daemon"
+  mkdir -p "${root}/codex/live2"
+  out="$(ak -- codex @live2)"
+  expect_eq "codex daemon: no marker when no daemon is recorded (the one codex starts inherits the launch)" \
+    "$(argv_of "${out}")" ""
 
   ak_split -- doctor --json
   doc="${BOX}/doctor.json"; cp "${BOX}/out" "${doc}"
   expect_eq "codex daemon: doctor --json reports each account" "$(json_get "${doc}" 'd["daemons"]')" \
-    '{"codex": {"@default": "present", "@host": "missing", "@work": "missing"}}'
+    '{"codex": {"@default": "present", "@host": "missing", "@live": "present", "@live2": "absent", "@work": "missing"}}'
   expect_eq "codex daemon: doctor --json still matches doctor-v1" \
     "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/doctor-v1.json" "${doc}")" "valid"
   ak_split AGENTKIT_CODEX_NO_DAEMON=1 -- doctor --json
@@ -526,7 +542,7 @@ profiles_json() {
 # profile's own CLI config; never without the opt-in.
 profiles_trust_cwd() {
   local root cj ct wd out sum1 sum2 other status
-  box_new profiles-trust claude codex grok
+  box_new profiles-trust claude codex grok pi
   box_posture ask
   root="${BOX}/home/.local/share/agentkit/profiles"
   mkdir -p "${root}/claude/work" "${root}/codex/work" "${root}/grok/work"
@@ -591,7 +607,69 @@ profiles_trust_cwd() {
   ( BOX_CWD="${nl}"; ak_split -- codex @work --trust-cwd; echo "$?" > "${BOX}/nl-status" )
   expect_eq "profiles trust-cwd: a folder name with a control character is refused (exit 2)" "$(cat "${BOX}/nl-status")" 2
 
-  out="$(ak -- grok @work --trust-cwd)"
+  mkdir -p "${root}/pi/work"
+  out="$(ak -- pi @work --trust-cwd)"
   expect_has "profiles trust-cwd: a CLI with no known trust screen gets a note" "${out}" "nothing written"
-  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/grok/work" -type f | wc -l | tr -d ' ')" 0
+  expect_eq "profiles trust-cwd: ... and nothing is written in its profile" "$(find "${root}/pi/work" -type f | wc -l | tr -d ' ')" 0
+  profiles_trust_grok
+}
+
+# grok keeps folder trust in <home>/trusted_folders.toml and asks about the
+# repository (its main working tree), not the folder it was started in.
+profiles_trust_grok() {
+  local root gt wd out sum1 repo wt status
+  root="${BOX}/home/.local/share/agentkit/profiles"
+  gt="${root}/grok/work/trusted_folders.toml"
+  wd="$(cd "${BOX}/work" && pwd -P)"
+  out="$(ak -- grok @work --trust-cwd)"
+  expect_has "profiles trust-cwd: grok: outside a repository the launch folder is trusted" "$(cat "${gt}")" "[folders.\"${wd}\"]"
+  expect_eq "profiles trust-cwd: grok: ... as grok records it (trusted, decided_at epoch seconds)" \
+    "$(sed -n '2p;3s/[0-9]\{9,\}$/EPOCH/p' "${gt}" | paste -sd '|' -)" "trusted = true|decided_at = EPOCH"
+  expect_eq "profiles trust-cwd: grok: a new store is 0600" "$(file_mode "${gt}")" "600"
+  expect_has "profiles trust-cwd: grok: one line names the folder and the file" "${out}" "${wd} trusted in ${gt}"
+  sum1="$(cksum < "${gt}")"
+  ak -- grok @work --trust-cwd >/dev/null
+  expect_eq "profiles trust-cwd: grok: idempotent" "$(cksum < "${gt}")" "${sum1}"
+
+  # A repository: from a subfolder, the repository root is the folder asked about.
+  repo="${BOX}/repo"; mkdir -p "${repo}/.git" "${repo}/src/deep"; repo="$(cd "${repo}" && pwd -P)"
+  # shellcheck disable=SC2034  # BOX_CWD is read by box_run
+  ( BOX_CWD="${repo}/src/deep"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_has "profiles trust-cwd: grok: from a subfolder the repository root is trusted" "$(cat "${gt}")" "[folders.\"${repo}\"]"
+  expect_lacks "profiles trust-cwd: grok: ... not the subfolder" "$(cat "${gt}")" "${repo}/src"
+
+  # A linked worktree (as git writes it): the main working tree is the folder asked about.
+  wt="${BOX}/repo/.worktrees/c"; mkdir -p "${repo}/.git/worktrees/c" "${wt}"; wt="$(cd "${wt}" && pwd -P)"
+  printf 'gitdir: %s/.git/worktrees/c\n' "${repo}" > "${wt}/.git"
+  printf '../..\n' > "${repo}/.git/worktrees/c/commondir"
+  printf '[folders."%s"]\ntrusted = false\ndecided_at = 1\n' "${repo}" > "${gt}"
+  ( BOX_CWD="${wt}"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: grok: from a linked worktree the main working tree is the folder (an existing answer is left alone)" \
+    "$(grep -c '^\[folders\.' "${gt}"):$(grep -c 'trusted = false' "${gt}")" "1:1"
+  rm "${gt}"
+  ( BOX_CWD="${wt}"; ak -- grok @work --trust-cwd >/dev/null )
+  expect_eq "profiles trust-cwd: grok: ... and is written when absent (not the worktree path)" \
+    "$(grep '^\[folders\.' "${gt}")" "[folders.\"${repo}\"]"
+  if command -v git >/dev/null 2>&1; then
+    git init -q "${BOX}/real" && git -C "${BOX}/real" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init \
+      && git -C "${BOX}/real" worktree add -q "${BOX}/real-wt" 2>/dev/null
+    rm -f "${gt}"
+    ( BOX_CWD="${BOX}/real-wt"; ak -- grok @work --trust-cwd >/dev/null )
+    expect_eq "profiles trust-cwd: grok: a worktree made by git resolves to its main working tree" \
+      "$(grep '^\[folders\.' "${gt}")" "[folders.\"$(cd "${BOX}/real" && pwd -P)\"]"
+  fi
+  printf 'gitdir: %s/nowhere\n' "${repo}" > "${wt}/.git"
+  rm -f "${gt}"
+  # shellcheck disable=SC2034  # BOX_CWD is read by ak_split
+  ( BOX_CWD="${wt}"; ak_split -- grok @work --trust-cwd; echo "$?" > "${BOX}/wt-status" )
+  expect_eq "profiles trust-cwd: grok: an unreadable worktree link trusts the worktree itself (never a parent guess)" \
+    "$(cat "${BOX}/wt-status"):$(grep '^\[folders\.' "${gt}")" "0:[folders.\"${wt}\"]"
+  ak -- grok --trust-cwd >/dev/null
+  expect_has "profiles trust-cwd: grok: @default writes grok's own home" "$(cat "${BOX}/home/.grok/trusted_folders.toml")" "[folders.\"${wd}\"]"
+  mkdir -p "${root}/grok/escape"
+  printf '' > "${BOX}/outside.toml"
+  ln -s "${BOX}/outside.toml" "${root}/grok/escape/trusted_folders.toml"
+  ak_split -- grok @escape --trust-cwd; status=$?
+  expect_eq "profiles trust-cwd: grok: a link that leaves the profile is refused (exit 3), the outside file untouched" \
+    "${status}:$(wc -c < "${BOX}/outside.toml" | tr -d ' ')" "3:0"
 }

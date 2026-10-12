@@ -11,7 +11,10 @@ room and a verdict, cheap enough to ask at every task boundary.
   AGENTKIT_CAPACITY_LOW / AGENTKIT_CAPACITY_CRITICAL, then the flags, win.
 - `--self` names the account this process runs on: AGENTKIT_ACTIVE_ACCOUNT
   (`<kind>/@<profile>`, set by every `ak` launch), else
-  AGENTKIT_ACTIVE_PROFILE (`<cli>/<name>`). Neither: exit 3, never a guess.
+  AGENTKIT_ACTIVE_PROFILE (`<cli>/<name>`), else the one CLI home variable
+  that names a profile directory inside ak's own tree (CODEX_HOME=
+  <profiles>/codex/work1: a Codex tool shell run by its app-server daemon).
+  None of them, or several homes: exit 3, never a guess.
 - The reading comes from the usage cache when fresh (lib/state.py, default
   300 s), else live (and the cache is refreshed). `ak usage` always reads
   live.
@@ -21,6 +24,7 @@ invalid setting · 3 unknown account / nothing matches.
 """
 
 import json
+import os
 import sys
 
 import common
@@ -56,19 +60,10 @@ _pct = pick._pct
 thresholds = pick.thresholds      # one definition, shared with ak pick's cap rule
 
 
-def verdict(status, headroom, low, critical):
-    if status == "rate_limited":
-        return "critical"
-    if headroom is None:
-        return "unknown"
-    if headroom <= critical:
-        return "critical"
-    if headroom <= low:
-        return "low"
-    return "ok"
+verdict = pick.verdict                # one rule for ak capacity and ak pick's candidates
 
 
-def self_account(env):
+def self_account(env, model=None):
     """(kind-or-cli, @profile) of the running account, or AkError(3)."""
     marker = env.get("AGENTKIT_ACTIVE_ACCOUNT") or ""
     if "/@" in marker:
@@ -78,8 +73,42 @@ def self_account(env):
     if "/" in marker:
         target, name = marker.split("/", 1)
         return target, usage._profile_label(profiles.normalize(name))
+    found = home_accounts(env, model) if model is not None else []
+    if len(found) == 1:
+        return found[0]
+    if found:
+        raise AkError("unknown account: several CLI homes name ak profiles (%s); name one: ak capacity <kind> @profile"
+                      % ", ".join("%s %s" % pair for pair in found), EXIT_NOT_READY)
     raise AkError("unknown account: this process was not launched through ak "
                   "(no AGENTKIT_ACTIVE_ACCOUNT); name one: ak capacity <kind> @profile", EXIT_NOT_READY)
+
+
+def home_accounts(env, model):
+    """The accounts a CLI home variable names inside ak's own profile tree:
+    CODEX_HOME=<profiles>/codex/work1 is codex @work1. A process can lose the
+    launch marker (Codex runs its tool shells from an app-server daemon that
+    kept the environment of whoever started it) yet keep the CLI's home
+    variable. Only `isolation = "env"` CLIs, only a directory that is exactly
+    <profiles root>/<cli>/<name>; the CLI's default home is never derived.
+    It names the CLI's own account: a provider-key kind on that profile
+    (codex-glm) is known only from the launch marker."""
+    home = env.get("AGENTKIT_REAL_HOME") or env.get("HOME") or common.home()
+    root = os.path.realpath(state._profiles_root(env, home))
+    found = []
+    for cli_name, cli in model.clis.items():
+        value = env.get(cli.get("home_env") or "") if cli.get("isolation") == "env" else None
+        if not value or not os.path.isdir(value):
+            continue
+        parent, name = os.path.split(os.path.realpath(value))
+        if parent != os.path.realpath(os.path.join(root, cli_name)):
+            continue
+        try:
+            label = usage._profile_label(profiles.normalize(name))
+        except AkError:
+            continue
+        if label != "@default" and (cli_name, label) not in found:
+            found.append((cli_name, label))
+    return found
 
 
 def assess(row, opts, caps, low, critical, leases, now):
@@ -87,12 +116,8 @@ def assess(row, opts, caps, low, critical, leases, now):
     cand = pick.evaluate(row, opts["model"], pick.DEFAULT_RESERVE, (), now)
     cap = pick.apply_cap(cand, caps, low)
     headroom = cand["headroom_pct"]
-    result = verdict(row["status"], headroom, low, critical)
-    if cap is not None and headroom is None and result == "unknown":
-        # lower-only: an unmeasured account may be marked poor, never rich
-        capped = verdict(row["status"], cap, low, critical)
-        if capped in ("low", "critical"):
-            result = capped
+    # lower-only: an unmeasured account may be marked poor by a cap, never rich
+    result = pick.verdict(row["status"], headroom, low, critical, cap)
     held = [r for r in leases if r["cli"] == row["cli"] and r["profile"] == row["profile"]]
     return {"schema": SCHEMA, "interface": common.INTERFACE, "generated_at": usage.iso_utc(now),
             "kind": opts["target"], "cli": row["cli"], "profile": row["profile"], "status": row["status"],
@@ -182,7 +207,7 @@ def main(model, args, env, now=None, stdout=None):
     low, critical = thresholds(env, opts["low"], opts["critical"])
     caps = pick.parse_caps(env, model)
     if opts["self"]:
-        opts["target"], opts["profile"] = self_account(env)
+        opts["target"], opts["profile"] = self_account(env, model)
     if opts["profile"] is None:
         opts["profile"] = "@default"
     now = usage.common_now() if now is None else now
@@ -190,9 +215,7 @@ def main(model, args, env, now=None, stdout=None):
     if not rows:
         raise AkError("unknown account: no %s account %s. Try: ak usage %s"
                       % (opts["target"], opts["profile"], opts["target"]), EXIT_NOT_READY)
-    if len(rows) > 1:
-        raise AkError("%s %s names %d accounts (%s); name one with its CLI or provider"
-                      % (opts["target"], opts["profile"], len(rows), ", ".join("%s %s" % (r.cli, r.profile) for r in rows)))
+    rows = [usage.account_row(model, rows, opts["target"], "capacity")]
     row = usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"])[0]
     doc = assess(row, opts, caps, low, critical, lease.active(env, now), now)
     if opts["json"]:

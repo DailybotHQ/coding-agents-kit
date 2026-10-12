@@ -126,8 +126,8 @@ error; 3 nothing matches the filter.
 
 ```
 ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
-        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR] [--max-age S]
-        [--json] [--timeout SECONDS]
+        [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR [--reuse @profile]...]
+        [--max-age S] [--json] [--timeout SECONDS]
 ```
 
 `ak pick` reads the same rows as `ak usage` (read-only, same vendor
@@ -135,7 +135,10 @@ requests; a reading younger than `--max-age`, 300 s, comes from the usage
 cache) and returns the account with the most usable room for a kind:
 
 1. Only `ok` rows are eligible; `unsupported` ones join last with
-   `--allow-unknown`. Every other status is excluded with that reason.
+   `--allow-unknown` (verdict `unknown`: Grok, Cursor, Antigravity). Every
+   other status is excluded with that reason. Each profile is one account,
+   the one the launch uses (`grok @default` is the grok login, not also the
+   xAI key), as in `ak capacity` and `ak lease`.
 2. Windows without a model scope govern; a `7d-<model>` window governs only
    when `--model` matches it.
 3. A window whose reset already passed counts as unused.
@@ -151,9 +154,12 @@ cache) and returns the account with the most usable room for a kind:
 
 `--count N` (1-16) returns the top N distinct accounts for parallel work;
 `--exclude @name` skips accounts already busy. `--owner ADDR` (your lease
-owner address) skips Codex accounts leased to another owner and ranks the
-rest by `headroom / (1 + leases held by others)`; without it, leases are
-only shown (`leases` per candidate). Text output is one line per
+owner address) skips Codex accounts leased to anyone, you included, and
+ranks the rest by `headroom / (1 + active leases)` — your own leases count,
+so you never get back an account you already handed out; `--reuse @name`
+hands your own lease on that account on (it neither blocks nor counts).
+Without `--owner`, leases are only shown (`leases` per candidate). Every
+candidate carries `verdict`, `ak capacity`'s rule. Text output is one line per
 account:
 
 ```text

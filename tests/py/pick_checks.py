@@ -215,8 +215,9 @@ class FakeModel(object):
 
 
 def fake_main(args, rows):
-    saved = (usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active)
+    saved = (usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active, pick.one_per_profile)
     out, err = io.StringIO(), io.StringIO()
+    pick.one_per_profile = lambda model, r, target: r      # rows here are indexes; collapsing is checked in capacity_checks.py
     usage.enumerate_rows = lambda model, env: list(range(len(rows)))
     usage.filter_rows = lambda model, r, target, profile: r
     usage.fetch_cached = lambda r, env, timeout, now, max_age: copy.deepcopy(rows)
@@ -226,7 +227,7 @@ def fake_main(args, rows):
         code = pick.main(FakeModel(), args, {}, now=NOW, stdout=out)
     finally:
         sys.stderr = old_err
-        usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active = saved
+        usage.enumerate_rows, usage.filter_rows, usage.fetch_cached, pick.lease.active, pick.one_per_profile = saved
     return code, out.getvalue(), err.getvalue()
 
 

@@ -84,7 +84,7 @@ portable (a file or a token variable; never a Keychain item). It asks every
 such account's vendor at each launch and says on stderr which one it chose;
 when none has room it launches `@default`.
 
-## A Codex home shared with another machine
+## Codex and its app-server daemon
 
 Codex installs an app-server daemon under its home
 (`packages/app-server-daemon/current/bin/codex`) and records it there. A
@@ -93,9 +93,19 @@ or one Codex volume shared by several containers — records a daemon that is
 not on this machine, or one built for another OS, and Codex refuses to
 start (`daemon executable not found`). When the home records a daemon that
 cannot run here, an interactive `ak codex` adds `--no-daemon` (before your
-own arguments, and not twice); where the daemon is present it adds nothing.
+own arguments, and not twice); where the daemon is present it never adds it.
 `AGENTKIT_CODEX_NO_DAEMON=1` adds it always. `ak doctor` reports the state
 of each account (`daemons`). A presence check only: the daemon is never run.
+
+A running daemon keeps the environment of whoever started it, and Codex runs
+its tool shells from it — so a shell inside the session would not see the
+launch's `AGENTKIT_ACTIVE_ACCOUNT` (`ak capacity --self`). Since 0.6.1, when
+the daemon is present an interactive `ak codex` passes the marker for the
+session first, as a config override:
+`-c shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="<kind>/@<profile>"`
+(providers.toml `[clis.codex.daemon] marker`; not twice). With no daemon
+recorded Codex starts one from the launch's own environment, and with
+`--no-daemon` the shells are the launch's children: no override is needed.
 
 ## Creating a profile
 

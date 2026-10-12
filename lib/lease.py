@@ -264,7 +264,7 @@ def resolve_account(model, env, target, profile):
     rows = usage.filter_rows(model, usage.enumerate_rows(model, env), target, profile)
     if not rows:
         raise AkError("no %s account %s: nothing to lease. Try: ak usage %s" % (target, profile, target), EXIT_NOTHING)
-    row = rows[0]
+    row = usage.account_row(model, rows, target, "lease")
     exclusive = model.clis.get(row.cli, {}).get("lease") == "exclusive"
     return row.cli, row.profile, exclusive
 

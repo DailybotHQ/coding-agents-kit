@@ -11,7 +11,12 @@ root, and its format); only the two edits are code:
   atomic, every other key and the file mode kept);
 - codex-toml: `<home>/config.toml` gains `[projects."<abs cwd>"]` with
   trust_level = "trusted", appended only when that table is absent (an
-  existing table, whatever it says, is the user's and is left alone).
+  existing table, whatever it says, is the user's and is left alone);
+- grok-toml: `<home>/trusted_folders.toml` gains `[folders."<abs root>"]`
+  with trusted = true and decided_at = <epoch seconds>, the same append-only
+  rule. grok asks about the repository, not the folder it was started in:
+  the root is the main working tree of the git repository around the cwd
+  (from a linked worktree, the repository it belongs to), else the cwd.
 
 It never answers any other screen (the bypass-permissions warning, a login)
 and never changes the permission posture. Portable: os.path only.
@@ -19,6 +24,7 @@ and never changes the permission posture. Portable: os.path only.
 
 import json
 import os
+import time
 
 import common
 
@@ -81,7 +87,56 @@ def _codex_toml(path, cwd, confine):
     return True
 
 
-FORMATS = {"claude-json": _claude_json, "codex-toml": _codex_toml}
+def _grok_toml(path, folder, confine):
+    header = "[folders.%s]" % _toml_key(folder)
+    text = ""
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+    if any(line.strip() == header for line in text.splitlines()):
+        return False
+    sep = "" if not text or text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
+    _write(path, text + sep + header + "\ntrusted = true\ndecided_at = %d\n" % int(time.time()), confine)
+    return True
+
+
+def _linked_root(top, gitfile):
+    """The main working tree of a linked worktree (`.git` is a file naming
+    <common>/worktrees/<name>, whose `commondir` names <common>), or None: a
+    submodule (no commondir) or a bare repository (no main working tree)."""
+    try:
+        with open(gitfile, encoding="utf-8") as handle:
+            text = handle.read()
+        if not text.startswith("gitdir:"):
+            return None
+        gitdir = os.path.join(top, text[len("gitdir:"):].strip())
+        with open(os.path.join(gitdir, "commondir"), encoding="utf-8") as handle:
+            common = os.path.realpath(os.path.join(gitdir, handle.read().strip()))
+    except OSError:
+        return None
+    return os.path.dirname(common) if os.path.basename(common) == ".git" else None
+
+
+def repo_root(cwd):
+    """The folder a repository-scoped trust screen asks about (grok): walk up
+    from cwd to the first `.git`; a directory -> its parent, a linked
+    worktree -> its main working tree; no repository -> cwd. Files only (no
+    git executable)."""
+    here = cwd
+    while True:
+        dotgit = os.path.join(here, ".git")
+        if os.path.isdir(dotgit):
+            return here
+        if os.path.isfile(dotgit):
+            return _linked_root(here, dotgit) or here
+        parent = os.path.dirname(here)
+        if parent == here:
+            return cwd
+        here = parent
+
+
+FORMATS = {"claude-json": _claude_json, "codex-toml": _codex_toml, "grok-toml": _grok_toml}
+FOLDER = {"grok-toml": repo_root}      # default: the launch folder itself
 
 
 def mark(prep, cwd):
@@ -92,9 +147,10 @@ def mark(prep, cwd):
         common.warn("--trust-cwd: %s has no folder-trust screen ak knows; nothing written" % prep.kind.cli["name"])
         return None
     cwd = os.path.realpath(os.path.abspath(cwd))
+    folder = FOLDER.get(spec["format"], lambda here: here)(cwd)
     path = prep.ctx.ref_path(spec["file"])
     confine = prep.directory if prep.profile else None
-    if FORMATS[spec["format"]](path, cwd, confine):
-        common.warn("--trust-cwd: %s trusted in %s" % (cwd, path))
+    if FORMATS[spec["format"]](path, folder, confine):
+        common.warn("--trust-cwd: %s trusted in %s" % (folder, path))
         return path
     return None

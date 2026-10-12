@@ -12,6 +12,54 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.6.1] - 2026-10-12
+
+Interface stays **1**. Patch: the four kit findings of the first live swarm
+drill (a lead, lanes on three vendors, a capped handoff and a lead
+succession, with no human keystroke).
+
+### Fixed
+
+- **`ak capacity --self` inside a Codex session.** Codex runs its tool
+  shells from an app-server daemon that keeps the environment of whoever
+  started it, so a Codex lane read "unknown account" (exit 3) and a capped
+  lane could never hand off. An interactive `ak codex` that reuses a daemon
+  running here now passes the account marker for the session
+  (`-c shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT=…`, data:
+  `providers.toml` `[clis.codex.daemon] marker`), and with no marker
+  `--self` takes the account from a CLI home variable that names a profile
+  directory inside `ak`'s own tree (`CODEX_HOME=<profiles>/codex/work1`).
+  The default home, a folder outside the tree, or two candidates still exit
+  3 — never a guess.
+- **`ak pick --owner X` counted X's own leases as zero**, so a lead that
+  leased each lane's account under its own address got an account it had
+  already handed out. Every active lease now counts, the owner's own
+  included; a Codex account is excluded for its own holder too; the new
+  **`--reuse @profile`** (repeatable, needs `--owner`) hands the owner's own
+  lease on (e.g. to a lane's successor).
+- **Unknown-capacity kinds and one account per profile.** `ak capacity grok
+  @default` was ambiguous (the grok login and an xAI key) while `ak lease
+  grok @default` accepted it. `ak capacity`, `ak lease` and `ak pick` now
+  resolve a kind + `@profile` to the same account: the named CLI's or
+  provider's own row, else, for a kind served by a provider key, the
+  provider's (`claude-glm @work` is `zai @work`); still ambiguous → exit 2
+  naming the exact commands. `ak pick` offers each profile once. Every
+  `pick-v1` candidate gains `verdict` (`ak capacity`'s rule; `unknown` for
+  an account chosen with `--allow-unknown`), the document gains `reuse`
+  (additive), and a refusal of only no-quota accounts names
+  `--allow-unknown`.
+- **Grok folder trust.** `ak grok … --trust-cwd` wrote nothing, yet Grok
+  stops at "Do you trust the contents of this directory?". It now appends
+  `[folders."<root>"] trusted = true` to Grok's `trusted_folders.toml`
+  (format `grok-toml`), where `<root>` is the folder Grok asks about: the
+  repository's main working tree — also from a linked worktree — or the
+  launch folder outside a repository. An existing answer is left alone.
+- Docs and skills: `docs/usage.md`, `docs/profiles.md` (Codex and its
+  app-server daemon), `docs/permissions.md`, `docs/orchestration.md`,
+  `docs/SECURITY.md`, and the `agentkit` and `agentkit-orchestrate` skills
+  describe the above; the unattended reference says never to answer Grok's
+  repository-level trust screen.
+
 ## [0.6.0] - 2026-10-12
 
 Interface stays **1**. Capacity-aware agents: an agent can ask for its own
@@ -492,7 +540,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.3...v0.6.0
 [0.5.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.1
 [0.5.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.0

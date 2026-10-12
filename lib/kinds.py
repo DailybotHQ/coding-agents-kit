@@ -178,9 +178,9 @@ class Model(object):
             if cli.get("isolation") not in ISOLATIONS:
                 bad("%s: isolation must be one of %s" % (where, ", ".join(ISOLATIONS)))
             trust = cli.get("trust")
-            if trust is not None and (not isinstance(trust, dict) or trust.get("format") not in ("claude-json", "codex-toml")
+            if trust is not None and (not isinstance(trust, dict) or trust.get("format") not in ("claude-json", "codex-toml", "grok-toml")
                                       or ":" not in str(trust.get("file", ""))):
-                bad("%s.trust: needs file = '<root>:<path>' and format claude-json or codex-toml" % where)
+                bad("%s.trust: needs file = '<root>:<path>' and format claude-json, codex-toml or grok-toml" % where)
             token = cli.get("profile_token_var")
             if token is not None and (not isinstance(token, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", token)):
                 bad("%s: profile_token_var must be an UPPER_CASE variable name" % where)
@@ -238,10 +238,14 @@ class Model(object):
                 bad("%s.lease: one of %s" % (where, ", ".join(LEASES)))
             daemon = cli.get("daemon")
             if daemon is not None:
-                if set(daemon) != {"record", "executable", "off", "env"} \
+                if not {"record", "executable", "off", "env"} <= set(daemon) <= {"record", "executable", "off", "env", "marker"} \
                         or not all(isinstance(daemon[f], str) and daemon[f] for f in ("record", "executable", "env")) \
-                        or not isinstance(daemon["off"], list) or not daemon["off"]:
-                    bad("%s.daemon: a table of record, executable, off (a list) and env" % where)
+                        or not isinstance(daemon["off"], list) or not daemon["off"] \
+                        or not isinstance(daemon.get("marker", []), list) \
+                        or not all(isinstance(a, str) and a for a in daemon.get("marker", [])) \
+                        or ("marker" in daemon and not any("{account}" in a for a in daemon["marker"])):
+                    bad("%s.daemon: a table of record, executable, off (a list), env and an optional marker "
+                        "(a list naming {account})" % where)
                 else:
                     for ref in (daemon["record"], daemon["executable"]):
                         if ref.split(":", 1)[0] not in roots:

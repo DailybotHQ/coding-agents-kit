@@ -105,5 +105,50 @@ PY
     "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/pick-v1.json" "${doc}"):$(json_get "${doc}" 'd["owner"]')" "valid:local:w9:p9"
   ak_split "${url}" -- pick codex --owner "bad owner"; status=$?
   expect_eq "pick owner: an invalid --owner exits 2" "${status}" 2
+
+  # The drill (F4): the lead leases lane a's account under its own address, then
+  # picks for lane b; it must not get the account it already handed out.
+  ak_split -- lease release claude @default --owner local:w2:p1
+  ak_split -- lease release claude @default --owner local:w2:p2
+  ak_split -- lease claude @default --owner local:lead:p1 --purpose "lane a"
+  ak_split "${url}" -- pick claude --owner local:lead:p1 --json; status=$?
+  expect_eq "pick owner: the lead's own lease counts (@work 70 over its leased @default 90/2)" \
+    "${status}:$(json_get "${BOX}/out" '[(c["profile"], c["leases"]) for c in d["chosen"]]')" '0:[["@work", 0]]'
+  ak_split "${url}" -- pick claude --owner local:lead:p1 --reuse @default --json; status=$?
+  expect_eq "pick owner: --reuse @default hands that lease on (@default 90 first again)" \
+    "${status}:$(json_get "${BOX}/out" '[d["reuse"], [c["profile"] for c in d["chosen"]]]')" '0:[["@default"], ["@default"]]'
+  ak_split "${url}" -- pick claude --reuse @default; status=$?
+  expect_eq "pick owner: --reuse without --owner exits 2" "${status}" 2
   usage_server_stop
+  lease_unknown
+}
+
+# F2: grok has no readable quota, and an xAI key makes `grok @default` match
+# two usage rows (the grok login, the xAI key). capacity, lease and pick name
+# the same account; pick reaches it only with --allow-unknown, verdict unknown.
+lease_unknown() {
+  local status
+  box_new lease-unknown grok
+  mkdir -p "${BOX}/home/.grok"
+  printf '{}' > "${BOX}/home/.grok/auth.json"
+  box_env_file "XAI_API_KEY=planted-xai-0x1"
+  ak_split -- capacity grok @default --json; status=$?
+  expect_eq "unknown capacity: ak capacity grok @default resolves to the grok login, verdict unknown" \
+    "${status}:$(json_get "${BOX}/out" '[d["cli"], d["profile"], d["verdict"]]')" '0:["grok", "@default", "unknown"]'
+  ak_split -- capacity xai @default --json; status=$?
+  expect_eq "unknown capacity: ak capacity xai @default is the xAI key" "${status}:$(json_get "${BOX}/out" 'd["cli"]')" "0:xai"
+  ak_split -- lease grok @default --owner local:lead:p1; status=$?
+  expect_has "unknown capacity: ak lease grok @default leases the same account" "${status}:$(cat "${BOX}/out")" "0:"
+  expect_eq "unknown capacity: ... recorded as grok @default" \
+    "$(ak -- lease ls --json | json_get - '[(l["cli"], l["profile"]) for l in d["leases"]]')" '[["grok", "@default"]]'
+  ak_split -- pick grok --json; status=$?
+  expect_eq "unknown capacity: ak pick grok exits 1 without --allow-unknown" "${status}" 1
+  expect_has "unknown capacity: ... and says how to choose one" "$(cat "${BOX}/err")" "ak pick grok --allow-unknown"
+  ak_split -- pick grok --allow-unknown --owner local:lead:p2 --json; status=$?
+  expect_eq "unknown capacity: --allow-unknown chooses the grok login once (not also xai @default), verdict unknown, lease counted" \
+    "${status}:$(json_get "${BOX}/out" '[(c["cli"], c["profile"], c["verdict"], c["leases"]) for c in d["candidates"]]')" \
+    '0:[["grok", "@default", "unknown", 1]]'
+  expect_eq "unknown capacity: the document matches pick-v1" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${ROOT}/docs/schema/pick-v1.json" "${BOX}/out")" "valid"
+  expect_lacks "unknown capacity: no key in any output" "$(cat "${BOX}/out" "${BOX}/err")" "planted-xai"
 }
