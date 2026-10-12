@@ -91,7 +91,11 @@ The key set is closed: an unknown key, a non-https URL, a template other than `{
 1. Add `[kinds.<cli>-<provider>]` (and, for a new API, `[providers.<id>]`)
    to `providers.toml`. A new CLI needs a `[clis.<cli>]` block: executable,
    isolation, roots, session mapping, autonomy flag, headless mapping, login
-   probe, install channel (`binary`, `tarball` or `npm`, with an exact
+   probe (`[clis.<cli>.login]`: `files` + `marker`, `env`, `keychain` —
+   `{ service, account?, profile? }`, `profile = true` when the CLI suffixes a
+   profile's item with the sha256 of its directory — and `token_files` when
+   the login files only name the account and the token lives elsewhere),
+   install channel (`binary`, `tarball` or `npm`, with an exact
    version and its digests: per-platform `sha256`, or the npm `integrity`)
    and, when Herdr integrates it, hook files.
 2. Run `python3 lib/kinds.py check` — validation names every rule a broken

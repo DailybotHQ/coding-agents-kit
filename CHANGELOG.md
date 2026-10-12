@@ -12,6 +12,32 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-12
+
+Interface stays **1**. Patch: a Cursor login on Linux is recognised, and
+`ak profiles --json` reports where Claude's token really is.
+
+### Fixed
+
+- **Cursor login on Linux**: the default account keeps its login in
+  `~/.config/cursor/auth.json` (not `~/.cursor/auth.json`), so `ak usage` and
+  `ak doctor` reported `n/d` / `login: unknown` for a logged-in Cursor in a
+  container or on a Linux host. The login probe now also reads the `xdg` root
+  (`~/.config/cursor`); profiles are unchanged (`<profile>/home/.cursor`): a
+  profile's HOME links the real `~/.config` in, so it never borrows the
+  default account's login.
+- **Claude login kind** (`ak profiles --json`, profiles-v1): an account with
+  `.claude.json` (`oauthAccount`) was reported as a `file` login although that
+  file only names the account; the token is `.credentials.json` or, on macOS,
+  a Keychain item. The login is now `file` only with `.credentials.json`,
+  `keychain` when the `Claude Code-credentials` item exists (a profile's own
+  `-<sha256 prefix>` item for a profile), `none` when neither exists, and
+  `unknown` when only the account file is there and the Keychain cannot be
+  asked (`AGENTKIT_KEYCHAIN=off`). Presence only: the secret is never read.
+  `@default` copied into a container without its token now reads `none`.
+  The doctor's `logged_in` is unchanged.
+- The bundled skills' versions and pinned install lines follow the release.
+
 ## [0.5.0] - 2026-10-11
 
 Interface stays **1**. Accounts and quota for agents and humans: `ak pick`
@@ -365,7 +391,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.1...HEAD
+[0.5.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.1
 [0.5.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.0
 [0.4.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.4.0
 [0.3.0]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.3.0

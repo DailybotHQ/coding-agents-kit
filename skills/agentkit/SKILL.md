@@ -1,7 +1,7 @@
 ---
 name: agentkit
 description: Launch, install and configure terminal coding agents (Claude Code, Codex, Cursor, OpenCode, Pi, Cline, Grok) through coding-agents-kit's `ak` command — accounts per CLI (profiles), provider routes (GLM, Azure, xAI), headless runs with a JSON result (`ak run`), the environment of a profile for other launchers (`ak env`), quota per account and the account with room (`ak usage`, `ak pick`), and a doctor. Use when the user mentions ak, agentkit or coding-agents-kit, asks to start or set up another coding-agent CLI or account, asks which account has room, or asks to run a prompt through another agent non-interactively.
-version: "0.5.0"
+version: "0.5.1"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---
@@ -38,11 +38,11 @@ If `ak` is missing, tell the user and offer the install — it writes into
 their home directory, so do it only after they agree:
 
 ```bash
-git clone --branch v0.5.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.5.1 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 (This skill itself installs with
-`npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.0 --skill agentkit`.)
+`npx --yes skills add DailybotHQ/coding-agents-kit@v0.5.1 --skill agentkit`.)
 `ak --skill` prints the copy of this file that matches the installed kit.
 
 ## Kinds

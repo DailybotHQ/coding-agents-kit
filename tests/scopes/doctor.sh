@@ -35,7 +35,7 @@ scope_doctor() {
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
   expect_eq "doctor --json matches docs/schema/doctor-v1.json" "${out}" "valid"
   expect_eq "doctor reports interface 1" "$(json_get "${doc}" 'd["interface"]')" 1
-  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "0.5.0"
+  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "0.5.1"
   expect_eq "doctor reports this OS" "$(json_get "${doc}" 'd["os"] in ("macos", "linux")')" true
   expect_eq "doctor lists all 20 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 20
   expect_eq "doctor sees the installed CLIs" "$(json_get "${doc}" 'all(v["installed"] for v in d["kinds"].values())')" true
@@ -59,6 +59,16 @@ scope_doctor() {
   expect_eq "claude with ~/.claude.json naming an account: logged in" "$(json_get "${doc}" 'd["kinds"]["claude"]["logged_in"]')" true
   expect_eq "codex with auth.json: logged in" "$(json_get "${doc}" 'd["kinds"]["codex"]["logged_in"]')" true
   expect_eq "opencode login cannot be told from files: null" "$(json_get "${doc}" 'd["kinds"]["opencode"]["logged_in"]')" null
+  expect_eq "cursor without a login file: login cannot be told: null" "$(json_get "${doc}" 'd["kinds"]["cursor"]["logged_in"]')" null
+  mkdir -p "${BOX}/home/.config/cursor"; printf '{}\n' > "${BOX}/home/.config/cursor/auth.json"
+  ak_split -- doctor --json; cp "${BOX}/out" "${doc}"
+  expect_eq "cursor with ~/.config/cursor/auth.json (Linux): logged in" "$(json_get "${doc}" 'd["kinds"]["cursor"]["logged_in"]')" true
+  # A Cursor profile's HOME links the real ~/.config in: it must not borrow
+  # the default account's ~/.config/cursor/auth.json as its own login.
+  mkdir -p "${BOX}/home/.local/share/agentkit/profiles/cursor/other/home"
+  ln -s "${BOX}/home/.config" "${BOX}/home/.local/share/agentkit/profiles/cursor/other/home/.config"
+  ak_split -- profiles
+  expect_lacks "a cursor profile does not read the default account's Linux login" "$(grep ' @other ' "${BOX}/out")" " yes "
   mkdir -p "${BOX}/home/.claude/hooks"; printf '#!/bin/sh\n' > "${BOX}/home/.claude/hooks/herdr-agent-state.sh"
   ak_split -- doctor --json; cp "${BOX}/out" "${doc}"
   expect_eq "herdr hooks present in the default home are reported" "$(json_get "${doc}" 'd["herdr_hooks"]["claude"]["@default"]')" present
