@@ -37,7 +37,7 @@ Both files share one shape:
     "herdr":            { "enabled": true, "version": "v0.3.2" },
     "agentkit":         { "enabled": false },
     "devcontainer":     { "enabled": true, "version": "v0.3.5" },
-    "vim":              { "enabled": true, "version": "v0.7.0" },
+    "vim":              { "enabled": true, "version": "v0.7.1" },
     "dailybot":         { "enabled": true, "version": "v3.23.14" }
   }
 }

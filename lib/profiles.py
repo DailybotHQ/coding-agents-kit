@@ -366,6 +366,8 @@ def login_state(model, cli_name, name, env):
                 pass
     if not name and any(env.get(v) for v in login.get("env", [])):
         return True
+    if name and any(env.get("%s_%s" % (v, suffix(name))) for v in login.get("env", [])):
+        return True
     if keychain_has(login.get("keychain"), env, ctx):
         return True
     if not login.get("definitive"):
@@ -488,7 +490,8 @@ def login_kind(model, cli_name, name, env):
     import kinds
     cli = model.clis[cli_name]
     login = cli.get("login", {})
-    if env.get(token_var(cli, name) or "") or (not name and any(env.get(v) for v in login.get("env", []))):
+    if env.get(token_var(cli, name) or "") or (not name and any(env.get(v) for v in login.get("env", []))) \
+            or (name and any(env.get("%s_%s" % (v, suffix(name))) for v in login.get("env", []))):
         return "token-var"
     kind = model.kind(cli_name)
     ctx = kinds.Context(kind, env, env.get("HOME") or common.home(), profile_dir=path(cli_name, name) if name else None)

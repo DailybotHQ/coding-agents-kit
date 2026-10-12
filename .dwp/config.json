@@ -2,7 +2,7 @@
   "addons": {
     "agentkit": {
       "enabled": true,
-      "version": "v0.5.3"
+      "version": "v0.7.1"
     },
     "ai-diff-reviewer": {
       "enabled": true,
@@ -10,7 +10,7 @@
     },
     "herdr": {
       "enabled": true,
-      "version": "v0.2.3"
+      "version": "v0.3.2"
     }
   },
   "benchmark": {
