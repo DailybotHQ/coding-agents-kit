@@ -43,7 +43,9 @@ xai · xAI
 ```
 
 One block per CLI or provider, its title line first (`claude · Claude
-Code`). A tip that applies to the whole block sits on the title line.
+Code`). A tip that applies to the whole block sits on the title line. Blocks
+whose quota can be read come first; blocks where every account is `n/d` or
+`no login` come last.
 
 | Column | What it says |
 | --- | --- |

@@ -13,6 +13,14 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Changed
+
+- **`ak usage` lists the measurable blocks first.** The table shows the CLIs
+  and providers whose quota `ak` can read (at least one account read, or
+  whose read failed) before the blocks where every account is `n/d` or
+  `no login` — Z.AI now sits above Cursor and Grok. Each part keeps the kit
+  order; `--json` is not reordered.
+
 ## [1.0.0] - 2026-10-13
 
 The first stable release. Interface stays **1**; no command, flag, key or
