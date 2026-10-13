@@ -1,11 +1,11 @@
 ---
 name: herdr-peers
 description: "Ask another coding agent in a Herdr pane — on this machine or another one — and get exactly one authorized reply back, with a loop guard, depth limit 1, a fan-out cap and a record of every delegation; send one-way notices; keep a plan's lead with epochs and succession. Use only when the user mentions Herdr, peers, or another agent, pane or machine, or when a plan you are executing delegates a task through Herdr. Do not use merely because parallel work could help. Requires HERDR_ENV=1 and Herdr's official herdr skill."
-version: "0.3.2"
+version: "1.0.0"
 license: MIT
 allowed-tools: Bash, Read
 metadata:
-  version: "0.3.2"
+  version: "1.0.0"
   protocol: 1
 ---
 

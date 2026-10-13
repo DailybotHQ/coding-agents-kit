@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v0.7.1/docs/schema/pick-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.0.0/docs/schema/pick-v1.json",
   "title": "ak pick --json (pick-v1)",
   "description": "The account(s) with the most usable headroom for a kind, chosen from the same rows as `ak usage` by one documented policy (docs/usage.md#choosing-an-account). No login is refreshed, no reset is spent; since 0.6.0 a fresh reading may come from the kit's usage cache (usage numbers only; --max-age). Never contains a secret value or an account identity. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",

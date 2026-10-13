@@ -17,7 +17,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 ```json
 {
   "interface": 1,
-  "version": "0.7.1",
+  "version": "1.0.0",
   "os": "macos",
   "kinds": {
     "claude":     { "cli": "claude", "provider": null,  "installed": true, "path": "/…/claude", "version": "2.1.295 (Claude Code)", "logged_in": true },
@@ -36,7 +36,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 
 | Key | Meaning |
 | --- | --- |
-| `interface` | the machine contract: this JSON shape, `ak env` and the `ak run` grammar and envelope. It is `1`, and changes only when that contract breaks (a key removed or retyped, a grammar change); a change of behaviour, such as the default permission posture, is carried by the minor version |
+| `interface` | the machine contract: this JSON shape, `ak env` and the `ak run` grammar and envelope. It is `1`, and changes only when that contract breaks (a key removed or retyped, a grammar change); a change of behaviour, such as the default permission posture, is carried by the kit's version (semver since 1.0.0) |
 | `kinds.<kind>.installed` / `path` / `version` | the CLI on `PATH` (Cursor: the real Cursor binary, never Grok's `agent`); version from `<cli> --version` (5 s timeout) |
 | `kinds.<kind>.logged_in` | `@default` only. Canonical kinds: `true`/`false` from credential **file presence** (and credential variable names), `null` when files cannot tell (Cursor's default Keychain login, OpenCode/Pi/Cline env-based providers). Provider kinds: whether their key variable is set |
 | `profiles` | named profiles per CLI (`@default` is implicit) |

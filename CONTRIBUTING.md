@@ -50,8 +50,8 @@ Adding a kind is a data entry in `providers.toml` plus a test — see
   template (summary, linked issue, test evidence, checklist). `main` is
   protected: CI must pass and one maintainer review is required.
 - A change to interface 1 (`ak doctor --json`, `ak env`, `ak run`) is a
-  breaking change: it bumps the interface version and the minor version
-  while the kit is `0.x`.
+  breaking change: it bumps the interface version and the major version
+  (the kit follows semver since 1.0.0).
 - No DCO or CLA is required; by contributing you agree your work is
   released under the [MIT License](LICENSE).
 

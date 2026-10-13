@@ -4,13 +4,59 @@ All notable changes to coding-agents-kit are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-While the version is `0.x`, a breaking change bumps the minor version. The
-interface version reported by `ak doctor --json` tracks the machine contract
+Since 1.0.0 the public interface follows semver: a breaking change bumps the
+major version (before 1.0.0, while the version was `0.x`, it bumped the minor
+version). The interface version reported by `ak doctor --json` tracks the machine contract
 only (the doctor JSON shape, `ak env`, the `ak run` grammar and envelope): it
 changes when that contract breaks, not when behaviour such as the default
 permission posture changes.
 
 ## [Unreleased]
+
+## [1.0.0] - 2026-10-13
+
+The first stable release. Interface stays **1**; no command, flag, key or
+schema changes from 0.7.1.
+
+### Stability commitment
+
+From 1.0.0 on, the kit's public interface follows [Semantic
+Versioning](https://semver.org/spec/v2.0.0.html): anything below changes
+incompatibly only in a new major version, and additions arrive in minor
+versions.
+
+- **The command surface:** `ak <kind> [@profile]` for every kind in
+  `providers.toml` (claude, codex, cursor, opencode, pi, cline, grok,
+  antigravity and the glm, azure and xai routes), and the verbs `ak run`,
+  `ak env`, `ak doctor`, `ak usage` (and `ak status`), `ak pick`,
+  `ak capacity`, `ak lease`, `ak profiles`, `ak alias`, `ak install`,
+  `ak setup` and `ak --skill`, with their documented flags (`ak --help`).
+- **The permission posture:** autonomy by default, and an opt-out that always
+  wins (`--ask`, `AGENTKIT_PERMISSIONS=ask`).
+- **Interface 1:** the `ak doctor --json` shape, `ak env` and the `ak run`
+  grammar and envelope, still reported as `"interface": 1`.
+- **The JSON schemas:** `doctor-v1`, `usage-v1`, `pick-v1`, `capacity-v1`,
+  `leases-v1`, `profiles-v1`, `setup-probe-v1` and `setup-verify-v1`
+  (`docs/schema/`); a schema gains keys in place and changes incompatibly
+  only under a new schema name.
+- **The installed layout and the env file:** `install.sh` / `install.ps1`,
+  the profile directories and the env-file variable names (`*_API_KEY` and
+  their `_<SUFFIX>` per-profile forms).
+
+### Changed
+
+- **Version 1.0.0.** Every version source (`lib/common.py`, the three
+  skills' metadata, the install and skill commands in the README and docs,
+  the schemas' `$id`, the issue template) names 1.0.0, and `CONTRIBUTING.md`
+  and `docs/doctor.md` describe the semver policy.
+- **The README showcases the kit:** a pitch line, badges, a sample `ak usage`
+  table, the eight supported coding agents with how each keeps accounts apart
+  and what `ak usage` reads, and the provider routes (Z.AI GLM, Azure OpenAI,
+  xAI, the Gemini API).
+- Agent kit: the vendored DeepWorkPlan pack moves to 7.7.1 and the vendored
+  herdr-peers skill to v1.0.0 (both pinned in `skills-lock.json`; herdr-peers
+  checked against its release `SHA256SUMS`), and the addon registry
+  (`.dwp/config.json`) records agentkit v1.0.0 and herdr v1.0.0.
 
 ## [0.7.1] - 2026-10-12
 
@@ -605,7 +651,10 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.1...v1.0.0
+[0.7.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.0...v0.6.1
 [0.6.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.5.3...v0.6.0
 [0.5.1]: https://github.com/DailybotHQ/coding-agents-kit/releases/tag/v0.5.1

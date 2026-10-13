@@ -9,14 +9,14 @@ Two pieces work together:
   machine. It observes and renders; it never installs, repairs or decides, and it never writes anything except an
   explicit `--out FILE`.
 
-Neither replaces the two commands you can always type yourself (`git clone --branch v0.7.1 …` and `install.sh`, see
+Neither replaces the two commands you can always type yourself (`git clone --branch v1.0.0 …` and `install.sh`, see
 [install](install.md)). They exist so an agent can do the same thing safely, repeatably and on a machine you are not
 sitting at.
 
 ## Use the skill
 
 ```bash
-npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.1 --skill agentkit-setup
+npx --yes skills add DailybotHQ/coding-agents-kit@v1.0.0 --skill agentkit-setup
 ```
 
 or let the kit print it: `ak --skill setup`. Then ask your agent, for example: *"set up coding-agents-kit on this
@@ -24,7 +24,7 @@ machine with a Claude and a Codex account"* or *"write a Dockerfile that runs th
 The skill starts from a clone of the pinned tag, so it works before `ak` exists:
 
 ```bash
-git clone --branch v0.7.1 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v1.0.0 https://github.com/DailybotHQ/coding-agents-kit
 python3 coding-agents-kit/lib/ak.py setup probe --json
 ```
 

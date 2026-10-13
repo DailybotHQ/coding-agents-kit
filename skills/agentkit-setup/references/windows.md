@@ -4,7 +4,7 @@ Requirements: python 3.9 or newer (the `py` launcher), git. WSL users follow flo
 
 ## Steps
 
-1. Probe: `py -3 coding-agents-kit\lib\ak.py setup probe --json` (after `git clone --branch v0.7.1 https://github.com/DailybotHQ/coding-agents-kit`).
+1. Probe: `py -3 coding-agents-kit\lib\ak.py setup probe --json` (after `git clone --branch v1.0.0 https://github.com/DailybotHQ/coding-agents-kit`).
 2. Missing git or python: offer `winget install Git.Git` or `winget install Python.Python.3.12` — `[GATE: system package]`; run only after they agree.
 3. `[GATE: shell rc]` The installer adds the install's `bin` to the **user** Path unless told not to:
    ```powershell
