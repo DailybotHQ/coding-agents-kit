@@ -19,6 +19,9 @@ logins, and the kit's own agent kit is current.
 
 ### Added
 
+- **The project logo.** `assets/logo-light.png` and `assets/logo-dark.png`
+  (transparent, 1200×351); the README serves the one that matches GitHub's
+  theme.
 - **`ak status`** is another name for `ak usage`.
 - **A named profile's suffixed credential variable is its login**
   (`GEMINI_API_KEY_WORK` for `@work`, any CLI's `[clis.<cli>.login] env`):

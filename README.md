@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-light.png">
+    <img alt="Coding Agents Kit" src="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-light.png" width="440">
+  </picture>
+</p>
+
 # coding-agents-kit
 
 One command surface for every terminal coding agent: `ak <kind> [@profile]`.
