@@ -8,42 +8,96 @@
 
 # coding-agents-kit
 
-One command surface for every terminal coding agent: `ak <kind> [@profile]`.
+**One command for every terminal coding agent:** `ak <kind> [@profile]` — install, launch, switch accounts and read every account's quota, the same way for all of them.
 
 [![CI](https://github.com/DailybotHQ/coding-agents-kit/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/DailybotHQ/coding-agents-kit/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/DailybotHQ/coding-agents-kit?sort=semver)](https://github.com/DailybotHQ/coding-agents-kit/releases)
 [![License: MIT](https://img.shields.io/github/license/DailybotHQ/coding-agents-kit)](LICENSE)
+![Agents: 8](https://img.shields.io/badge/coding%20agents-8-0A3CF5)
+![Platforms](https://img.shields.io/badge/platforms-macOS%20%C2%B7%20Linux%20%C2%B7%20Windows%20%C2%B7%20containers-1F2328)
+![Dependencies](https://img.shields.io/badge/dependencies-bash%20%2B%20python3%20stdlib-1F2328)
+
+<p align="center">
+  <a href="#supported-coding-agents">Supported agents</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#quickstart">Quickstart</a> ·
+  <a href="#several-accounts">Several accounts</a> ·
+  <a href="docs/usage.md">Quota</a> ·
+  <a href="docs/orchestration.md">Orchestration</a> ·
+  <a href="#documentation">Docs</a>
+</p>
+
+```text
+$ ak usage
+  PROFILE   PLAN    WINDOW                 USED             RESET
+
+claude · Claude Code
+  @work     max     5-hour                 ██▊░░░░░░░  27%  in 1h 15m
+                    7-day all models       ███▊░░░░░░  38%  in 1d 22h
+  @team     team    5-hour                 ▋░░░░░░░░░   6%  in 3h 55m
+
+codex
+  @work     team    5-hour                 ████████▍░  84%  in 26m
+                    7-day                  ██▌░░░░░░░  25%  in 5d 16h
+
+antigravity · Antigravity CLI
+  @default  AI Pro  5-hour Gemini          ███▍░░░░░░  34%  in 1h 10m
+                    7-day Claude and GPT   ░░░░░░░░░░   0%  in 7d 0h
+  @work     AI Pro  5-hour Gemini          ▏░░░░░░░░░   1%  in 3h 55m
+
+cursor · Cursor Agent
+  @default  -       n/d                    logged in: web session only
+```
 
 ## What it is
 
 Every coding-agent CLI has its own flags for continuing a session, its own
 way to keep a second account apart, its own headless mode and its own
-"skip all permission prompts" switch. `ak` (also `agentkit`) puts one
-grammar over all of them:
+"skip all permission prompts" switch. `ak` (also `agentkit`) puts **one
+grammar** over all of them, so people, scripts and other agents drive any CLI
+— with any of your accounts — without learning its quirks.
 
-- **Kinds** — `claude`, `codex`, `cursor`, `opencode`, `pi`, `cline`,
-  `grok`, `antigravity` (Google's `agy`), plus provider routes (`claude-glm`, `codex-azure`,
-  `opencode-xai`, …). Kinds are data in [`providers.toml`](providers.toml).
-- **Profiles** — several accounts per CLI (`ak claude @work`), each with its
-  own login, sessions and provider keys.
-- **The same session flags everywhere** — `-c`, `-r [id]`, `-l`, mapped to
-  each CLI's own form.
-- **Autonomy by default** — every launch adds the CLI's own autonomy flag;
-  opt out with `--ask` or `AGENTKIT_PERMISSIONS=ask`. Autonomy is meant for
-  disposable or sandboxed environments: on a host, opt out.
-- **Interface 1 for other tools** — `ak run` (headless, one JSON result),
-  `ak env` (a profile's environment), `ak doctor --json`.
-- **Set it up with an agent** — the `agentkit-setup` skill and the read-only `ak setup probe | verify | docker`
-  install, configure, verify and repair the kit on any host or container (pinned tag, verified tarball, keys by
-  name only, consent before every change).
-- **Quota of every account** — `ak usage` lists the 5-hour and weekly windows
-  of each Claude, Codex and Z.AI account in one table (`--json` for tools),
-  read-only, with `n/d` rows where no quota can be read; `ak pick` names the
-  account with the most room for a kind.
-- **Several agents, several accounts** — `ak pick --count N` plus `ak run`
-  in one git worktree per delegate; the `agentkit-orchestrate` skill teaches
-  an agent the loop.
-- **Keys stay in one file** — provider keys never land in a config file.
+### Supported coding agents
+
+| Agent | Command | `ak` kind | Several accounts (`@profile`) | Quota in `ak usage` |
+| --- | --- | --- | --- | --- |
+| [Claude Code](https://docs.claude.com/en/docs/claude-code) | `claude` | `claude` | yes — its own config dir | 5-hour and weekly windows, per model |
+| [Codex](https://developers.openai.com/codex/cli) | `codex` | `codex` | yes — its own `CODEX_HOME` | 5-hour and weekly windows, resets held |
+| [Cursor Agent](https://cursor.com/docs/cli) | `agent` | `cursor` | yes — its own home and credential store | connected only (web session) |
+| [OpenCode](https://opencode.ai/docs) | `opencode` | `opencode` | yes — its own XDG dirs | through the provider key |
+| [Pi](https://github.com/earendil-works/pi) | `pi` | `pi` | yes — its own agent dir | through the provider key |
+| [Cline](https://docs.cline.bot) | `cline` | `cline` | yes — its own `CLINE_DIR` | through the provider key |
+| [Grok](https://x.ai/cli) | `grok` | `grok` | yes — its own `GROK_HOME` | connected only (per-session usage) |
+| [Antigravity CLI](https://antigravity.google/docs/cli) | `agy` | `antigravity` | yes — its own home (one Google login each on Linux and in containers) | Gemini and Claude/GPT, 5-hour and weekly |
+
+`ak install <kind>` installs each one from its vendor, **pinned to an exact
+version and verified** (sha256 or npm integrity). Kinds are data in
+[`providers.toml`](providers.toml): adding an agent is a table, not code.
+
+### Provider routes
+
+The same CLIs, routed to another model provider with one key per account:
+
+| Provider | Key | Kinds | Quota |
+| --- | --- | --- | --- |
+| Z.AI GLM Coding Plan | `ZAI_CODING_API_KEY[_SUFFIX]` | `claude-glm`, `codex-glm`, `opencode-glm`, `pi-glm` | 5-hour and weekly credits |
+| Azure OpenAI / Microsoft Foundry | `AZURE_OPENAI_API_KEY[_SUFFIX]` | `codex-azure`, `opencode-azure`, `pi-azure`, `cline-azure` | in the Azure portal |
+| xAI | `XAI_API_KEY[_SUFFIX]` | `codex-xai`, `opencode-xai`, `pi-xai`, `cline-xai`, `grok` | needs a management key |
+| Gemini API | `GEMINI_API_KEY[_SUFFIX]` | `antigravity` | in Google AI Studio |
+
+### What you get
+
+| | |
+| --- | --- |
+| **One grammar** | `-c`, `-r [id]`, `-l` mean the same in every CLI; `ak` maps them to each one's own form ([the grammar](#the-grammar)). |
+| **Several accounts** | `ak claude @work`, `ak codex @client-x`: each profile has its own login, sessions, settings and keys, side by side. |
+| **Quota of every account** | `ak usage` (or `ak status`) lists every account of every CLI in one table, `ak pick` names the one with the most room, `ak capacity` judges one. |
+| **Headless runs** | `ak run` runs any kind non-interactively and returns one JSON result — the transport other tools and agents use. |
+| **Agents launching agents** | `ak pick --count N`, leases and the `agentkit-orchestrate` skill spread lanes over accounts and vendors. |
+| **Autonomy by default** | each CLI's own autonomy flag on every launch, with an opt-out that always wins: `--ask` or `AGENTKIT_PERMISSIONS=ask`. Meant for disposable or sandboxed environments. |
+| **Keys stay in one file** | `~/.config/agentkit/env` (mode 600); no key lands in a config file, a log or an output. |
+| **Set up by an agent** | the `agentkit-setup` skill and the read-only `ak setup probe \| verify \| docker` install and repair the kit on any host or container. |
+| **Interface 1 for tools** | `ak run`, `ak env`, `ak doctor --json`, with versioned JSON schemas. |
 
 Requirements: bash (macOS, Linux, WSL) or PowerShell (Windows), and
 python3 ≥ 3.9. Nothing else.
