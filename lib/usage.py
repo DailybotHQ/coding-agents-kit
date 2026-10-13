@@ -295,10 +295,8 @@ def _installed(model, env, cli_name):
 def enumerate_rows(model, env):
     """Every row the kit can see, in the documented order, before filtering."""
     listing = {}
-    profile_dirs = {}
     for cli_name, name, directory in profiles.listing(model, env):
         listing.setdefault(cli_name, []).append(name)
-        profile_dirs.setdefault(cli_name, set()).add(os.path.realpath(directory))
     rows = []
     covered = set()      # (cli, profile label) already reported through a provider key
     # provider-key rows (one per key variable that is set)
@@ -328,12 +326,11 @@ def enumerate_rows(model, env):
     for cli_name in _cli_order(model):
         table = model.cli_usage(cli_name)
         installed = _installed(model, env, cli_name)
-        # A default home moved onto a profile directory (CLAUDE_CONFIG_DIR=<profile>)
-        # is that profile's account: one row, so ak pick never counts it twice.
-        home_env = model.clis[cli_name].get("home_env")
-        moved = env.get(home_env) if home_env else None
-        same_as_profile = bool(moved) and os.path.realpath(moved) in profile_dirs.get(cli_name, set())
-        candidates = [None] if installed and not same_as_profile else []
+        # @default is always the CLI's own home: a home variable that points at
+        # a profile (CLAUDE_CONFIG_DIR=<profile>, inherited or set by a dev
+        # container) is ignored for it (profiles.native_env), so @default and
+        # every profile stay separate rows and separate accounts.
+        candidates = [None] if installed else []
         candidates.extend(sorted(listing.get(cli_name, [])))
         for name in candidates:
             label = _profile_label(name) if name else "@default"

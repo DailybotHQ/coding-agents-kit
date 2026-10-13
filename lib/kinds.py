@@ -382,6 +382,14 @@ class Context(object):
 
     def __init__(self, kind, env, home, profile_dir=None, profile_label="@default",
                  specials=None, allow_secret=False):
+        if profile_dir is None:
+            # @default reads the CLI's own home, never a profile that a home
+            # variable inherited from a profile launch points at.
+            import profiles
+            native = profiles.native_env(kind.cli_name, kind.cli, env)
+            if native.get("HOME") != env.get("HOME"):
+                home = native["HOME"]
+            env = native
         self.kind = kind
         self.env = env
         self.home = home

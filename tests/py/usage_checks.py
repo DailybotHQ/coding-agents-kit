@@ -178,8 +178,17 @@ check("usage core: one row per credential identity in the documented order",
                 ("cursor", "@default"), ("cursor", "@work"), ("grok", "@work"), ("zai", "@default"), ("zai", "@2")], str(order))
 moved = env_for({"ZAI_CODING_API_KEY": PLANTED_PROVIDER, "CLAUDE_CONFIG_DIR": os.path.join(PROFILES, "claude", "work")})
 _c, moved_rows = rows_of(["claude"], moved)
-check("usage core: a default home moved onto a profile directory is one account (no @default row twice)",
-      [r["profile"] for r in moved_rows] == ["@2", "@work"], str([r["profile"] for r in moved_rows]))
+check("usage core: a home variable on a profile directory keeps @default its own row (no merged accounts)",
+      [r["profile"] for r in moved_rows] == ["@default", "@2", "@work"], str([r["profile"] for r in moved_rows]))
+_homes = dict((r.profile, r.ctx.root("home")) for r in usage.enumerate_rows(MODEL, moved) if r.cli == "claude")
+check("usage core: ... and @default reads the CLI's own home, never the profile the variable names",
+      _homes.get("@default") == os.path.join(HOME, ".claude")
+      and _homes.get("@work") == os.path.join(PROFILES, "claude", "work"), str(_homes))
+_custom = os.path.join(HOME, "custom-claude")
+_homes = dict((r.profile, r.ctx.root("home")) for r in usage.enumerate_rows(MODEL, dict(moved, CLAUDE_CONFIG_DIR=_custom))
+              if r.cli == "claude")
+check("usage core: a home moved outside ak's profile tree is still @default's home",
+      _homes.get("@default") == _custom, str(_homes))
 zai = [r for r in rows if r["cli"] == "zai"]
 check("usage core: four glm kinds of one key collapse into one row",
       len(zai) == 2 and zai[0]["kinds"] == ["claude-glm", "codex-glm", "opencode-glm", "pi-glm"], str(zai))

@@ -171,6 +171,11 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
     default_var = None
     if head.profile_token is None:
         name, default_var = profiles.resolve_default(model, kind, env)
+    if not name:
+        # @default is the CLI's own home: a home variable inherited from a
+        # profile launch (or a dev container's default account) never makes
+        # @default run as that profile.
+        env = profiles.native_env(kind.cli_name, kind.cli, env)
     if default_var:
         # A default never creates a profile: it names one that must exist.
         try:
@@ -204,7 +209,7 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
     # inherited marker never names the wrong account.
     env["AGENTKIT_ACTIVE_ACCOUNT"] = "%s/%s" % (kind.name, profiles.label(name))
     auto = resolve_auto(head.auto, head.ask, env)
-    ctx = kinds.Context(kind, env, base_env.get("HOME") or common.home(), profile_dir=directory,
+    ctx = kinds.Context(kind, env, (env if not name else base_env).get("HOME") or common.home(), profile_dir=directory,
                         profile_label=profiles.label(name), allow_secret=(purpose != "print"))
     # On macOS and Windows agy keeps its Google login in one OS-keyring slot per
     # machine, so a profile without its own key shares @default's account; on

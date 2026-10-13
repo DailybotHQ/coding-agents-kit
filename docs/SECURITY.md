@@ -94,8 +94,10 @@ which may raise one macOS access dialog per item; the secret is parsed in
 memory and dropped. `AGENTKIT_KEYCHAIN=off` skips every Keychain call, the
 presence probe and the secret read alike (the test suite sets it). Requests to
 vendor hosts honour `HTTPS_PROXY`; the loopback test override bypasses proxies.
-A default home moved onto a profile directory (`CLAUDE_CONFIG_DIR=<profile>`)
-is reported once, as that profile, so the same quota is never counted twice.
+`@default` is always the CLI's own home: a home variable that names one of
+ak's profiles (`CLAUDE_CONFIG_DIR=<profile>`, inherited from a profile launch
+or exported by a dev container) is ignored for it, so `@default` and every
+profile are separate rows that never read each other's login.
 
 ## Account selection (`ak pick`)
 
