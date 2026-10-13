@@ -315,11 +315,12 @@ def enumerate_rows(model, env):
             if suffix:
                 label = _profile_label(_match_profile_name(listing, suffix))
             kind_names = _kinds_of_provider(model, pname)
+            row_cli = "antigravity" if pname == "gemini" else pname
             if "unsupported" in table:
-                row = Row(pname, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))
+                row = Row(row_cli, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))
                 row.connected, row.how = True, "%s set" % var
             else:
-                row = Row(pname, label, kind_names, table, table["adapter"], key_var=var)
+                row = Row(row_cli, label, kind_names, table, table["adapter"], key_var=var)
             provider_rows.append(row)
             for kn in kind_names:
                 covered.add((model.kinds[kn]["cli"], label))
@@ -336,10 +337,10 @@ def enumerate_rows(model, env):
         candidates.extend(sorted(listing.get(cli_name, [])))
         for name in candidates:
             label = _profile_label(name) if name else "@default"
+            if (cli_name, label) in covered and (table is None or cli_name == "antigravity"):
+                continue
             kind_names = [cli_name] if table is None else _kinds_of_cli(model, cli_name)
             if table is None:
-                if (cli_name, label) in covered:
-                    continue
                 example = next((k for k in _kinds_of_cli(model, cli_name) if k != cli_name), None)
                 hint = "; its usage shows up under the provider key of a kind such as %s" % example if example else ""
                 rows.append(_with_login(model, env, cli_name, name, Row(

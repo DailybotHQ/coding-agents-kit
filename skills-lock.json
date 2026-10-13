@@ -14,6 +14,13 @@
       "sourceType": "github",
       "skillPath": "skills/deepworkplan/SKILL.md",
       "computedHash": "a040ef6058b1e646980581085c47a8afb3b1fabfab021a7b6bb4c941418bd773"
+    },
+    "herdr-peers": {
+      "source": "DailybotHQ/herdr-peers",
+      "ref": "v0.3.2",
+      "sourceType": "github",
+      "skillPath": "skills/herdr-peers/SKILL.md",
+      "computedHash": "c5f3d5623a708c53c71cb2811a15ab0a9d84feacbd5f021e6cd2026322408d44"
     }
   }
 }

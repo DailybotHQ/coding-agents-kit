@@ -41,6 +41,10 @@ scope_usage() {
 
   out="$(ak -- --help)"
   expect_has "usage core: ak --help lists the command" "${out}" "ak usage"
+  expect_has "usage core: ak --help names the status alias" "${out}" "(alias: ak status)"
+  out="$(ak -- status --help)"; status=$?
+  expect_eq "usage core: ak status is ak usage (--help exits 0)" "${status}" 0
+  expect_has "usage core: ak status prints the usage grammar" "${out}" "ak usage [<kind-or-cli>]"
 
   # An override that leaves the machine is refused before any request.
   out="$(ak AGENTKIT_USAGE_URL_ANTHROPIC_OAUTH=http://example.com/x -- usage claude)"; status=$?

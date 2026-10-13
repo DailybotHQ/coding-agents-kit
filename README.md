@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-light.png">
+    <img alt="Coding Agents Kit" src="https://raw.githubusercontent.com/DailybotHQ/coding-agents-kit/main/assets/logo-light.png" width="440">
+  </picture>
+</p>
+
 # coding-agents-kit
 
 One command surface for every terminal coding agent: `ak <kind> [@profile]`.
@@ -43,7 +51,7 @@ python3 ≥ 3.9. Nothing else.
 ## Install
 
 ```bash
-git clone --branch v0.7.0 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
+git clone --branch v0.7.1 https://github.com/DailybotHQ/coding-agents-kit && ./coding-agents-kit/install.sh
 ```
 
 Verify the checkout against the release's checksums (every shipped file is
@@ -51,7 +59,7 @@ listed):
 
 ```bash
 cd coding-agents-kit
-curl -fsSLO https://github.com/DailybotHQ/coding-agents-kit/releases/download/v0.7.0/SHA256SUMS
+curl -fsSLO https://github.com/DailybotHQ/coding-agents-kit/releases/download/v0.7.1/SHA256SUMS
 shasum -a 256 -c SHA256SUMS --ignore-missing      # Linux: sha256sum -c SHA256SUMS --ignore-missing
 ```
 
@@ -59,7 +67,7 @@ Windows: `.\coding-agents-kit\install.ps1`. Scripts and containers:
 `./coding-agents-kit/install.sh --no-rc`. Details, upgrades and uninstall:
 [docs/install.md](docs/install.md).
 
-Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.0 --skill agentkit-setup`, then ask it
+Let an agent do it: `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.1 --skill agentkit-setup`, then ask it
 to set the kit up on this machine or to write a container recipe ([setup](docs/setup.md)).
 
 ## Quickstart
@@ -128,9 +136,9 @@ ak pick codex --owner local:w1:p1 --count 2      # spreads lanes: every active l
 
 | Skill | For | Install |
 | --- | --- | --- |
-| `agentkit` | launching kinds, accounts, `ak run`, `ak usage`, `ak pick` (`ak --skill`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.0 --skill agentkit` |
-| `agentkit-setup` | installing, configuring and repairing the kit (`ak --skill setup`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.0 --skill agentkit-setup` |
-| `agentkit-orchestrate` | several agents over several accounts and vendors (`ak --skill orchestrate`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.0 --skill agentkit-orchestrate` |
+| `agentkit` | launching kinds, accounts, `ak run`, `ak usage`, `ak pick` (`ak --skill`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.1 --skill agentkit` |
+| `agentkit-setup` | installing, configuring and repairing the kit (`ak --skill setup`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.1 --skill agentkit-setup` |
+| `agentkit-orchestrate` | several agents over several accounts and vendors (`ak --skill orchestrate`) | `npx --yes skills add DailybotHQ/coding-agents-kit@v0.7.1 --skill agentkit-orchestrate` |
 
 ### The grammar
 

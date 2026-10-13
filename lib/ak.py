@@ -4,7 +4,7 @@
     ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
     ak env <kind> [@profile] | ak env import <file>
     ak doctor [--json]
-    ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
+    ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color] (alias: ak status)
     ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--owner ADDR] [--json]
     ak capacity [<kind-or-cli>] [@profile] [--self] [--low PCT] [--critical PCT] [--max-age S] [--json]
     ak lease <kind-or-cli> @profile --owner ADDR [--ttl DUR] [--purpose TEXT] | ak lease release <kind> @profile --owner ADDR | ak lease ls [--json]
@@ -29,7 +29,7 @@ USAGE = """usage:
   ak run <kind> [@profile] [--cwd DIR] [--timeout SECONDS] [--output-format text|json] [--ask | --auto] [--trust-cwd] -- "<prompt>"
   ak env <kind> [@profile] | ak env import <file>
   ak doctor [--json]
-  ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color]
+  ak usage [<kind-or-cli>] [@profile] [-v] [--json] [--timeout SECONDS] [--no-color] (alias: ak status)
   ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--count N] [--exclude @p]... [--owner ADDR] [--json]
   ak capacity [<kind-or-cli>] [@profile] [--self] [--low PCT] [--critical PCT] [--max-age S] [--json]
   ak lease <kind-or-cli> @profile --owner ADDR [--ttl DUR] [--purpose TEXT] | ak lease release <kind> @profile --owner ADDR | ak lease ls [--json]
@@ -114,7 +114,7 @@ def main(argv):
     if first == "doctor":
         import doctor
         return doctor.main(model, rest, env)
-    if first == "usage":
+    if first in ("usage", "status"):
         import usage
         return usage.main(model, rest, env)
     if first == "pick":

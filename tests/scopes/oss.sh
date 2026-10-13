@@ -15,7 +15,14 @@ scope_oss() {
   out="$(grep -E '^## ' "${ROOT}/README.md" | tr '\n' '|')"
   expect_eq "README sections in the standard order" "${out}" \
     "## What it is|## Install|## Quickstart|## How it fits with DeepWorkPlan|## Part of the DeepWorkPlan ecosystem|## Security|## Documentation|## Contributing|## License|"
-  check "README opens with the title and a one-line value" bash -c "head -3 '${ROOT}/README.md' | grep -q '^# coding-agents-kit\$' && sed -n 3p '${ROOT}/README.md' | grep -q '\`ak'"
+  check "README opens with the logo, then the title and a one-line value" bash -c \
+    "head -1 '${ROOT}/README.md' | grep -q '^<p align=\"center\">\$' \
+     && t=\$(grep -n -m1 '^# ' '${ROOT}/README.md' | cut -d: -f1) \
+     && sed -n \"\${t}p\" '${ROOT}/README.md' | grep -q '^# coding-agents-kit\$' \
+     && sed -n \"\$((t + 2))p\" '${ROOT}/README.md' | grep -q '\`ak'"
+  check "README logo: a light and a dark variant, both in assets/ and served by theme" bash -c \
+    "for v in light dark; do [[ -s '${ROOT}/assets/logo-'\$v'.png' ]] \
+       && grep -q 'main/assets/logo-'\$v'.png' '${ROOT}/README.md' || exit 1; done; grep -q 'prefers-color-scheme: dark' '${ROOT}/README.md'"
   for b in 'actions/workflows/ci.yml/badge.svg' 'img.shields.io/github/v/release' 'img.shields.io/github/license'; do
     check "README badge: ${b}" grep -q "${b}" "${ROOT}/README.md"
   done

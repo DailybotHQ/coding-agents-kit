@@ -13,6 +13,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 import stat
 import subprocess
 import sys
@@ -574,6 +575,29 @@ check("usage connected: the blocks keep the CLI order (grok before the providers
       grok_title and xai_title and grok_title[0] < xai_title[0], text)
 os.remove(os.path.join(HOME, ".grok", "auth.json"))
 INSTALLED.clear()
+
+# A Gemini API key is an Antigravity account: its row sits in the antigravity block and replaces that
+# profile's Google-login row (the key is what `ak antigravity @work` uses); a profile without a key keeps
+# its own login row. A named profile's suffixed key counts as its login.
+import profiles as _profiles  # noqa: E402
+os.makedirs(os.path.join(PROFILES, "antigravity", "work", "home"), exist_ok=True)
+os.makedirs(os.path.join(PROFILES, "antigravity", "solo", "home"), exist_ok=True)
+gem_env = env_for({"GEMINI_API_KEY_WORK": "PLANTED-GEMINI-0017"})
+_c, gem_rows, _ = rows_of(["antigravity"], gem_env)
+got = [(r["cli"], r["profile"], r["source"], r["status"]) for r in gem_rows]
+check("usage gemini: a GEMINI_API_KEY_<SUFFIX> row is listed under antigravity, n/d, connected by its key",
+      ("antigravity", "@work", "none", "unsupported") in got
+      and next(r for r in gem_rows if r["profile"] == "@work").get("connected") is True, str(got))
+check("usage gemini: that profile has no second (Google login) row; a profile without a key keeps its own",
+      [g for g in got if g[1] == "@work"] == [("antigravity", "@work", "none", "unsupported")]
+      and ("antigravity", "@solo", "antigravity-quota", "no_login") in got, str(got))
+text = run(["antigravity"], gem_env)[1]
+check("usage gemini: the table shows the key under the antigravity block, never a gemini block",
+      "GEMINI_API_KEY_WORK set" in text and not any(l.startswith("gemini") for l in text.splitlines()), text)
+check("login state: a named profile's suffixed credential variable counts as its login",
+      _profiles.login_state(MODEL, "antigravity", "work", gem_env) is True
+      and _profiles.login_kind(MODEL, "antigravity", "work", gem_env) == "token-var", "")
+shutil.rmtree(os.path.join(PROFILES, "antigravity"))
 
 # The Keychain probe: presence only, never the secret (-w), and never under AGENTKIT_KEYCHAIN=off.
 if os.name != "nt":

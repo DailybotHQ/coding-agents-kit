@@ -206,6 +206,15 @@ def prepare(model, kind_name, head, base_env, purpose="launch"):
     auto = resolve_auto(head.auto, head.ask, env)
     ctx = kinds.Context(kind, env, base_env.get("HOME") or common.home(), profile_dir=directory,
                         profile_label=profiles.label(name), allow_secret=(purpose != "print"))
+    # On macOS and Windows agy keeps its Google login in one OS-keyring slot per
+    # machine, so a profile without its own key shares @default's account; on
+    # Linux and in containers the login is a file of the profile's own HOME.
+    if purpose == "launch" and kind.cli_name == "antigravity" and name and not env.get("GEMINI_API_KEY") \
+            and common.os_name() in ("macos", "windows"):
+        sfx = profiles.suffix(name)
+        common.warn("antigravity @%s has no GEMINI_API_KEY_%s set; on this OS it uses the machine-wide Google login "
+                    "(shared with @default). For a separate account, add GEMINI_API_KEY_%s to %s"
+                    % (name, sfx, sfx, common.env_file()))
     return Prepared(kind, exe, env, name, directory, ctx, auto)
 
 

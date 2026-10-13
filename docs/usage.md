@@ -2,6 +2,7 @@
 
 ```
 ak usage [<kind-or-cli>] [@profile] [-v | --verbose] [--json] [--timeout SECONDS] [--no-color]
+ak status …     # the same command
 ```
 
 One command, one list: the quota windows of every account the kit can see —

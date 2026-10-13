@@ -12,6 +12,37 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-12
+
+Interface stays **1**. Antigravity's API-key accounts sit with its Google
+logins, and the kit's own agent kit is current.
+
+### Added
+
+- **The project logo.** `assets/logo-light.png` and `assets/logo-dark.png`
+  (transparent, 1200×351); the README serves the one that matches GitHub's
+  theme.
+- **`ak status`** is another name for `ak usage`.
+- **A named profile's suffixed credential variable is its login**
+  (`GEMINI_API_KEY_WORK` for `@work`, any CLI's `[clis.<cli>.login] env`):
+  `ak profiles`, `ak doctor`, `ak usage` and `ak pick` see such a profile as
+  logged in (`token-var`).
+
+### Changed
+
+- **A Gemini API key is listed under Antigravity.** `GEMINI_API_KEY[_SUFFIX]`
+  rows sit in the `antigravity` block (n/d, `GEMINI_API_KEY_WORK set`) instead
+  of a block of their own, and a profile served by its key has that one row,
+  not a second Google-login row. A profile without a key keeps its own login
+  row (quota on Linux and in containers).
+- **The Antigravity launch warning is per OS.** `ak antigravity @name` without
+  `GEMINI_API_KEY_<SUFFIX>` warns about the machine-wide Google login only on
+  macOS and Windows; on Linux and in containers the profile has a login of its
+  own and nothing is shared.
+- Agent kit: the vendored herdr-peers skill moves to v0.3.2 (pinned in
+  `skills-lock.json`), and the addon registry (`.dwp/config.json`) records
+  agentkit v0.7.1 and herdr v0.3.2.
+
 ## [0.7.0] - 2026-10-12
 
 Interface stays **1**. Every account in `ak usage`, and Antigravity's quota:
