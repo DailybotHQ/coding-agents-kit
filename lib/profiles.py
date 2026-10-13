@@ -183,6 +183,50 @@ def activate(cli_name, cli, name, directory, env):
         env["HOME"] = fake_home
 
 
+XDG_VARS = ("XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME", "XDG_CACHE_HOME")
+
+
+def native_env(cli_name, cli, env):
+    """The environment @default (the CLI's own home) is read and launched
+    with. A CLI home variable can name one of ak's profiles without the
+    launch asking for it: inherited from an `ak <cli> @name` session, or
+    exported by a dev container so a plain `claude --resume` that Herdr
+    restores opens its default account. Such a value is that profile's home,
+    never the CLI's own, so it is dropped here (a relocated HOME goes back
+    to AGENTKIT_REAL_HOME): @default stays its own account and no profile is
+    ever read or launched as @default. A value outside ak's profile tree (a
+    home moved on purpose) is kept. Returns a new dict; env is left alone."""
+    import state
+    out = dict(env)
+    # The tree as this process sees it, and as the account's real HOME does
+    # (inside a relocated HOME, ~/.local is a link back to the real one).
+    real_home = env.get("AGENTKIT_REAL_HOME") or env.get("HOME") or common.home()
+    trees = set(os.path.join(base, cli_name) for base in (env.get("AGENTKIT_PROFILES_DIR") or root(),
+                                                           state._profiles_root(env, real_home)))
+
+    def owned(value):
+        return bool(value) and any(state._inside(value, tree) for tree in trees)
+
+    isolation = cli.get("isolation")
+    if isolation == "env":
+        if owned(out.get(cli["home_env"])):
+            del out[cli["home_env"]]
+    elif isolation == "xdg":
+        for var in XDG_VARS:
+            if owned(out.get(var)):
+                del out[var]
+    elif isolation in ("home", "cursor-home"):
+        if owned(out.get("HOME")) and out.get("AGENTKIT_REAL_HOME"):
+            out["HOME"] = out.pop("AGENTKIT_REAL_HOME")
+            if isolation == "cursor-home":
+                out.pop("AGENT_CLI_CREDENTIAL_STORE", None)
+                if owned(out.get("CURSOR_CONFIG_DIR")):
+                    del out["CURSOR_CONFIG_DIR"]
+    if (out.get("AGENTKIT_ACTIVE_PROFILE") or "").startswith(cli_name + "/"):
+        del out["AGENTKIT_ACTIVE_PROFILE"]
+    return out
+
+
 def apply_keys(kind, name, env, require=True):
     """Map the profile's provider key into the kind's key variable.
 
@@ -714,6 +758,8 @@ def cmd_run(model, args, env):
     if name:
         directory = existing(cli_name, name)
         activate(cli_name, model.clis[cli_name], name, directory, env)
+    else:
+        env = native_env(cli_name, model.clis[cli_name], env)
     # The running account for `ak capacity --self`; an inherited marker would
     # name the outer account. A CLI here, as AGENTKIT_ACTIVE_PROFILE does.
     env["AGENTKIT_ACTIVE_ACCOUNT"] = "%s/%s" % (cli_name, label(name))

@@ -13,6 +13,30 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.0.1] - 2026-10-13
+
+A fix release. Interface stays **1**; no command, flag, key or schema changes.
+
+### Fixed
+
+- **Every profile is its own account, `@default` included.** A CLI home
+  variable that names one of ak's profiles — inherited from an
+  `ak <cli> @work` session, or exported by a dev container so that a plain
+  `claude --resume` restored by Herdr opens its default account
+  (`CLAUDE_CONFIG_DIR`, `CODEX_HOME`, `PI_CODING_AGENT_DIR`, `CLINE_DIR`,
+  `GROK_HOME`, the `XDG_*` directories of opencode, the relocated `HOME` of
+  cursor and antigravity) — made `@default` that profile: `ak usage` folded the
+  CLI's own account into the profile's row (a container showed no `@default`
+  for Claude or Codex), and `ak <cli> @default` launched the profile instead of
+  the CLI's own home. Now `@default` always reads and runs the CLI's own home:
+  such a variable (and an inherited `AGENTKIT_ACTIVE_PROFILE` for that CLI) is
+  dropped for `@default` in launches, `ak profiles run`, `ak usage`, `ak pick`,
+  `ak doctor` and `ak profiles`. A bare `ak <cli>` follows the documented
+  precedence (`AGENTKIT_DEFAULT_PROFILE_<CLI>`, else `@default`) instead of
+  inheriting the outer profile. A home moved outside ak's profile tree is still
+  `@default`'s home. `ak capacity --self` keeps naming the running account from
+  the variable.
+
 ## [1.0.0] - 2026-10-13
 
 The first stable release. Interface stays **1**; no command, flag, key or
@@ -651,7 +675,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...HEAD
+[1.0.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.1...v1.0.0
 [0.7.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.6.1...v0.7.0

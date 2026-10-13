@@ -30,6 +30,14 @@ ak <kind> [@profile] [--ask | --auto] [-c | --continue | -r [id] | --resume [id]
   prompt "2", `ak claude mcp list` runs that subcommand.
 - **`@default` and `@1` are the CLI's own home** (`~/.claude`, `~/.codex`, …).
   No `@` at all means the same thing. Nothing moves; nobody logs in again.
+- **Every profile is its own account, `@default` included.** A home variable
+  that names one of ak's profiles — `CLAUDE_CONFIG_DIR`, `CODEX_HOME`,
+  `PI_CODING_AGENT_DIR`, `CLINE_DIR`, `GROK_HOME`, an `XDG_*` directory or a
+  relocated `HOME` inherited from an `ak <cli> @work` session, or exported by a
+  dev container so that a plain `claude --resume` opens its default account —
+  is ignored for `@default`: launching, `ak usage`, `ak pick` and
+  `ak profiles` read and run the CLI's own home. A home variable outside ak's
+  profile tree (a home you moved on purpose) is still `@default`'s home.
 - Names are case-insensitive (`@Work` is `@work`) and use 1–32 letters,
   digits, `.`, `_` or `-`, not starting with `.`. `@02` is `@2`. Anything
   else is a one-line error (exit 2), never a path.
