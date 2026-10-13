@@ -53,9 +53,10 @@ versions.
   table, the eight supported coding agents with how each keeps accounts apart
   and what `ak usage` reads, and the provider routes (Z.AI GLM, Azure OpenAI,
   xAI, the Gemini API).
-- Agent kit: the vendored DeepWorkPlan pack moves to 7.7.1 (pinned in
-  `skills-lock.json`), and the addon registry (`.dwp/config.json`) records
-  agentkit v1.0.0.
+- Agent kit: the vendored DeepWorkPlan pack moves to 7.7.1 and the vendored
+  herdr-peers skill to v1.0.0 (both pinned in `skills-lock.json`; herdr-peers
+  checked against its release `SHA256SUMS`), and the addon registry
+  (`.dwp/config.json`) records agentkit v1.0.0 and herdr v1.0.0.
 
 ## [0.7.1] - 2026-10-12
 
