@@ -13,6 +13,11 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-25
+
+A minor release. Interface stays **1**; no command, flag, key or schema
+changes.
+
 ### Changed
 
 - **`ak usage` lists the measurable blocks first.** The table shows the CLIs
@@ -20,6 +25,13 @@ permission posture changes.
   whose read failed) before the blocks where every account is `n/d` or
   `no login` — Z.AI now sits above Cursor and Grok. Each part keeps the kit
   order; `--json` is not reordered.
+- **Version 1.1.0** in every version source (`lib/common.py`, the three
+  skills' metadata, the install and skill commands in the README and docs,
+  the schemas' `$id`, the issue template).
+- Agent kit: the vendored DeepWorkPlan pack moves to 7.9.0, herdr-peers to
+  1.1.0 and AI Diff Reviewer to 3.3.16 (pinned in `skills-lock.json`); the
+  addon registry (`.dwp/config.json`) records herdr v1.1.0, ai-diff-reviewer
+  v3.3.16 and agentkit v1.1.0.
 
 ## [1.0.1] - 2026-10-13
 
@@ -683,7 +695,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.1...v1.0.0
 [0.7.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.0...v0.7.1
