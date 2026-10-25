@@ -109,6 +109,50 @@ scope_profiles() {
   done
   if [[ ! -e "${BOX}/home/.local/share/agentkit" ]]; then pass "profile 1 creates no directory"; else fail "profile 1 created the data dir"; fi
 
+  # --- @default stays its own account under an inherited profile home -------
+  # A home variable that names one of ak's profiles (inherited from an
+  # `ak <cli> @work` session, or a dev container's default account) never
+  # makes @default run as that profile, for every isolation style.
+  box_new profiles-native
+  box_posture ask
+  local proot="${BOX}/home/.local/share/agentkit/profiles" dir
+  mkdir -p "${proot}"/{claude,codex,cursor,opencode,pi,cline,grok,antigravity}/work/home
+  local -a inherited=(
+    "claude|CLAUDE_CONFIG_DIR|${proot}/claude/work"
+    "codex|CODEX_HOME|${proot}/codex/work"
+    "pi|PI_CODING_AGENT_DIR|${proot}/pi/work"
+    "cline|CLINE_DIR|${proot}/cline/work"
+    "grok|GROK_HOME|${proot}/grok/work"
+    "opencode|XDG_DATA_HOME|${proot}/opencode/work/data"
+  )
+  for row in "${inherited[@]}"; do
+    IFS='|' read -r k knobvar dir <<<"${row}"
+    out="$(ak "${knobvar}=${dir}" AGENTKIT_ACTIVE_PROFILE="${k}/work" -- "${k}" @default)"
+    if [[ -z "$(var_of "${out}" "${knobvar}")" && -z "$(var_of "${out}" AGENTKIT_ACTIVE_PROFILE)" \
+          && "$(var_of "${out}" AGENTKIT_ACTIVE_ACCOUNT)" == "${k}/@default" ]]; then
+      pass "${k} @default drops an inherited ${knobvar} that names a profile"
+    else fail "${k} @default ran as the inherited profile: ${out}"; fi
+    out="$(ak "${knobvar}=${dir}" -- "${k}")"
+    expect_eq "${k} without @profile or a default setting is @default, not the inherited profile" \
+      "$(var_of "${out}" "${knobvar}")" ""
+    out="$(ak "${knobvar}=${dir}" "AGENTKIT_DEFAULT_PROFILE_$(printf '%s' "${k}" | tr '[:lower:]' '[:upper:]')=@work" -- "${k}")"
+    expect_eq "${k}: a default setting still launches that profile" "$(var_of "${out}" "${knobvar}")" "${dir}"
+  done
+  out="$(ak HOME="${proot}/cursor/work/home" AGENTKIT_REAL_HOME="${BOX}/home" AGENT_CLI_CREDENTIAL_STORE=file \
+         CURSOR_CONFIG_DIR="${proot}/cursor/work/home/.cursor" -- cursor @default)"
+  if [[ "$(var_of "${out}" HOME)" == "${BOX}/home" && -z "$(var_of "${out}" AGENT_CLI_CREDENTIAL_STORE)" \
+        && -z "$(var_of "${out}" CURSOR_CONFIG_DIR)" ]]; then
+    pass "cursor @default goes back to the real HOME and login store from an inherited profile"
+  else fail "cursor @default kept the profile HOME: ${out}"; fi
+  out="$(ak HOME="${proot}/antigravity/work/home" AGENTKIT_REAL_HOME="${BOX}/home" -- antigravity @default)"
+  expect_eq "antigravity @default goes back to the real HOME from an inherited profile HOME" \
+    "$(var_of "${out}" HOME)" "${BOX}/home"
+  mkdir -p "${BOX}/custom-codex"
+  out="$(ak CODEX_HOME="${BOX}/custom-codex" -- codex @default)"
+  expect_eq "a home moved outside ak's profile tree stays @default's home" "$(var_of "${out}" CODEX_HOME)" "${BOX}/custom-codex"
+  out="$(ak CODEX_HOME="${proot}/codex/work" -- profiles run codex @default -- sh -c 'printf "%s" "${CODEX_HOME:-unset}"')"
+  expect_eq "profiles run @default drops an inherited profile home" "${out}" "unset"
+
   # --- every kind: no profile, @2, @work, with -c ---------------------------
   box_new profiles
   box_posture ask  # argv grammar; the permissions scope owns the default

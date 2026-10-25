@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.0.0/docs/schema/usage-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.0.1/docs/schema/usage-v1.json",
   "title": "ak usage --json (usage-v1)",
   "description": "Quota and usage of each account the kit can see, one row per credential identity. Never contains a secret value, an account identity (e-mail, organisation, id) or a token. The endpoints behind it are vendor-internal and unofficial: a row whose source changed shape reports status `error`, never a crash. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",

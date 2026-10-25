@@ -31,7 +31,7 @@ scope_setup_skill() {
 setup_skill_scenarios() {
   local drift copy out status
   py_checks skill_scenarios.py "${ROOT}"
-  for drift in "install.sh --no-rc|install.sh --no-rcc" "--branch v1.0.0|--branch v9.9.9" "setup verify --json|setup verify --jsno"; do
+  for drift in "install.sh --no-rc|install.sh --no-rcc" "--branch v1.0.1|--branch v9.9.9" "setup verify --json|setup verify --jsno"; do
     copy="${SANDBOX}/skill-drift"
     rm -rf "${copy}"
     cp -R "${ROOT}/skills/agentkit-setup" "${copy}"
