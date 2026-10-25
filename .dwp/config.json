@@ -2,15 +2,15 @@
   "addons": {
     "agentkit": {
       "enabled": true,
-      "version": "v1.0.1"
+      "version": "v1.1.0"
     },
     "ai-diff-reviewer": {
       "enabled": true,
-      "version": "v3.3.14"
+      "version": "v3.3.16"
     },
     "herdr": {
       "enabled": true,
-      "version": "v1.0.0"
+      "version": "v1.1.0"
     }
   },
   "benchmark": {

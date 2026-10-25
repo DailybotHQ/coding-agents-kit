@@ -43,7 +43,7 @@ scope_install() {
   check "installed bin/ak is executable" test -x "${dest}/bin/ak"
   expect_eq "the install root is mode 700" "$(file_mode "${dest}")" 700
   out="$(box_run -- "${dest}/bin/ak" --version)"
-  expect_eq "the installed ak runs" "${out}" "agentkit 1.0.1 (interface 1)"
+  expect_eq "the installed ak runs" "${out}" "agentkit 1.1.0 (interface 1)"
   ( cd "${BOX}/work" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" "${dest}/bin/ak" doctor --json \
       </dev/null >"${BOX}/doctor.json" 2>/dev/null )
   expect_eq "the installed ak doctor --json reports interface 1 (smoke)" "$(json_get "${BOX}/doctor.json" 'd["interface"]')" 1
@@ -159,7 +159,7 @@ scope_install() {
     skip "PowerShell parse of install.ps1 (no pwsh here; the CI windows job parses and runs it)"
   fi
   out="$(box_run -- env -u AGENTKIT_ENV_LOADED "${AK_PY}" "${ROOT}/lib/ak.py" --version)"
-  expect_eq "the python core runs without the bash launcher (the Windows path)" "${out}" "agentkit 1.0.1 (interface 1)"
+  expect_eq "the python core runs without the bash launcher (the Windows path)" "${out}" "agentkit 1.1.0 (interface 1)"
   box_new install-pyenv
   box_env_file '# comment' 'export ZAI_CODING_API_KEY="planted-quoted-0x1"' "XAI_API_KEY='planted-single'" 'IGNORED LINE'
   out="$(box_run FAKE_SHOW_SECRETS=1 -- "${AK_PY}" "${ROOT}/lib/ak.py" claude-glm)"
@@ -203,7 +203,7 @@ install_setup_contract() {
   ( cd "${ROOT}" && tar -cf - bin lib providers.toml skills docs LICENSE README.md CREDITS.md CHANGELOG.md install.sh ) | ( cd "${tar_root}" && tar -xf - )
   out="$(box_run -- bash "${tar_root}/install.sh" --no-rc)"; status=$?
   expect_eq "install setup: install.sh runs from an extracted release tarball layout" "${status}" 0
-  expect_eq "install setup: ... and the installed kit works" "$(box_run -- "${BOX}/home/.local/share/agentkit/bin/ak" --version)" "agentkit 1.0.1 (interface 1)"
+  expect_eq "install setup: ... and the installed kit works" "$(box_run -- "${BOX}/home/.local/share/agentkit/bin/ak" --version)" "agentkit 1.1.0 (interface 1)"
   expect_eq "install setup: the helper runs from the extracted tarball without installing" \
     "$(box_run -- "${AK_PY}" "${tar_root}/lib/ak.py" setup probe --json | "${AK_PY}" -c 'import json,sys; print(json.load(sys.stdin)["schema"])')" "setup-probe-v1"
 }

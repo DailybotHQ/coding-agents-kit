@@ -17,4 +17,6 @@ if ! command -v "$py" >/dev/null 2>&1; then
   echo "herdr-peers: $py not found; python3 >= 3.9 is required" >&2
   exit 6
 fi
-exec "$py" "$here/herdr_peers.py" "$@"
+# -B: never write __pycache__ into the skill directory (it would embed this
+# checkout's absolute path in an installed skill).
+exec "$py" -B "$here/herdr_peers.py" "$@"

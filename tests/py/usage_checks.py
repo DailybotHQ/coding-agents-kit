@@ -209,12 +209,17 @@ check("usage core: unsupported rows print n/d with the reason", "n/d" in text an
 check("usage core: a second run is byte-identical", run([], ENV)[1] == text)
 lines = text.splitlines()
 titles = [line for line in lines if line and not line.startswith(" ") and not line.startswith("n/d")]
-check("usage core: one titled block per CLI or provider, in row order, the human name next to the id",
-      [t.split()[0] for t in titles] == ["claude", "codex", "cursor", "grok", "zai"] and "Claude Code" in titles[0], str(titles))
-cursor_lines = lines[lines.index(titles[2]) + 1:lines.index(titles[3]) - 1]
+check("usage core: one titled block per CLI or provider, the human name next to the id",
+      sorted(t.split()[0] for t in titles) == ["claude", "codex", "cursor", "grok", "zai"] and "Claude Code" in titles[0], str(titles))
+check("usage core: blocks with a readable quota come first (kit order), then the n/d and no-login ones",
+      [t.split()[0] for t in titles] == ["claude", "codex", "zai", "cursor", "grok"], str(titles))
+check("usage core: --json keeps the kit order (only the table moves blocks)",
+      [r["cli"] for r in rows if r["cli"] in ("cursor", "zai")][0] == "cursor", str([r["cli"] for r in rows]))
+title_of = {t.split()[0]: t for t in titles}
+cursor_lines = lines[lines.index(title_of["cursor"]) + 1:lines.index(title_of["grok"]) - 1]
 check("usage core: an account with no readable quota is listed under its CLI, n/d with the reason",
       len(cursor_lines) == 2 and all("n/d" in line and "web session only" in line for line in cursor_lines), str(cursor_lines))
-grok_line = lines[lines.index(titles[3]) + 1]
+grok_line = lines[lines.index(title_of["grok"]) + 1]
 check("usage core: an account with no login says so under its CLI, with how to log in and the reason",
       grok_line.startswith("  @work") and "no login" in grok_line and "log in: ak grok @work" in grok_line
       and "per-session only" in grok_line, grok_line)

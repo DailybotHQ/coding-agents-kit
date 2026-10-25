@@ -1216,12 +1216,15 @@ def render_table(results, platform, color, now, verbose=False, names=None):
     one with no login shows `no login` and how to log in, so the table also
     answers which accounts are connected. Without -v it fits the terminal
     (a problem row shows its status and a few-word note); -v gives every row
-    its full note. Pipes and files are never cut (no width).
+    its full note. Pipes and files are never cut (no width). Blocks with a
+    readable quota (an account whose quota was read, or whose read failed)
+    come before the blocks where every account is n/d or not logged in.
     names: {cli or provider id: display name} for the titles."""
     utf8 = platform.utf8_stdout()
     width = None if verbose else platform.columns
     names = names or {}
     groups = []                      # [(cli, [(cells, note)], hint)]
+    measurable = {r["cli"] for r in results if r["status"] != "unsupported"}
     for r in results:
         if not groups or groups[-1][0] != r["cli"]:
             groups.append((r["cli"], [], []))
@@ -1255,6 +1258,9 @@ def render_table(results, platform, color, now, verbose=False, names=None):
         else:
             label = STATUS_LABELS.get(r["status"], r["status"])
             lines.append((base + [_paint(label, "31" if r["status"] == "error" else "33", color)], _note(r, verbose)))
+    # Blocks whose quota can be read come first, the rest (every account
+    # n/d or not logged in) after; each part keeps the kit order. Table only.
+    groups.sort(key=lambda g: g[0] not in measurable)
     header = (["PROFILE", "PLAN", "WINDOW", "USED"], "RESET")
     rows = [header] + [line for _cli, lines, _h in groups for line in lines]
     # A row without windows has no USED cell: its note starts in that column.

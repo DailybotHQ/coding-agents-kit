@@ -179,7 +179,11 @@ are evaluated in order; the first match decides.
 - A caller MUST accept a reply only when its stamped `from=` address equals
   the asked peer's address. A transport failure is recorded as `unroutable`;
   when the caller's record is visible to the replier, that ask is closed with
-  the same reason instead of timing out silently.
+  the same reason instead of timing out silently. A peer blocked at a
+  question or approval (`agent_blocked`) is not a lost route: the helper
+  retries the **delivery** of the same reply with backoff for a bounded time
+  (default 600 seconds) before recording it `unroutable`. It is still one
+  reply — no new message, no new id; each attempt re-checks exactly-once.
 - A follow-up question between the same peers is a **new ask** with a fresh
   `id`, never a reply to a reply.
 

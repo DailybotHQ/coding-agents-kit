@@ -141,6 +141,10 @@ Rows appear for: the CLI's own home (`@default`) when the CLI is installed,
 every profile directory, and every provider key that is set (`ZAI_CODING_API_KEY`
 and `ZAI_CODING_API_KEY_<SUFFIX>`). A provider with no key set has no row.
 Order: the CLI order of `providers.toml`, then `@default`, then profile names.
+The table lists first the blocks whose quota `ak` can read (at least one
+account whose quota was read, or whose read failed: `error`, `timeout`,
+`expired`, …), then the blocks where every account is `n/d` or `no login`;
+each part keeps that order, and so does `--json`, which is not reordered.
 
 | Source | Where the number comes from | Notes |
 | --- | --- | --- |

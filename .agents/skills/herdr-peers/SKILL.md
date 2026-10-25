@@ -1,11 +1,11 @@
 ---
 name: herdr-peers
-description: "Ask another coding agent in a Herdr pane — on this machine or another one — and get exactly one authorized reply back, with a loop guard, depth limit 1, a fan-out cap and a record of every delegation; send one-way notices; keep a plan's lead with epochs and succession. Use only when the user mentions Herdr, peers, or another agent, pane or machine, or when a plan you are executing delegates a task through Herdr. Do not use merely because parallel work could help. Requires HERDR_ENV=1 and Herdr's official herdr skill."
-version: "1.0.0"
+description: "Ask another coding agent in a Herdr pane — on this machine or another one — and get exactly one authorized reply back, with a loop guard, depth limit 1, a fan-out cap and a record of every delegation; send one-way notices; keep a plan's lead with epochs and succession; lead a multi-agent debate to decide, research the state of the art, stress-test or verify (rounds, angles, red teams, counted ballots and claims, a panel seated from idle panes or agentkit accounts). Use only when the user mentions Herdr, peers, a debate, panel or research by several agents, or another agent, pane or machine, or when a plan you are executing delegates a task through Herdr. Do not use merely because parallel work could help. Requires HERDR_ENV=1 and Herdr's official herdr skill."
+version: "1.1.0"
 license: MIT
 allowed-tools: Bash, Read
 metadata:
-  version: "1.0.0"
+  version: "1.1.0"
   protocol: 1
 ---
 
@@ -35,6 +35,15 @@ protocol on top of Herdr; it does not replace Herdr's own skill.
   human asks you to.
 - Every peer you talk to needs this skill too: the reply is sent with the
   helper on the peer's side.
+- **Recommended, optional: coding-agents-kit** (the `ak` command, v1.0.1 or
+  later, with its own `agentkit` skill). It is not needed for asks, replies
+  or leads, but it makes lanes and debates much better: `ak usage` and `ak
+  pick` show which accounts have quota, `ak lease` keeps two leads from
+  double-booking an account, and `ak claude @work1` / `ak codex @work2`
+  launch an agent on a chosen account and provider. Check with `command -v
+  ak`; when it is missing and the human wants lanes or a debate, suggest
+  installing it (from its own repository, pinned to a release tag) — never
+  install it on your own.
 
 ## 1. When to use — and when not
 
@@ -51,10 +60,10 @@ opinion nobody asked for, or to avoid doing the work yourself.
 | --- | --- |
 | `list [--json]` | Live table of every agent on every enabled machine; marks your row `<- you`. Run it now when asked who is available — never answer from an old table. |
 | `ask <machine>:<pane> "<prompt>"` | Sends the prompt with the stamp and the reply grant; records it; prints the ask id. The target `lead` names the current lead of `--plan P` (default `$DWP_PLAN`). Options: `--from ADDR`, `--scope S`, `--fanout N --reason R`, `--task T` (default `$DWP_TASK`), and for the record only `--profile NAME` (the peer's account/profile, e.g. `@work1`), `--vendor NAME` (default: derived from the agent kind) and `--worktree PATH` (a writing peer's worktree). A prompt of `-` reads stdin. |
-| `notify <machine>:<pane> "<text>"` | A one-way **notice** (`reply=no`): recorded, never answered, no fan-out slot, allowed while you hold an ask. The target may be `lead` (`--plan P`). Same hygiene as `ask`; a `swarm-lead:` line is refused (reserved for `lead`). Prints the notice id. |
-| `wait <id> [--timeout S]` | Blocks until a reply stamped for the asked peer arrives, records it, prints it; rejects caller-pane captures, accepts the exact v0.2.2 legacy stamp with an unverified-identity warning, and reports unroutable asks. |
+| `notify <machine>:<pane> "<text>"` | A one-way **notice** (`reply=no`): recorded, never answered, no fan-out slot, allowed while you hold an ask. The target may be `lead` (`--plan P`). Same hygiene as `ask`; a `swarm-lead:` line is refused (reserved for `lead`). A blocked peer is retried like `reply` (`--wait-blocked S`). Prints the notice id. |
+| `wait <id> [--timeout S]` | Blocks until a reply stamped for the asked peer arrives (also when the agent echoes it indented as its input, or when `check` records it meanwhile), records it, prints it; rejects caller-pane captures, accepts the exact v0.2.2 legacy stamp with an unverified-identity warning, and reports unroutable asks. |
 | `check [FILE]` | Classifies a received message (stdin or file): answer, notice, never answer, or not a protocol message. Records what it must; evaluates a lead notice's record through the fencing rules (adopted, current, rejected, or `STEP DOWN`). |
-| `reply <machine>:<pane> <id> "<answer>"` | Answers an ask exactly once. |
+| `reply <machine>:<pane> <id> "<answer>"` | Answers an ask exactly once. While the asker is blocked at a question or approval (`agent_blocked`), the delivery — not the answer — is retried with backoff for up to `--wait-blocked S` seconds (default `$HERDR_PEERS_BLOCKED_WAIT` or 600; 0 tries once) before it is recorded unroutable. |
 | `log [--open] [--json] [--all-machines]` | The current server's delegation record (with each ask's vendor and profile); include every server in a shared log with `--all-machines`. |
 | `status <machine>:<pane> [--json]` | A peer lane's state (`working`, `idle`, `blocked`, `done`, `unknown`, `no_agent`, `unreachable`), agent kind, and the class of a waiting screen with its documented next step. Read-only: never sends keys. |
 | `lanes [--json] [--all] [--plan P]` | One row per peer you asked or your lead record lists: agent, vendor, profile, live state, screen class (incl. `usage_limit`), open asks, last reported capacity, last ask. `--json` prints the `herdr-peers/lanes-v1` contract with `plan`, `lead` and `epoch`. |
@@ -64,6 +73,7 @@ opinion nobody asked for, or to avoid doing the work yourself.
 | `lead takeover --plan P [--reason R]` | The first reachable successor takes over a lead that is gone (unreachable, no agent, usage limit) — or, with a recorded `--reason`, one whose asks timed out twice (epoch+1). |
 | `lead release --plan P` | The current lead leaves the plan without a lead (epoch+1). |
 | `cancel <id> [--reason R]` | Closes an open ask (yours, or one you decline). |
+| `debate tally\|claims\|anon\|filings\|panel` | A debate lead's tools ([debate.md](debate.md)) for every purpose — decide, research, stress-test, verify, generate: `tally FILE|DIR` counts a `herdr-peers/ballots-v1` file or a directory of per-pane `*.ballot.json` (Borda, first places, pairwise, Condorcet winner and loser, item verdicts; the lead never votes); `claims DIR…` merges lanes' `herdr-peers/claims-v1` ledgers into established / agreed / contested / partial / single / unsupported / disputed / refuted claims with coverage — a quorum count, not a verification (`--rounds` merges rounds in order, `--map` merges synonyms, `--anonymous` blinds lanes, angles, claim text and sources); `anon SRC DST --key K` copies filings to `Filing_A.md`… with identities redacted, in an order only the key can rebuild, refusing a filing that carries a secret; `filings DIR --expect a,b` lists missing or short filings (exit 5 when incomplete); `panel --seats N` proposes a panel and runs nothing: seats round-robin over model providers, most quota first (idle panes and `ak pick` accounts ranked together by known headroom), with the provider mix and two successors for the lead (another provider first on a tie). Every debate verb accepts `--pane`. |
 
 `ask`, `notify`, `reply`, `check`, `wait`, `status`, `lanes`, `cancel` and the `lead`
 verbs (including `lead show`) take `--pane <pane_id>`:
@@ -83,6 +93,7 @@ Environment (all optional):
 | `HERDR_PEERS_DEPTH` | `1` marks a one-shot delegate: it may not ask. Swarm lanes have no mark; an unanswered ask still blocks their asks. |
 | `HERDR_PEERS_FANOUT` | Lowers the open-ask cap (never above 4; raise per call with `--fanout N --reason`). |
 | `HERDR_PEERS_MAX_BYTES` | Message size limit (default 16384). |
+| `HERDR_PEERS_BLOCKED_WAIT` | Seconds `reply` and `notify` keep retrying the delivery to a peer blocked at a question or approval (default 600, at most 3600; 0 tries once; `--wait-blocked` per call). |
 | `HERDR_PEERS_LOG` | Shared log file override (default is machine-scoped XDG state: `$XDG_STATE_HOME/herdr-peers/<server>/log.ndjson`). Records are filtered to the current server; use `log --all-machines` to inspect a shared override. |
 | `HERDR_PEERS_PYTHON` | Python interpreter for the helper (default `python3`). |
 | `HERDR_PEERS_BRIEFER` | The address that launched or briefed this pane (set by the launcher): the only sender whose *first* lead notice for a plan is accepted (a peer whose ask this pane recorded counts too). |
@@ -90,7 +101,7 @@ Environment (all optional):
 
 Exit codes: `0` ok · `1` Herdr error · `2` usage · `3` protocol refusal —
 never answer (also a notice) · `4` policy refusal (scope, self, fan-out, size, control
-characters, secrets, no reply route) · `5` timeout · `6` not inside Herdr, or a stale pane id (pass `--pane`) ·
+characters, secrets, no reply route) · `5` timeout (also `debate filings`: incomplete) · `6` not inside Herdr, or a stale pane id (pass `--pane`) ·
 `7` not a protocol message, or no lead record. A `lead` verb whose record
 was written exits `0` even if lane notices fail; failed deliveries are warned
 and recorded. A handover whose new lead was not notified exits `1` despite
@@ -161,7 +172,10 @@ writing peer, fan-out and join, cleanup, layout — is in
 [launcher.md](launcher.md). Running many lanes as a lead — `status`,
 `lanes`, blocked screens, accounts and vendors, containers — is in
 [orchestra.md](orchestra.md), with lane ↔ lane asks, succession and
-handoff. Message templates and the delegation-record
+handoff. Running a debate — to decide, research the state of the art, stress-test,
+verify or generate: purposes, formats, angles, briefs, bias control,
+counting, seating a panel with agentkit — is in [debate.md](debate.md), with its
+templates in [templates/debate/](templates/debate/). Message templates and the delegation-record
 schema are in [templates/](templates/).
 
 ## 6. Trust boundary (write scope)
@@ -193,6 +207,10 @@ named here) and `Read`.
   `analysis_results/delegations.ndjson`.
 - Panes, only when the human or the plan asked for a new peer
   ([launcher.md](launcher.md)); you close only panes you created.
+- `debate anon` writes only the new output directory and the new key
+  file it is given (`0600`, never overwritten). `debate tally`, `claims`,
+  `filings` and `panel` only read; `panel` prints commands and runs none of them
+  ([debate.md](debate.md) §10).
 
 **Reads only:** `status` and `lanes` read Herdr's agent state and a waiting
 lane's visible screen; they print a screen class, never screen text, and
