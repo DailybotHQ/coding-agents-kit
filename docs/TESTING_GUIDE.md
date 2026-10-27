@@ -46,6 +46,7 @@ when nothing failed.
 | `ak alias` (`lib/aliases.py`), the rc block, the `classic` preset | `aliases` |
 | `skills/agentkit/` | `skill` |
 | `ak profiles hooks` (`lib/hooks.py`) | `hooks` |
+| Herdr resume and `ak last` (`lib/restore.py`, `lib/last.py`, the launch hook in `lib/launch.py`, checks in `tests/py/restore_checks.py`, the fake `tests/fakes-host/herdr/herdr`) | `restore` (+ `dispatch`, `security`) |
 | anything that prints, logs or writes | `security` |
 | the frozen interface (grammar, env prefix, outputs) | `contract` |
 | `scripts/check-public-hygiene.sh`, `.public-hygiene-allow`, any tracked file | `hygiene` (and the CI job `public hygiene`: `bash scripts/check-public-hygiene.sh`) |

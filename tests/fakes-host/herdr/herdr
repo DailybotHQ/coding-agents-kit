@@ -1,0 +1,15 @@
+#!/bin/sh
+# Fake Herdr CLI for the restore scope. Never a real server:
+#   HERDR_FAKE_LOG    one CALL line per invocation (its arguments), plus
+#                     SECRET=present when a key or token reached it
+#   HERDR_FAKE_STATE  what `herdr pane get` prints (a pane_info JSON)
+{
+  printf 'CALL'
+  for a in "$@"; do printf ' %s' "${a}"; done
+  printf '\n'
+  if [ -n "${XAI_API_KEY:-}${CLAUDE_CODE_OAUTH_TOKEN:-}${ANTHROPIC_AUTH_TOKEN:-}" ]; then echo "SECRET=present"; fi
+} >> "${HERDR_FAKE_LOG}"
+case "${1:-} ${2:-}" in
+  "pane get") cat "${HERDR_FAKE_STATE}" ;;
+esac
+exit 0

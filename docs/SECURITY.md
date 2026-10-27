@@ -193,6 +193,19 @@ a lead agent send one keystroke only — the folder-trust screen of its own
 lane, on a pane it launched, when `--trust-cwd` was unavailable — and
 escalates every other screen.
 
+## Herdr resume watcher
+
+An interactive launch inside a Herdr pane (`HERDR_ENV=1`) starts one
+detached watcher (`lib/restore.py`) that runs the `herdr` CLI found on
+`PATH`: `herdr pane get <its pane>` every 2 seconds and, on a new session
+id, `herdr pane report-agent-session` with the resume command
+`ak <kind> @<profile> [--ask] --resume <id>`. It talks only to the local
+Herdr server of that pane, writes no file, prints nothing, and exits with
+the CLI. Its environment is `PATH`, the home and temp variables and
+`HERDR_*` only: no key, token or profile home reaches it, and the resume
+command carries a kind, a profile name and a session id, never a secret.
+`AGENTKIT_HERDR_RESUME=0` turns it off.
+
 ## Profiles with a HOME of their own
 
 Cursor and Antigravity profiles get a separate `HOME` whose other entries are
@@ -210,7 +223,7 @@ paths.
 | `~/.config/agentkit/env` (`AGENTKIT_ENV`) | your keys and settings (created once, never overwritten) | 600 |
 | `~/.config/agentkit/aliases.json` | alias definitions | 600 |
 | your shell rc | one guarded block (PATH + aliases) | unchanged |
-| `~/.local/state/agentkit/` (`AGENTKIT_STATE_DIR`) | `usage-cache/<cli>@<profile>.json` (usage numbers only), `leases/leases.json` | dirs 700, files 600 |
+| `~/.local/state/agentkit/` (`AGENTKIT_STATE_DIR`) | `usage-cache/<cli>@<profile>.json` (usage numbers only), `leases/leases.json`, `launches.json` (per working directory: the kind, profile and posture of the last interactive launch, for `ak last`) | dirs 700, files 600 |
 | a CLI's own config | Codex overlay `<provider>.config.toml`, one provider in OpenCode's `opencode.json` / Pi's `models.json` — only when you launch that provider kind, inside the profile when one is used; one-time `.agentkit.bak` before the first change | 600 for files it creates |
 
 `ak usage`, `ak pick` and `ak capacity` write nothing but the usage cache;

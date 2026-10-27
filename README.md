@@ -213,6 +213,11 @@ Only the head of the arguments belongs to `ak`; the first token it does not
 recognise, and everything after it, reaches the CLI unchanged. `ak`
 replaces itself with the CLI (`exec`), so Herdr and your terminal see the
 agent itself.
+Inside a Herdr pane, `ak` also makes Herdr restore the pane after a restart
+as `ak <kind> @<profile> --resume <id>` — the same account, key and posture —
+instead of the bare CLI ([Profiles → Resuming after a Herdr restart](docs/profiles.md#resuming-after-a-herdr-restart)).
+In any other terminal, `ak last` relaunches the last `ak <kind> @<profile>` of
+the current directory with `-c` (`-r` for the picker, `ak last ls` for the list).
 
 ## How it fits with DeepWorkPlan
 

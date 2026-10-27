@@ -73,6 +73,7 @@ ak claude -- @src/app.ts    # after --, everything goes to the CLI untouched
 
 Grammar: `ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | --continue | -r [id] | --resume [id] | -l] [--] [cli args…]`.
 Only a first `@name` is a profile; `@default` is the CLI's own home.
+Inside a Herdr pane, a launch makes Herdr restore it as `ak <kind> @<profile> --resume <id>` after a restart (`AGENTKIT_HERDR_RESUME=0` turns it off). In any terminal, `ak last` relaunches the last `ak <kind> @<profile>` of this directory with `-c` (`ak last -r`: picker; `ak last ls`: the record).
 
 ## Accounts (profiles)
 

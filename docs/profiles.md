@@ -312,6 +312,64 @@ does not parse is refused and left untouched. The real home is read, never
 written. Rerunning is a no-op. Cline has no Herdr integration (Herdr reads
 its screen). `ak doctor` shows `herdr_hooks` per profile.
 
+### Resuming after a Herdr restart
+
+When Herdr restarts (a reboot, `herdr server stop`), it reopens each agent
+pane from the session the CLI's Herdr integration reported. By itself it
+runs the bare CLI (`claude --resume <id>`): no profile home, no key from the
+env file, no autonomy flag, so the session is not found, the wrong account
+opens, or the CLI asks for a login.
+
+`ak <kind> [@profile]` started inside a Herdr pane (`HERDR_ENV=1`,
+`HERDR_PANE_ID`) fixes that on its own. Next to the CLI it starts a small
+detached watcher that reads the pane through the `herdr` CLI and, each time
+Herdr records a new session id for that CLI, reports it again with the
+command Herdr runs on restore:
+
+```text
+ak <kind> @<profile> [--ask] --resume <id>
+```
+
+- The profile is always explicit (`@default` included), so a default
+  profile set later cannot move the session to another account; `--ask` is
+  kept when the launch opted out of autonomy. A provider variant keeps its
+  kind (`ak claude-glm @x --resume <id>`).
+- A new id (`/clear`, a new conversation) is reported again: Herdr keeps an
+  earlier resume command when a later report omits it.
+- The watcher exits with the CLI, never prints into the pane, and gets no
+  key or token: only `PATH`, the home and temp variables and `HERDR_*`.
+- It covers every CLI Herdr reports sessions for (claude, codex, cursor,
+  opencode, pi, grok and their variants), on macOS, Linux and Windows.
+  Antigravity and Cline have no Herdr session report, so there is nothing to
+  resume.
+- It needs the session report itself: the CLI's own home has it after
+  `herdr integration install <cli>`; a profile needs `ak profiles hooks
+  <cli> @name` (above). Panes started before this version are reported from
+  their next launch.
+- `ak` must be on the `PATH` of the shell Herdr restores into.
+- `AGENTKIT_HERDR_RESUME=0` turns it off; Herdr then restores the bare CLI.
+
+### Back to the last session in any terminal: `ak last`
+
+Every interactive `ak <kind> [@profile]` records, per directory, which kind
+and profile it launched. In a terminal without Herdr (or after closing the
+pane), go back to it from the same directory:
+
+```bash
+ak last        # = ak <kind> @<profile> [--ask] -c: continue the newest session here
+ak last -r     # the same account, with the CLI's session picker
+ak last ls     # what is recorded: directory, command, time
+```
+
+`ak last` prints the command it runs on stderr. Continuing is the CLI's own
+`-c` in that profile's home (the table in the [README](../README.md)), so it
+picks the newest session of that account in this directory. When two sessions of
+the same account run in one directory, that is the most recently active one:
+use `ak last -r` to choose. Only interactive
+launches are recorded (`ak run` is not); the record keeps the 200 most
+recent directories in the kit's state directory (`launches.json`, mode 0600)
+and holds no key and no session id.
+
 ## Limits
 
 - Whether running several subscriptions of one provider at once is allowed
