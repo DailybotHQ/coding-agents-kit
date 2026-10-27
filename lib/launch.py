@@ -18,7 +18,10 @@ token it does not own (or after `--`) reaches the CLI untouched:
     `daemon`: Codex) gets its `off` flags when the recorded daemon is not on
     this machine (a home shared with another machine) or its variable is 1,
     and its `marker` flags (the account marker, per session) when the launch
-    reuses a daemon that is running here.
+    reuses a daemon that is running here;
+  * inside a Herdr pane, a watcher keeps Herdr's resume command on
+    `ak <kind> @<profile> --resume <id>` (lib/restore.py), and every
+    launch is recorded for `ak last` (lib/last.py).
 
 prepare() is shared by launch, `ak run` and `ak env`: it resolves the kind,
 the executable, the profile, the provider key and the environment.
@@ -31,7 +34,9 @@ import sys
 
 import common
 import kinds
+import last
 import profiles
+import restore
 import trust
 import writers
 from common import AkError, EXIT_NOT_READY, EXIT_USAGE
@@ -347,4 +352,8 @@ def launch(model, kind_name, args, base_env):
     argv = marker + argv
     if not standalone:
         run_pre(prep)
+        # `ak last` in any terminal (lib/last.py); inside a Herdr pane, keep
+        # Herdr's resume command on ak (lib/restore.py).
+        last.record(prep.env, prep.kind.name, prep.profile, prep.auto)
+        restore.start(prep, prep.env)
     return profiles.exec_command([prep.exe] + argv, prep.env)

@@ -1,7 +1,7 @@
 ---
 name: agentkit-orchestrate
 description: Run several terminal coding agents at once across the user's accounts and vendors with coding-agents-kit (`ak`) — take inventory of every account's quota, pick the accounts with room (`ak pick --count`), give each writing agent its own git worktree, fan out headless runs (`ak run`), fail over when an account hits a limit, verify every result before merging, and report what was spent. Use when the user asks to split work across several agents or accounts, to run agents in parallel, to get a second opinion from another vendor, to spread a long task over their accounts, or to know which accounts can take the next batch.
-version: "1.1.0"
+version: "1.2.0"
 documentation_url: https://github.com/DailybotHQ/coding-agents-kit
 metadata: {"requires":{"anyBins":["ak","agentkit"]},"interface":1}
 ---

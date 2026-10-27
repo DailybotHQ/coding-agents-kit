@@ -13,6 +13,28 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-10-27
+
+A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and
+`ak run` are unchanged; `ak last` is a new command.
+
+### Added
+
+- **Herdr restores a pane through `ak`.** An interactive `ak <kind>
+  [@profile]` inside a Herdr pane starts a detached watcher that, each time
+  Herdr records a new session id for that CLI, reports it again with the
+  resume command `ak <kind> @<profile> [--ask] --resume <id>`. After a reboot
+  or a Herdr restart the pane comes back in the same account, with its key
+  from the env file and its permission posture, instead of the bare CLI
+  (`claude --resume <id>`: the wrong home, or a login screen). Works on macOS,
+  Linux and Windows; the watcher gets no key, writes nothing and exits with
+  the CLI. `AGENTKIT_HERDR_RESUME=0` turns it off.
+- **`ak last`.** Every interactive launch records its kind and profile per
+  working directory; `ak last` relaunches it with `-c` (continue the newest
+  session there) in any terminal, `ak last -r` opens the CLI's picker in that
+  account, `ak last ls` lists the record (`launches.json` in the state
+  directory, mode 0600, no key or session id).
+
 ## [1.1.0] - 2026-10-25
 
 A minor release. Interface stays **1**; no command, flag, key or schema
@@ -695,7 +717,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.1...v1.0.0

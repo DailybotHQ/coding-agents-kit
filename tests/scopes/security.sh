@@ -417,14 +417,18 @@ security_trust_cwd() {
   sec_env_file
   root="${BOX}/home/.local/share/agentkit/profiles"
   mkdir -p "${root}/claude/work" "${root}/codex/work"
-  before="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  # The launch record of `ak last` (the kit's state, not a CLI config) is
+  # the one file every interactive launch writes; it is checked below.
+  before="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' -not -name launches.json | sort | xargs cksum)"
   ak -- claude @work >/dev/null; ak -- codex @work >/dev/null; ak -- claude >/dev/null
   ak_split FAKE_MODE=headless -- run claude @work --output-format json -- "hello"
-  after="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' | sort | xargs cksum)"
+  after="$(cd "${BOX}" && find . -type f -not -path './out' -not -path './err' -not -name launches.json | sort | xargs cksum)"
   expect_eq "security trust-cwd: without the opt-in no launch writes a trust entry" "${before}" "${after}"
+  expect_eq "security launches: the ak last record is private and holds no key" \
+    "$(file_mode "${BOX}/home/.local/state/agentkit/launches.json") $(leaked "${BOX}/home/.local/state/agentkit/launches.json")" "600 "
   out="$(ak -- claude @work --trust-cwd; ak -- codex @work --trust-cwd)"
   expect_eq "security trust-cwd: with it, exactly the two profile files change" \
-    "$(cd "${BOX}" && find . -newer "${BOX}/home/.config/agentkit/env" -type f -not -path './out' -not -path './err' | sort | tr '\n' ' ')" \
+    "$(cd "${BOX}" && find . -newer "${BOX}/home/.config/agentkit/env" -type f -not -path './out' -not -path './err' -not -name launches.json | sort | tr '\n' ' ')" \
     "./home/.local/share/agentkit/profiles/claude/work/.claude.json ./home/.local/share/agentkit/profiles/codex/work/config.toml "
   expect_eq "security trust-cwd: no key in any output" "$(printf '%s' "${out}" > "${BOX}/trust-out"; leaked "${BOX}/trust-out")" ""
   expect_eq "security trust-cwd: the files it creates are mode 600" \

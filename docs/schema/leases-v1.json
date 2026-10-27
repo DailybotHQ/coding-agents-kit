@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.1.0/docs/schema/leases-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.2.0/docs/schema/leases-v1.json",
   "title": "ak lease ls --json (leases-v1)",
   "description": "Every active (unexpired) advisory account lease on this machine, oldest first. Leases grant nothing: ak pick --owner and the orchestration skill respect them. Holds profile names, owner addresses, times and a purpose note; never a secret value or a path. Additional keys may appear in later minor versions.",
   "type": "object",
