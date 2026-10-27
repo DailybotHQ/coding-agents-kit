@@ -13,7 +13,10 @@ permission posture changes.
 
 ## [Unreleased]
 
-Interface stays **1**: `ak doctor --json`, `ak env` and `ak run` are unchanged.
+## [1.2.0] - 2026-10-27
+
+A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and
+`ak run` are unchanged; `ak last` is a new command.
 
 ### Added
 
@@ -714,7 +717,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...HEAD
+[1.2.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v0.7.1...v1.0.0
