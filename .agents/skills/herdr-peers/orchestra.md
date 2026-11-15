@@ -100,6 +100,17 @@ moved. Two failed attempts stop the lane. No agent ever sends keys for
 Claude's bypass-permissions acknowledgement, and a permission opt-out the
 user set (for example an "ask" mode) is never answered by the lead.
 
+**Autopilot is the one exception, and it is the human's, not the lead's.**
+When the human has started `herdr-peers autopilot`
+([autopilot.md](autopilot.md)), that daemon accepts questions, approvals,
+plan approval, folder trust and update prompts on every lane, and tells a
+lane that stopped to ask to continue. The rules above do not change for any
+agent: a lead still keys only folder trust, never starts autopilot on its
+own, and never treats "autopilot will approve it" as authority for an action
+its plan does not grant. With autopilot running, a lane `blocked` at a
+`permission` or a question needs no escalation; `login`, `bypass_ack` and an
+`unknown` screen still do.
+
 ## 3. Lanes on several accounts and vendors
 
 Each lane can run on its own account so the work spends several quotas, and

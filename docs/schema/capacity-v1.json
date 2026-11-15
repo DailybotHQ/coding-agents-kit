@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.1.0/docs/schema/capacity-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.2.0/docs/schema/capacity-v1.json",
   "title": "ak capacity --json (capacity-v1)",
   "description": "One account's headroom and a verdict, computed with ak pick's arithmetic (pick.evaluate: the smallest free share of the governing windows, a 10% reserve on windows of 7 days or more) and pick's lower-only drill cap. The reading comes from the kit's usage cache when fresh (usage numbers only; ak usage is the only command that always reads live). Exit 0 for every reading; the verdict is here, not in the exit code. Never contains a secret value. Consumers check `schema` and `interface` first; additional keys may appear in later minor versions.",
   "type": "object",

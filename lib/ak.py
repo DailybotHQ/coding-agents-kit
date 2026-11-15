@@ -12,6 +12,7 @@
     ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
+    ak last [-c | -r] | ak last ls
     ak --skill [setup | orchestrate] | --version | --help
 """
 
@@ -37,6 +38,7 @@ USAGE = """usage:
   ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
+  ak last [-c | -r] | ak last ls      (back to the last ak launch in this directory)
   ak --skill [setup | orchestrate] | --version | --help
 
 Kinds: {kinds}
@@ -138,6 +140,9 @@ def main(argv):
     if first == "install":
         import installer
         return installer.main(model, rest, env)
+    if first == "last":
+        import last
+        return last.main(model, rest, env)
     if first.startswith("-"):
         raise AkError("unknown option '%s'. See: ak --help" % first)
     first = model.canonical(first)          # `ak agy` is `ak antigravity`

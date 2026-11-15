@@ -1,5 +1,5 @@
-"""The kit's own machine state: the usage cache (`ak capacity`, `ak pick`)
-and the lease store (`ak lease`).
+"""The kit's own machine state: the usage cache (`ak capacity`, `ak pick`),
+the lease store (`ak lease`) and the launch record (`ak last`, lib/last.py).
 
 One directory per machine, shared by every process however it was launched:
 `AGENTKIT_STATE_DIR`, else `$XDG_STATE_HOME/agentkit`, else
@@ -8,8 +8,9 @@ relocated HOME (`AGENTKIT_REAL_HOME`). An `xdg`-isolated launch moves
 XDG_STATE_HOME into its profile, so `profiles.activate` records the real
 directory in AGENTKIT_STATE_DIR first.
 
-Only numbers, labels, profile names and owner addresses are stored — never a
-credential, a key name's value or a path under a profile. Directories are
+Only numbers, labels, profile names, owner addresses and the working
+directories of interactive launches are stored — never a credential, a key
+name's value or a path under a profile. Directories are
 0700, files 0600 and every write is atomic (temp file + os.replace), so a
 reader never sees half a file. Portable: os.path and os.replace only.
 """
