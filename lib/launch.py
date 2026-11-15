@@ -81,6 +81,9 @@ def parse_head(cli, args, env):
                 raise AkError("--model needs a value, e.g. --model sonnet. See: ak --help", EXIT_USAGE)
             if head.model is not None:
                 raise AkError("--model is given twice; pass it once. See: ak --help", EXIT_USAGE)
+            allowed = cli.get("models")
+            if allowed is not None and nxt not in allowed:
+                raise AkError("--model '%s' is not one of %s" % (nxt, ",".join(allowed)), EXIT_USAGE)
             head.model = nxt
             seen_non_auto = True
             i += 2

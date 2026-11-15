@@ -427,9 +427,9 @@ def parse_args(args):
             opts["kinds"] = kinds_list
         elif arg == "--model-for":
             i += 1
-            match = re.fullmatch(r"([a-z0-9][a-z0-9-]{0,30})=(\S+)", value(i, arg))
+            match = re.fullmatch(r"([a-z0-9][a-z0-9-]{0,30})=([^\s-][^\s]*)", value(i, arg))
             if not match:
-                raise AkError("--model-for takes KIND=NAME, e.g. claude=sonnet")
+                raise AkError("--model-for takes KIND=NAME with a model name (never a dash-leading value), e.g. claude=sonnet")
             opts["model_for"][match.group(1)] = match.group(2)
         elif arg == "--max-age":
             i += 1
@@ -459,6 +459,10 @@ def parse_args(args):
         raise AkError("--kinds chooses across kinds; a pinned @profile applies to one. See: ak pick --help")
     if opts["model_for"] and not opts["kinds"]:
         raise AkError("--model-for needs --kinds (it names one kind of the list). See: ak pick --help")
+    if opts["kinds"] and opts["count"] != 1:
+        raise AkError("--kinds answers one winner; --count applies to the single-kind pick. See: ak pick --help")
+    if opts["kinds"] and opts["reuse"]:
+        raise AkError("--reuse applies to the single-kind pick; --kinds answers one winner. See: ak pick --help")
     for k in opts["model_for"]:
         if k not in opts["kinds"]:
             raise AkError("--model-for names '%s', which is not in --kinds. See: ak pick --help" % k)
@@ -490,9 +494,27 @@ def _line(c, now):
     return text
 
 
-def _render_kinds_json(opts, index, kind, winner, leases, soonest, now):
-    """The pick-v2 envelope: one winning account plus the exact launch argv."""
+def _render_kinds_json(opts, index, kind, winner, leases, soonest, now, env):
+    """The pick-v2 envelope: one winning account plus the exact launch argv,
+    or the no-qualifier form (qualifies=false, winner nulls) so a --json
+    caller always gets a document, like pick-v1."""
     import json
+    permissions = "ask" if env.get("AGENTKIT_PERMISSIONS") == "ask" else "auto"
+    if winner is None:
+        doc = {
+            "schema": "pick-v2", "interface": 1,
+            "generated_at": usage.iso_utc(now),
+            "kinds": list(opts["kinds"]),
+            "qualifies": False,
+            "priority_index": None, "kind": None, "cli": None, "profile": None,
+            "model": None, "headroom_pct": None, "binding_window": None, "resets_at": None,
+            "reason": {"policy": "first qualifying kind in --kinds order",
+                       "priority_index": None, "headroom_pct": None},
+            "launch": {"argv": None, "env_names": [], "permissions": permissions},
+            "lease": None,
+            "soonest_reset": soonest,
+        }
+        return json.dumps(doc, indent=2, sort_keys=True) + "\n"
     lease_rec = None
     for rec in leases:
         if rec.get("cli") == winner["cli"] and rec.get("profile") == winner["profile"]:
@@ -500,13 +522,17 @@ def _render_kinds_json(opts, index, kind, winner, leases, soonest, now):
                          "expires_at": rec.get("expires_at"), "kind": rec.get("kind")}
             break
     model = opts["model_for"].get(kind) or opts["model"]
+    # Head-level --model (before any --): the value goes through the CLI's
+    # model_flag mapping, the models allowlist and the leading-dash check in
+    # lib/launch.py — a bare `ak ... -- --model x` tail would bypass all three.
     argv = ["ak", kind, winner["profile"]]
     if model:
-        argv += ["--", "--model", model]
+        argv += ["--model", model]
     doc = {
         "schema": "pick-v2", "interface": 1,
         "generated_at": usage.iso_utc(now),
         "kinds": list(opts["kinds"]),
+        "qualifies": True,
         "priority_index": index,
         "kind": kind,
         "cli": winner["cli"],
@@ -517,7 +543,7 @@ def _render_kinds_json(opts, index, kind, winner, leases, soonest, now):
         "resets_at": winner.get("resets_at"),
         "reason": {"policy": "first qualifying kind in --kinds order",
                    "priority_index": index, "headroom_pct": winner["headroom_pct"]},
-        "launch": {"argv": argv, "env_names": []},
+        "launch": {"argv": argv, "env_names": [], "permissions": permissions},
         "lease": lease_rec,
         "soonest_reset": soonest,
     }
@@ -538,11 +564,13 @@ def _pick_kinds(model, opts, env, now, stdout):
     leases = lease.active(env, now)
     soonest = None
     misses = []
+    rows_seen = False
     for index, kind in enumerate(opts["kinds"]):
         rows = one_per_profile(model, usage.filter_rows(model, usage.enumerate_rows(model, env), kind, None), kind)
         if not rows:
             misses.append("%s: no profile or login" % kind)
             continue
+        rows_seen = True
         results = usage.mark_defaults(model, usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"]), env)
         results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
         chosen, candidates, kind_soonest = choose(
@@ -553,12 +581,17 @@ def _pick_kinds(model, opts, env, now, stdout):
         if chosen:
             winner = chosen[0]
             if opts["json"]:
-                usage.emit(stdout, _render_kinds_json(opts, index, kind, winner, leases, soonest, now))
+                usage.emit(stdout, _render_kinds_json(opts, index, kind, winner, leases, soonest, now, env))
             else:
                 usage.emit(stdout, _line(winner, now) + "\n")
             return EXIT_OK
         misses.append("%s: %s" % (kind, "; ".join(
             "%s %s" % (c["profile"], c["excluded_reason"]) for c in candidates[:2] if c.get("excluded_reason"))))
+    if opts["json"]:
+        usage.emit(stdout, _render_kinds_json(opts, None, None, None, leases, soonest, now, env))
+    if not rows_seen:
+        common.warn("nothing to pick from: no profile or login matches. Try: ak usage")
+        return EXIT_NOTHING
     hint = (" Soonest reset: %s." % usage._relative(soonest, now)) if soonest else ""
     common.warn("no account has room across %s (%s).%s" % (",".join(opts["kinds"]), " | ".join(misses), hint))
     return EXIT_NONE

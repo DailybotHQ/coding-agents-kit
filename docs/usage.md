@@ -367,18 +367,27 @@ in the list, and the soonest reset across every kind is named).
 
 ```json
 {"schema": "pick-v2", "interface": 1, "generated_at": "2026-11-15T12:00:00Z",
- "kinds": ["claude-glm", "claude"], "priority_index": 1, "kind": "claude",
+ "kinds": ["claude-glm", "claude"], "qualifies": true, "priority_index": 1, "kind": "claude",
  "cli": "claude", "profile": "@work", "model": "sonnet",
  "headroom_pct": 45, "binding_window": "5h", "resets_at": "2099-01-01T00:00:00Z",
  "reason": {"policy": "first qualifying kind in --kinds order", "priority_index": 1, "headroom_pct": 45},
- "launch": {"argv": ["ak", "claude", "@work", "--", "--model", "sonnet"], "env_names": []},
+ "launch": {"argv": ["ak", "claude", "@work", "--model", "sonnet"], "env_names": [], "permissions": "auto"},
  "lease": null, "soonest_reset": "2099-01-01T00:00:00Z"}
 ```
 
 `launch.argv` is the **exact interactive command** to run — the caller never
 learns any CLI's own flags. `--model-for KIND=NAME` rides that argv as the
-provider-neutral `--model` (below). `lease` carries the active lease on the
-chosen account, if one exists. The schema lives at
+head-level provider-neutral `--model` (below), so the value goes through the
+CLI's `model_flag` mapping, the `models` allowlist and the leading-dash
+check — a dash-leading value is refused at parse time. A `--json` call with
+nothing qualifying still answers a document: `qualifies: false`, the winner
+fields null, `launch.argv` null. `lease` carries the active lease on the
+chosen account, if one exists. `launch.permissions` says which permission
+mode the argv implies — ak's default (`auto`) or `ask` when the pick ran
+under the opt-out; a caller that wants ask-mode launches appends
+`["--ask"]` before any `--` (a documented head flag — never the CLI's own
+bypass flag). Exit codes match pick-v1: 0 chosen, 1 nothing qualifies, 3
+nothing to pick from, 2 usage. The schema lives at
 `docs/schema/pick-v2.json`.
 
 ### The provider-neutral `--model`

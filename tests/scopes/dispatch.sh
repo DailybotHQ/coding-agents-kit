@@ -12,6 +12,7 @@ dispatch_case() {
 
 scope_dispatch() {
   local out status row args want
+  py_checks model_checks.py
   box_new dispatch
   box_posture ask  # argv grammar; the permissions scope owns the default
   printf '[{"sessionId":"sess-old","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-01T00:00:00Z"},{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"},{"sessionId":"sess-sub","cwd":"%s","isSubagent":true,"updatedAt":"2026-10-07T00:00:00Z"},{"sessionId":"sess-other","cwd":"/elsewhere","isSubagent":false,"updatedAt":"2026-10-08T00:00:00Z"}]\n' \

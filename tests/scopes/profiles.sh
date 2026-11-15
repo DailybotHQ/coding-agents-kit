@@ -390,8 +390,8 @@ profiles_codex_daemon() {
   mkdir -p "${root}/codex/work/packages/app-server-daemon"
   ln -s "${BOX}/elsewhere/0.158.0" "${root}/codex/work/packages/app-server-daemon/current"
   out="$(ak -- codex @work -c --model x)"
-  expect_eq "codex daemon: a recorded daemon that is not here adds --no-daemon, before the user's args" \
-    "$(argv_of "${out}")" "resume|--last|--no-daemon|--model|x"
+  expect_eq "codex daemon: a recorded daemon that is not here adds --no-daemon, and the head --model maps to codex -m" \
+    "$(argv_of "${out}")" "resume|--last|--no-daemon|-m|x"
   out="$(ak -- codex @work -- --no-daemon)"
   expect_eq "codex daemon: a --no-daemon the user passed is not repeated" "$(argv_of "${out}")" "--no-daemon"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- codex @work)"

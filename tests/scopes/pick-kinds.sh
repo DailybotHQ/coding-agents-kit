@@ -34,26 +34,44 @@ PY
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
   expect_eq "pick kinds: --json matches docs/schema/pick-v2.json" "${out}" "valid"
   expect_eq "pick kinds: the winner is the second kind of the list" "$(json_get "${doc}" '[d["kind"], d["priority_index"], d["profile"]]')" '["claude", 1, "@work"]'
+  expect_eq "pick kinds: qualifies is true on a winner" "$(json_get "${doc}" 'd["qualifies"]')" 'true'
   expect_eq "pick kinds: launch argv is the exact interactive command" "$(json_get "${doc}" 'd["launch"]["argv"]')" '["ak", "claude", "@work"]'
   expect_eq "pick kinds: env_names empty on the default path" "$(json_get "${doc}" 'd["launch"]["env_names"]')" '[]'
+  expect_eq "pick kinds: permissions reports ak's default (auto)" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'auto'
   expect_eq "pick kinds: model null without --model-for" "$(json_get "${doc}" 'd["model"]')" 'null'
 
-  # A model for the winning kind rides the launch argv.
+  # A model for the winning kind rides the launch argv head-level (before
+  # any --), so it goes through the CLI's model_flag mapping and checks.
   ak_split "${url}" -- pick --kinds claude-glm,claude --model-for claude=sonnet --json; status=$?
   cp "${BOX}/out" "${doc}"
   expect_eq "pick kinds: --model-for sets the model" "$(json_get "${doc}" 'd["model"]')" 'sonnet'
-  expect_eq "pick kinds: the model rides the launch argv after --" "$(json_get "${doc}" 'd["launch"]["argv"]')" '["ak", "claude", "@work", "--", "--model", "sonnet"]'
+  expect_eq "pick kinds: the model rides the launch argv head-level" "$(json_get "${doc}" 'd["launch"]["argv"]')" '["ak", "claude", "@work", "--model", "sonnet"]'
+
+  # permissions reflects the ask opt-out when the pick itself runs with it.
+  ak_split "${url}" AGENTKIT_PERMISSIONS=ask -- pick --kinds claude-glm,claude --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "pick kinds: permissions ask under the opt-out" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'ask'
 
   # Human output stays the single-kind line.
   ak_split "${url}" -- pick --kinds claude-glm,claude; status=$?
   expect_eq "pick kinds: human line, exit 0" "${status}" 0
   expect_has "pick kinds: the human line names the account" "$(cat "${BOX}/out")" "claude @work"
 
-  # Nothing qualifies: exit 1, every kind's reason, the soonest reset.
-  ak_split "${url}" -- pick --kinds claude-glm,claude --need 5h:95; status=$?
+  # Nothing qualifies: exit 1, every kind's reason, the soonest reset, and a
+  # JSON document on the no-qualifier form (like pick-v1).
+  ak_split "${url}" -- pick --kinds claude-glm,claude --need 5h:95 --json; status=$?
+  cp "${BOX}/out" "${doc}"
   expect_eq "pick kinds: none qualifies exits 1" "${status}" 1
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
+  expect_eq "pick kinds: the no-qualifier JSON matches pick-v2" "${out}" "valid"
+  expect_eq "pick kinds: the no-qualifier form says qualifies=false" "$(json_get "${doc}" '[d["qualifies"], d["profile"], d["launch"]["argv"]]')" '[false, null, null]'
   expect_has "pick kinds: the refusal names both kinds" "$(cat "${BOX}/err")" "across claude-glm,claude"
   expect_has "pick kinds: the refusal names the soonest reset" "$(cat "${BOX}/err")" "Soonest reset"
+
+  # No login at all across the list: exit 3, like pick-v1.
+  ak_split "${url}" -- pick --kinds cursor,opencode; status=$?
+  expect_eq "pick kinds: no login anywhere exits 3" "${status}" 3
+  expect_has "pick kinds: the no-login message matches pick-v1" "$(cat "${BOX}/err")" "nothing to pick from"
 
   # Parse contract: mutually exclusive forms and bad --model-for.
   ak_split "${url}" -- pick --kinds claude,claude; status=$?
@@ -64,6 +82,14 @@ PY
   expect_eq "pick kinds: --model-for without --kinds is a usage error" "${status}" 2
   ak_split "${url}" -- pick --kinds claude --model-for codex=x; status=$?
   expect_eq "pick kinds: --model-for naming a kind outside the list is a usage error" "${status}" 2
+  ak_split "${url}" -- pick --kinds claude --model-for claude=-p; status=$?
+  expect_eq "pick kinds: a dash-leading --model-for value is a usage error" "${status}" 2
   ak_split "${url}" -- pick --kinds claude @work; status=$?
   expect_eq "pick kinds: a pinned profile with --kinds is a usage error" "${status}" 2
+  ak_split "${url}" -- pick --kinds claude --count 2; status=$?
+  expect_eq "pick kinds: --count with --kinds is a usage error" "${status}" 2
+
+  # The fake usage server must not outlive the scope (a leaked child blocks
+  # the bare `wait` in later scopes — the lease race).
+  usage_server_stop
 }
