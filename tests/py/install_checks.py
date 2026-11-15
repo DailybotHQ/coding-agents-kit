@@ -164,7 +164,7 @@ check("tarball: nothing escaped and no staging is left", not os.path.exists(os.p
 # npm: the pinned integrity is checked before npm runs; npm installs that file
 ok_, out, home, npm_log = run("codex")
 check("npm: a matching integrity runs npm install -g <the verified tarball>",
-      ok_ and "NPM install -g " in npm_log and npm_log.split("NPM install -g ", 1)[1].split()[0].endswith("codex-0.158.0.tgz"),
+      ok_ and "NPM install -g " in npm_log and npm_log.split("NPM install -g ", 1)[1].split()[0].endswith("codex-0.169.0.tgz"),
       npm_log or out)
 check("npm: npm never sees a key variable", "NPM-ENV" not in npm_log, npm_log)
 check("npm: no planted key value reaches the output", PLANTED not in out and PLANTED not in npm_log)
