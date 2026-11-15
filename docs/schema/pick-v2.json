@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/main/docs/schema/pick-v2.json",
+  "title": "ak pick --kinds --json (pick-v2)",
+  "description": "The cross-kind priority pick for daemons (herdr-peers autopilot --loop and its agents): the FIRST kind of --kinds with a qualifying account, chosen by the same rows, cache and policy as pick-v1 (docs/usage.md#choosing-an-account). Read-only: no login is refreshed, no reset is spent. `launch.argv` is the exact interactive argv to start that agent, so a caller never learns any CLI's own flags; `model` is what the caller asked for that kind (resolution happens at launch). Never contains a secret value or an account identity. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
+  "type": "object",
+  "required": ["schema", "interface", "generated_at", "kinds", "qualifies", "priority_index", "kind", "cli", "profile", "model", "headroom_pct", "binding_window", "resets_at", "reason", "launch", "lease", "soonest_reset"],
+  "properties": {
+    "schema": { "const": "pick-v2" },
+    "interface": { "const": 1 },
+    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "kinds": { "type": "array", "minItems": 1, "items": { "type": "string" }, "description": "The --kinds priority list, in order." },
+    "qualifies": { "type": "boolean", "description": "False on the no-qualifier form: the winner fields are null and launch.argv is null; a --json caller always gets a document, like pick-v1." },
+    "priority_index": { "type": ["integer", "null"], "description": "The winning kind's index in `kinds` (0 = the first kind qualified); null when nothing qualifies." },
+    "kind": { "type": ["string", "null"], "description": "The winning kind as given in --kinds." },
+    "cli": { "type": ["string", "null"] },
+    "profile": { "type": ["string", "null"], "pattern": "^@[a-z0-9._-]{1,32}$", "description": "Null only on the no-qualifier form." },
+    "model": { "type": ["string", "null"], "description": "--model-for for the winning kind, else --model, else null; resolved at launch, not here. A dash-leading value is refused at parse time." },
+    "headroom_pct": { "type": ["number", "null"] },
+    "binding_window": { "type": ["string", "null"] },
+    "resets_at": { "type": ["string", "null"] },
+    "reason": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "priority_index", "headroom_pct"],
+      "properties": {
+        "policy": { "const": "first qualifying kind in --kinds order" },
+        "priority_index": { "type": ["integer", "null"] },
+        "headroom_pct": { "type": ["number", "null"] }
+      }
+    },
+    "launch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["argv", "env_names", "permissions"],
+      "properties": {
+        "argv": { "type": ["array", "null"], "minItems": 2, "items": { "type": "string" }, "description": "The exact interactive argv, e.g. [\"ak\",\"claude\",\"@work\",\"--model\",\"sonnet\"] — the model is head-level so it goes through the CLI's model_flag mapping, the models allowlist and the leading-dash check. Null on the no-qualifier form." },
+        "env_names": { "type": "array", "items": { "type": "string" }, "description": "Environment variable NAMES the caller may need; empty on the default path (ak sets the CLI homes itself)." },
+        "permissions": { "enum": ["auto", "ask"], "description": "Which permission mode the argv implies: ak's default (auto — the CLI's own bypass flag) or ask when the pick ran with the opt-out. A caller that wants ask-mode launches appends [\"--ask\"] before any -- (a documented head flag); it never needs the CLI's own bypass flag." }
+      }
+    },
+    "lease": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["owner", "purpose", "expires_at", "kind"],
+      "properties": {
+        "owner": { "type": "string" },
+        "purpose": { "type": ["string", "null"] },
+        "expires_at": { "type": "string" },
+        "kind": { "type": ["string", "null"] }
+      },
+      "description": "The active lease on the chosen account, if any (ak lease); null without one."
+    },
+    "soonest_reset": { "type": ["string", "null"], "description": "ISO-8601 UTC: the earliest reset seen across the list; null when none is known." }
+  }
+}
