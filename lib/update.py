@@ -45,6 +45,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 
 import common
 import installer
@@ -177,6 +178,93 @@ def _npm_prefix_bin(env):
     return os.path.join(prefix, "bin")
 
 
+_VERSION_OK = re.compile(r"[0-9A-Za-z._+~/-]+\Z")
+_INTEGRITY_OK = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
+_SHA256_OK = re.compile(r"[0-9a-f]{64}\Z")
+
+
+def pin_value_problems(new_version, verification):
+    """What is wrong with writing the discovered values into providers.toml
+    (empty when safe). Everything here arrived over the network: a version
+    or digest carrying a quote, a newline or any character a TOML string
+    cannot hold would inject configuration — npm_args with an attacker
+    registry is the nightmare — so anything outside the strict shapes
+    refuses the whole write."""
+    problems = []
+    if not _VERSION_OK.match(new_version or ""):
+        problems.append("the discovered version is not a plain version string")
+    if verification.get("integrity") is not None and not _INTEGRITY_OK.match(str(verification["integrity"])):
+        problems.append("the fetched integrity is not sha512-<base64>")
+    for plat, digest in (verification.get("sha256") or {}).items():
+        if not _SHA256_OK.match(str(digest)):
+            problems.append("the fetched sha256 for %s is not 64 hex" % plat)
+    return problems
+
+
+def _verify_artifact(cli_name, cand, env):
+    """Download the release and check its digests without installing: the
+    gate a re-pin must pass so providers.toml never names digests this run
+    has not seen match the vendor's artifact."""
+    tmpdir = tempfile.mkdtemp(prefix="agentkit-update-")
+    try:
+        if cand.get("channel") == "npm":
+            path = os.path.join(tmpdir, "tgz")
+            if not installer._download(installer.npm_tarball_url(cand), path, env):
+                raise AkError("download failed: %s" % installer.npm_tarball_url(cand), EXIT_NOT_READY)
+            return installer._verify(cli_name, path, cand.get("integrity"), installer.integrity_of, False, cand)
+        plat = installer.platform_key()
+        path = os.path.join(tmpdir, "artifact")
+        token = cand.get("platforms", {}).get(plat)
+        if not token:
+            raise AkError("no pinned artifact for %s" % plat, common.EXIT_INTERNAL)
+        url = installer._expand(cand["url"], cand, token)
+        if not installer._download(url, path, env):
+            raise AkError("download failed: %s" % url, EXIT_NOT_READY)
+        return installer._verify(cli_name, path, (cand.get("sha256") or {}).get(plat), installer.sha256_of, False, cand)
+    finally:
+        shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+class PinLock(object):
+    """The providers.toml read-modify-write and the install it describes are
+    one critical section: two concurrent `ak update` runs must not interleave
+    an install with another's re-pin. A lock file next to providers.toml
+    carries the holding pid; a lock older than ten minutes is stale and is
+    removed once, anything fresher refuses."""
+
+    PATH = os.path.join(common.KIT_ROOT, "providers.toml.lock")
+    STALE_S = 600
+
+    def _acquire(self):
+        fd = os.open(self.PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        os.write(fd, ("%d %d\n" % (os.getpid(), int(time.time()))).encode())
+        os.close(fd)
+
+    def __enter__(self):
+        self.PATH = os.path.join(common.KIT_ROOT, "providers.toml.lock")
+        try:
+            self._acquire()
+        except FileExistsError:
+            try:
+                age = time.time() - os.stat(self.PATH).st_mtime
+            except OSError:
+                age = 0
+            if age > self.STALE_S:
+                os.remove(self.PATH)
+                self._acquire()
+            else:
+                raise AkError("another ak update holds the pin lock (%s, %d s old); "
+                              "if no update is running, remove it" % (self.PATH, int(age)), EXIT_NOT_READY)
+        return self
+
+    def __exit__(self, *exc):
+        try:
+            os.remove(self.PATH)
+        except OSError:
+            pass
+        return False
+
+
 def update_one(model, cli_name, opts, env):
     """One CLI's update result (a dict); expected outcomes never raise."""
     cli = model.clis[cli_name]
@@ -201,6 +289,11 @@ def update_one(model, cli_name, opts, env):
         result["note"] = str(exc)
         return result
     result["to_version"] = new_version
+    problems = pin_value_problems(new_version, verification)
+    if problems:
+        result["status"] = "failed"
+        result["note"] = "refusing the fetched values: %s; nothing was downloaded or installed" % "; ".join(problems)
+        return result
     new_key, _ = _vkey(new_version)
     pin_key, _ = _vkey(pin)
     if not opts["version"] and new_key is not None and pin_key is not None and new_key < pin_key:
@@ -214,8 +307,21 @@ def update_one(model, cli_name, opts, env):
         return result
     if resolved_exact and new_key is not None and resolved_key == new_key:
         # The machine already runs exactly this release; nothing to install —
-        # at most the pin moves (a vendor self-update outran the kit's pin).
+        # but the pin moves only after this run has seen the vendor's
+        # artifact match the fetched digests (a re-pin of unchecked network
+        # data would be trust without verification).
         result["status"] = "current"
+        cand = dict(inst)
+        cand["version"] = new_version
+        cand.update(verification)
+        try:
+            if not _verify_artifact(cli_name, cand, env):
+                result["note"] = "the release on PATH did not match the vendor's published digest; the pin is unchanged"
+                return result
+        except AkError as exc:
+            result["status"] = "failed"
+            result["note"] = str(exc)
+            return result
         return _repin(result, model, cli_name, inst, new_version, verification)
 
     # The binary channel writes ~/.local/bin/<executable>: a vendor-managed
@@ -266,9 +372,19 @@ def update_one(model, cli_name, opts, env):
         expected = os.path.join(prefix_bin, cli["executable"]) if prefix_bin else ""
         if expected and after and os.path.realpath(after) != os.path.realpath(expected) \
                 and os.path.islink(after) and os.path.exists(expected):
-            os.remove(after)
-            os.symlink(expected, after)
-            after = expected
+            # Stage the new link, then swap atomically: PATH never points at
+            # a missing entry, and a failed swap leaves the old link in
+            # place. The link keeps its old location; it now names the fresh
+            # prefix copy.
+            staged = after + ".agentkit-new"
+            if os.path.lexists(staged):
+                os.remove(staged)
+            os.symlink(expected, staged)
+            try:
+                os.replace(staged, after)
+            except OSError:
+                os.remove(staged)
+                raise
             after_version = _resolved_version(after)
             extra = " (took over %s, now a link to %s)" % (after, expected)
     result["resolution"] = after or ""
@@ -322,6 +438,13 @@ def _write_pin(model, cli_name, new_version, verification):
         missing = [plat for plat in platforms if not verification["sha256"].get(plat)]
         if missing:
             raise AkError("no fetched digest for %s; the pin is unchanged" % ", ".join(missing), common.EXIT_INTERNAL)
+    problems = pin_value_problems(new_version, verification)
+    if problems:
+        # Everything here arrived over the network; a value that cannot be a
+        # TOML string must never reach the file (an injected npm_args with a
+        # foreign registry would be honored by the next npm install -g).
+        raise AkError("refusing to write the fetched values: %s; the pin is unchanged"
+                      % "; ".join(problems), common.EXIT_INTERNAL)
     path = os.path.join(common.KIT_ROOT, "providers.toml")
     with open(path, "r", encoding="utf-8") as fh:
         lines = fh.read().splitlines(keepends=True)
@@ -393,10 +516,11 @@ def main(model, args, env):
     results = []
     for cli_name in names:
         if opts["json"]:  # one JSON document on stdout; the install's own prints go to stderr
-            with contextlib.redirect_stdout(sys.stderr):
+            with contextlib.redirect_stdout(sys.stderr), PinLock():
                 results.append(update_one(model, cli_name, opts, env))
         else:
-            results.append(update_one(model, cli_name, opts, env))
+            with PinLock():
+                results.append(update_one(model, cli_name, opts, env))
     if opts["json"]:
         doc = {"schema": SCHEMA, "interface": common.INTERFACE, "kit": common.VERSION, "results": results}
         json.dump(doc, sys.stdout, indent=2)

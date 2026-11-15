@@ -52,8 +52,26 @@ doctor, `ak install` and the next update agree.
 - PATH already resolving a **newer** build than the vendor's newest (an
   unusual vendor channel state) is refused — the command does not downgrade
   your machine.
+- **Fetched values that are not plain data refuse the whole update** before
+  anything runs: a version or digest carrying a quote, a newline or any
+  character a TOML string cannot hold is refused (providers.toml is never
+  written with injected configuration, and the fetched digests must be
+  `sha512-<base64>` or 64 hex).
 - No vendor manifest → the CLI is skipped; the pin moves only through
   `scripts/update-pins.sh` (maintainer, digests re-derived from the source).
+
+## Trust, and never unattended
+
+The **metadata** (`dist-tags.latest`, the channel file, the release
+manifest) comes from the same source the vendor's own installers trust; the
+**artifact** is always checked against the fetched digests before it is
+installed, and a pin moves only after this run has seen the vendor's
+artifact match them — including the no-install "current" path, which
+verifies the artifact before re-pinning. A concurrent run is held out by a
+lock file next to providers.toml (a stale lock older than ten minutes is
+removed once; anything fresher refuses). `ak update` is a human-invoked
+installer action: agents, daemons and unattended loops never run it on
+their own, the same rule that keeps autopilot away from installs.
 
 ## JSON
 

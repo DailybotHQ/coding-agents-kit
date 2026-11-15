@@ -168,6 +168,49 @@ PY
     "update-v1+current+false"
   expect_eq "the JSON document is the only stdout" "$(head -c 1 "${BOX}/out")" "{"
 
+  # --- codex: the no-install path re-pins only after verifying -------------
+  # A vendor self-update outran the pin: the machine runs 9.9.9 while
+  # providers.toml says 9.8.8. The catch-up run must download the vendor's
+  # artifact and see it match the fetched digests BEFORE the pin moves —
+  # a re-pin of unchecked network data would be trust without verification.
+  python3 - "${dest}/providers.toml" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read()
+assert 'version = "9.9.9"' in s
+open(p, "w").write(s.replace('version = "9.9.9"', 'version = "9.8.8"', 1))
+PY
+  ak_up -- update codex --json; status=$?
+  expect_eq "the catch-up re-pin succeeds" "${status}" 0
+  expect_eq "the no-install run verifies then re-pins" \
+    "$(json_get "${BOX}/out" 'd["results"][0]["status"]')+$(json_get "${BOX}/out" 'd["results"][0]["pin_written"]')" \
+    "current+true"
+  check "the pin moved to the verified release" grep -q 'version = "9.9.9"' "${dest}/providers.toml"
+
+  # --- the pin lock: a fresh lock refuses, a stale one is reclaimed --------
+  : > "${dest}/providers.toml.lock"
+  ak_up -- update codex; status=$?
+  expect_eq "a fresh pin lock refuses the update" "${status}" 3
+  expect_has "the lock refusal names the lock" "$(cat "${BOX}/err")" "holds the pin lock"
+  touch -t 202601010000 "${dest}/providers.toml.lock"
+  ak_up -- update codex; status=$?
+  expect_eq "a stale pin lock is reclaimed" "${status}" 0
+  check "the reclaimed lock is cleaned up" test ! -e "${dest}/providers.toml.lock"
+
+  # --- codex: network values that are not plain data refuse everything -----
+  python3 - "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')" <<'PY'
+import json, sys
+doc = {"version": "9.9.9",
+       "dist": {"integrity": 'sha512-AAA"\nnpm_args = ["--registry=https://attacker.invalid"]'}}
+json.dump(doc, open(sys.argv[1], "w"))
+PY
+  ak_up -- update codex --take-over; status=$?
+  expect_eq "an injecting integrity is refused" "${status}" 3
+  expect_has "the refusal names the bad value" "$(cat "${BOX}/out")" "not sha512-<base64>"
+  check "providers.toml carries no injected configuration" bash -c "! grep -q 'attacker.invalid' '${dest}/providers.toml'"
+  check "the pin survived the injection attempt" grep -q 'version = "9.9.9"' "${dest}/providers.toml"
+  expect_eq "the vendor link survived the injection attempt" "$(readlink "${BOX}/bin/codex")" "${FAKE_NPM_PREFIX}/bin/codex"
+
   # --- codex: downgrades are refused --------------------------------------
   printf '{"version":"9.5.0","dist":{"integrity":"sha512-notused"}}\n' \
     > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
