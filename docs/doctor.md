@@ -12,6 +12,14 @@ mode, the permission posture, every CLI (version, login state, path or the
 profiles, aliases, Herdr hooks and problems to fix. Inside a container it
 says so first: it reports the container, not your host.
 
+Each installed CLI also shows the kit's version pin and how the resolved
+version compares. An older version adds a problem with `ak update <cli>`
+and the executable path to check afterwards. This catches an update that
+installed a newer copy while an older copy still wins on `PATH`. A newer
+vendor install is reported as newer without suggesting a downgrade.
+The comparison runs offline: the pin is the kit's known version, not a
+claim about the latest vendor release. Doctor never installs or updates.
+
 The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v1.json).
 
 ```json
@@ -38,6 +46,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 | --- | --- |
 | `interface` | the machine contract: this JSON shape, `ak env` and the `ak run` grammar and envelope. It is `1`, and changes only when that contract breaks (a key removed or retyped, a grammar change); a change of behaviour, such as the default permission posture, is carried by the kit's version (semver since 1.0.0) |
 | `kinds.<kind>.installed` / `path` / `version` | the CLI on `PATH` (Cursor: the real Cursor binary, never Grok's `agent`); version from `<cli> --version` (5 s timeout) |
+| `kinds.<kind>.pinned_version` / `version_status` | additive diagnostics: the CLI's `install.version` from this kit and `current`, `older`, `newer`, `different`, `unknown` or `missing`. Numeric release components are compared numerically. Different vendor suffixes on the same release, or different numbers of release components, report `different` without guessing an order. A leading `v` and build metadata do not affect comparison. `unknown` means the version output or pin could not be parsed; `missing` means no executable resolved. All provider kinds share their CLI's diagnostic and one version probe |
 | `kinds.<kind>.logged_in` | `@default` only. Canonical kinds: `true`/`false` from credential **file presence** (and credential variable names), `null` when files cannot tell (Cursor's default Keychain login, OpenCode/Pi/Cline env-based providers). Provider kinds: whether their key variable is set |
 | `profiles` | named profiles per CLI (`@default` is implicit) |
 | `keys` | names of provider key variables that are set (base and per profile) — never values |

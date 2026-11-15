@@ -2,8 +2,9 @@
 
 The JSON form is interface 1 (docs/schema/doctor-v1.json), read by other
 tools to decide whether ak is usable:
-  interface, version, os, kinds{installed, version, logged_in, path, cli,
-  provider}, profiles{cli: [names]}, keys[names set], permissions ask|auto,
+  interface, version, os, kinds{installed, version, pinned_version,
+  version_status, logged_in, path, cli, provider}, profiles{cli: [names]},
+  keys[names set], permissions ask|auto,
   aliases{classic, custom}, herdr_hooks{cli: {@profile: present|absent}},
   default_profiles{cli: label}, daemons{cli: {@profile: state}},
   env_file{path, exists, mode}, problems[]
@@ -15,6 +16,7 @@ holds no token. CLI versions come from `<cli> --version` (5 s timeout).
 
 import json
 import os
+import re
 import stat
 import sys
 
@@ -31,6 +33,47 @@ def _cli_version(exe):
         return None
     out = common._probe([exe, "--version"], timeout=5).strip().splitlines()
     return out[0].strip() if out else None
+
+
+_VERSION = re.compile(r"v?(\d+(?:\.\d+){1,3})(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?")
+_VERSION_LABELS = {
+    "claude": ("Claude Code",), "codex": ("codex-cli",),
+    "cursor": ("Cursor Agent", "cursor-agent", "agent"),
+    "cline": ("Cline CLI",), "grok": ("Grok CLI",), "antigravity": ("agy",),
+}
+
+
+def _version_parts(text, cli):
+    """Recognize version output, without mistaking an error's numbers for a version.
+
+    Dates and vendor build suffixes are legal versions too. Numeric components
+    can be ordered; two different suffixes on the same release cannot safely
+    be ordered across vendors, so that case stays `different`.
+    """
+    text = (text or "").strip()
+    for label in _VERSION_LABELS.get(cli, ()) + (cli,):
+        if text.lower().startswith(label.lower() + " "):
+            text = text[len(label):].strip()
+            break
+    text = re.sub(r"\s+\([^()\r\n]*\)$", "", text)
+    match = _VERSION.fullmatch(text)
+    if not match:
+        return None
+    return tuple(int(n) for n in match[1].split(".")), match[2] or ""
+
+
+def _version_status(cli, raw, pinned, installed):
+    if not installed:
+        return "missing"
+    current = _version_parts(raw, cli)
+    expected = _version_parts(pinned, cli)
+    if current is None or expected is None:
+        return "unknown"
+    if current == expected:
+        return "current"
+    if len(current[0]) != len(expected[0]) or current[0] == expected[0]:
+        return "different"
+    return "older" if current[0] < expected[0] else "newer"
 
 
 def _env_file_state():
@@ -61,6 +104,7 @@ def collect(model, env):
         raw_perm = "ask"
     exe_cache = {}
     version_cache = {}
+    status_cache = {}
     kinds_out = {}
     for name in model.kind_names():
         kind = model.kind(name)
@@ -68,6 +112,12 @@ def collect(model, env):
         if cli not in exe_cache:
             exe_cache[cli] = common.resolve_executable(kind.cli, env)
             version_cache[cli] = _cli_version(exe_cache[cli])
+            pinned = kind.cli.get("install", {}).get("version")
+            status_cache[cli] = _version_status(cli, version_cache[cli], pinned, exe_cache[cli] is not None)
+            if status_cache[cli] == "older":
+                problems.append("%s: resolved %s reports %s, older than kit pin %s. Fix: ak update %s; "
+                                "then check this path again if another install shadows the updated CLI"
+                                % (cli, exe_cache[cli], version_cache[cli], pinned, cli))
         if kind.key_var:
             logged_in = bool(env.get(kind.key_var)) or (
                 profiles.login_state(model, cli, "", env) if kind.key_optional else False)
@@ -79,6 +129,8 @@ def collect(model, env):
             "installed": exe_cache[cli] is not None,
             "path": exe_cache[cli],
             "version": version_cache[cli],
+            "pinned_version": kind.cli.get("install", {}).get("version"),
+            "version_status": status_cache[cli],
             "logged_in": logged_in,
         }
     prof = {cli: [] for cli in model.cli_names()}
@@ -188,6 +240,7 @@ def render_text(model, report):
         login = {True: "logged in", False: "not logged in", None: "login: unknown"}[k["logged_in"]]
         if k["installed"]:
             w("  %-*s %-28s %s  (%s)" % (cw, cli, k["version"] or "?", login, k["path"]))
+            w("  %-*s kit pin: %s; version: %s" % (cw, "", k["pinned_version"], k["version_status"]))
         else:
             w("  %-*s not installed — ak install %s" % (cw, cli, cli))
     w("")

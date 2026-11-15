@@ -19,6 +19,12 @@ no_planted() {
   return 0
 }
 
+doctor_version_fake() {
+  # The fixture controls the version line; this executable never updates.
+  printf '#!/bin/sh\nprintf "%%s\\n" "%s"\nprintf "probe\\n" >> "%s/version-probes"\n' "$2" "${BOX}" > "${BOX}/bin/$1"
+  chmod +x "${BOX}/bin/$1"
+}
+
 scope_doctor() {
   local out err status root k doc schema="${ROOT}/docs/schema/doctor-v1.json"
   box_new doctor
@@ -40,6 +46,9 @@ scope_doctor() {
   expect_eq "doctor lists all 20 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 20
   expect_eq "doctor sees the installed CLIs" "$(json_get "${doc}" 'all(v["installed"] for v in d["kinds"].values())')" true
   expect_eq "doctor reads each CLI's version" "$(json_get "${doc}" 'd["kinds"]["codex"]["version"]')" "codex 0.0.0-fake"
+  expect_eq "doctor compares the resolved CLI with its kit pin" "$(json_get "${doc}" 'd["kinds"]["codex"]["version_status"]')" older
+  expect_eq "provider kinds share their CLI's version diagnostic" \
+    "$(json_get "${doc}" 'd["kinds"]["codex-azure"]["version_status"] == d["kinds"]["codex"]["version_status"]')" true
   expect_eq "doctor lists profiles per CLI" "$(json_get "${doc}" 'd["profiles"]["grok"]')" '["9", "work"]'
   expect_eq "doctor lists key names (base and per profile)" \
     "$(json_get "${doc}" 'd["keys"]')" '["AZURE_OPENAI_API_KEY", "AZURE_OPENAI_API_KEY_2", "XAI_API_KEY", "XAI_API_KEY_2", "ZAI_CODING_API_KEY", "ZAI_CODING_API_KEY_2"]'
@@ -102,6 +111,83 @@ scope_doctor() {
   fi
   out="$(ak -- doctor --bogus)"; status=$?
   expect_eq "doctor with an unknown option is a usage error" "${status}" 2
+
+  # Version diagnostics use the resolved executable, not a registry query
+  # or another copy of the CLI. Keep newer vendor installs as they are.
+  box_new doctor-versions codex
+  ak_split -- doctor --json
+  local pinned
+  pinned="$(json_get "${BOX}/out" 'd["kinds"]["codex"]["pinned_version"]')"
+  expect_eq "missing CLI version diagnostics say missing" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["claude"]["version_status"]')" missing
+  doctor_version_fake codex "codex-cli ${pinned}"
+  rm -f "${BOX}/version-probes"
+  ak_split -- doctor --json
+  expect_eq "the CLI label does not obscure an exact pin match" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" current
+  expect_eq "doctor probes one CLI once across all provider variants" "$(wc -l < "${BOX}/version-probes" | tr -d ' ')" 1
+  expect_eq "an exact pin match has no update problem" \
+    "$(json_get "${BOX}/out" 'any("ak update codex" in p for p in d["problems"])')" false
+  doctor_version_fake codex "codex-cli 0.0.0"
+  ak_split -- doctor --json
+  expect_eq "an older resolved version has one actionable update problem" \
+    "$(json_get "${BOX}/out" 'sum("ak update codex" in p for p in d["problems"])')" 1
+  expect_has "the old-version problem names the executable that launches" "$(cat "${BOX}/out")" "${BOX}/bin/codex"
+  doctor_version_fake codex "codex-cli 99999.0.0"
+  ak_split -- doctor --json
+  expect_eq "a vendor install newer than the pin is recognized" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" newer
+  expect_eq "a newer vendor install is not told to downgrade" \
+    "$(json_get "${BOX}/out" 'any("ak update codex" in p for p in d["problems"])')" false
+  out="$(ak -- doctor)"
+  expect_has "text doctor shows the kit pin alongside its version status" "${out}" "kit pin: ${pinned}; version: newer"
+  doctor_version_fake codex "requires Node 99.0.0"
+  ak_split -- doctor --json
+  expect_eq "an error mentioning a number is not a CLI version" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" unknown
+  doctor_version_fake codex "codex-cli ${pinned}-custom"
+  ak_split -- doctor --json
+  expect_eq "different vendor suffixes are not guessed to be older or newer" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" different
+  doctor_version_fake codex "codex-cli v${pinned}+local"
+  ak_split -- doctor --json
+  expect_eq "a v prefix and build metadata preserve a pin match" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" current
+  doctor_version_fake codex "codex-cli 0.99.0"
+  ak_split -- doctor --json
+  expect_eq "version components are ordered numerically, not lexically" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" older
+  doctor_version_fake codex ""
+  ak_split -- doctor --json
+  expect_eq "an installed CLI with no version output stays unknown" \
+    "$(json_get "${BOX}/out" '[d["kinds"]["codex"]["installed"], d["kinds"]["codex"]["version_status"]]')" '[true, "unknown"]'
+  doctor_version_fake codex "codex-cli ${pinned}"
+  # An updated copy exists, but the old copy still wins PATH resolution.
+  mkdir -p "${BOX}/home/.local/bin"
+  cp "${BOX}/bin/codex" "${BOX}/home/.local/bin/codex"
+  doctor_version_fake codex "codex-cli 0.0.0"
+  ak_split "PATH=${BOX}/bin:${BOX}/home/.local/bin:${BASE_PATH}" -- doctor --json
+  expect_eq "a shadowed updated copy does not hide the old resolved version" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" older
+  ak_split "PATH=${BOX}/home/.local/bin:${BOX}/bin:${BASE_PATH}" -- doctor --json
+  expect_eq "changing PATH diagnoses the executable that would really launch" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" current
+  out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${BOX}/out")"
+  expect_eq "version diagnostics keep the interface 1 schema valid" "${out}" valid
+  pinned="$(json_get "${BOX}/out" 'd["kinds"]["claude"]["pinned_version"]')"
+  doctor_version_fake claude "${pinned} (Claude Code)"
+  ak_split -- doctor --json
+  expect_eq "Claude's native version banner matches its pin" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["claude"]["version_status"]')" current
+  doctor_version_fake claude "Claude Code ${pinned}"
+  ak_split -- doctor --json
+  expect_eq "a full CLI label is recognized before its shorter command name" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["claude"]["version_status"]')" current
+  pinned="$(json_get "${BOX}/out" 'd["kinds"]["cursor"]["pinned_version"]')"
+  doctor_version_fake cursor-agent "${pinned}"
+  ak_split -- doctor --json
+  expect_eq "Cursor's date and build version matches its pin" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["cursor"]["version_status"]')" current
 
   # --- ak env ---------------------------------------------------------------------
   box_new doctor
