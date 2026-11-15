@@ -56,8 +56,14 @@ SCOPED = re.compile(r"^(5h|7d)-(.+)$")
 USAGE = """usage: ak pick <kind-or-cli> [@profile] [--model NAME] [--need WIN:PCT]... [--reserve PCT]
                [--count N] [--exclude @profile]... [--allow-unknown] [--owner ADDR [--reuse @profile]...]
                [--max-age S] [--json] [--timeout SECONDS]
+       ak pick --kinds KIND,KIND,... [--model-for KIND=NAME]... [the same flags] [--json]
 The account(s) with the most usable headroom for a kind, from the same rows as
 ak usage (read-only: no login is refreshed, no reset is spent).
+  --kinds K,K,...   cross-kind priority: the FIRST kind in the list with a
+                    qualifying account wins (daemon pick; --json answers
+                    pick-v2 with the exact launch argv). No positional target.
+  --model-for K=N   with --kinds: the model for one kind of the list (its
+                    model-scoped windows govern; the launch argv carries it)
   --model NAME      model-scoped weekly windows of that model also govern (fable, opus, ...)
   --need WIN:PCT    the window with id WIN (5h, 7d, 7d-fable) must keep PCT% free
   --reserve PCT     keep PCT% of every window of 7 days or more unused (default 10, max 50)
@@ -355,7 +361,8 @@ def _public(cand):
 def parse_args(args):
     opts = {"target": None, "profile": None, "model": None, "needs": [], "reserve": DEFAULT_RESERVE,
             "count": 1, "exclude": [], "allow_unknown": False, "json": False, "timeout": None,
-            "owner": None, "reuse": [], "max_age": state.DEFAULT_MAX_AGE}
+            "owner": None, "reuse": [], "max_age": state.DEFAULT_MAX_AGE,
+            "kinds": [], "model_for": {}}
 
     def value(i, flag):
         if i >= len(args):
@@ -409,6 +416,21 @@ def parse_args(args):
             if not text.startswith("@"):
                 raise AkError("--reuse takes a profile, e.g. @work")
             opts["reuse"].append(usage._profile_label(profiles.normalize(text[1:])))
+        elif arg == "--kinds":
+            i += 1
+            text = value(i, arg)
+            parts = text.split(",")
+            kinds_list = [k.strip() for k in parts]
+            if not text.strip() or any(not k for k in kinds_list) or len(set(kinds_list)) != len(kinds_list) \
+               or any(not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,30}", k) for k in kinds_list):
+                raise AkError("--kinds takes a comma list of distinct kinds, e.g. claude,codex,grok")
+            opts["kinds"] = kinds_list
+        elif arg == "--model-for":
+            i += 1
+            match = re.fullmatch(r"([a-z0-9][a-z0-9-]{0,30})=(\S+)", value(i, arg))
+            if not match:
+                raise AkError("--model-for takes KIND=NAME, e.g. claude=sonnet")
+            opts["model_for"][match.group(1)] = match.group(2)
         elif arg == "--max-age":
             i += 1
             opts["max_age"] = state_max_age(value(i, arg))
@@ -429,8 +451,17 @@ def parse_args(args):
                 raise AkError("only one kind or CLI can be given")
             opts["target"] = arg
         i += 1
-    if not opts.get("help") and opts["target"] is None:
+    if not opts.get("help") and opts["target"] is None and not opts["kinds"]:
         raise AkError("ak pick needs a kind or CLI, e.g. ak pick claude. See: ak pick --help")
+    if opts["kinds"] and opts["target"] is not None:
+        raise AkError("--kinds replaces the positional target; pass one or the other. See: ak pick --help")
+    if opts["kinds"] and opts["profile"] is not None:
+        raise AkError("--kinds chooses across kinds; a pinned @profile applies to one. See: ak pick --help")
+    if opts["model_for"] and not opts["kinds"]:
+        raise AkError("--model-for needs --kinds (it names one kind of the list). See: ak pick --help")
+    for k in opts["model_for"]:
+        if k not in opts["kinds"]:
+            raise AkError("--model-for names '%s', which is not in --kinds. See: ak pick --help" % k)
     if opts["reuse"] and not opts["owner"]:
         raise AkError("--reuse names the owner's own lease: it needs --owner. See: ak pick --help")
     return opts
@@ -459,6 +490,80 @@ def _line(c, now):
     return text
 
 
+def _render_kinds_json(opts, index, kind, winner, leases, soonest, now):
+    """The pick-v2 envelope: one winning account plus the exact launch argv."""
+    import json
+    lease_rec = None
+    for rec in leases:
+        if rec.get("cli") == winner["cli"] and rec.get("profile") == winner["profile"]:
+            lease_rec = {"owner": rec.get("owner"), "purpose": rec.get("purpose"),
+                         "expires_at": rec.get("expires_at"), "kind": rec.get("kind")}
+            break
+    model = opts["model_for"].get(kind) or opts["model"]
+    argv = ["ak", kind, winner["profile"]]
+    if model:
+        argv += ["--", "--model", model]
+    doc = {
+        "schema": "pick-v2", "interface": 1,
+        "generated_at": usage.iso_utc(now),
+        "kinds": list(opts["kinds"]),
+        "priority_index": index,
+        "kind": kind,
+        "cli": winner["cli"],
+        "profile": winner["profile"],
+        "model": model,
+        "headroom_pct": winner["headroom_pct"],
+        "binding_window": winner.get("binding_window"),
+        "resets_at": winner.get("resets_at"),
+        "reason": {"policy": "first qualifying kind in --kinds order",
+                   "priority_index": index, "headroom_pct": winner["headroom_pct"]},
+        "launch": {"argv": argv, "env_names": []},
+        "lease": lease_rec,
+        "soonest_reset": soonest,
+    }
+    return json.dumps(doc, indent=2, sort_keys=True) + "\n"
+
+
+def _pick_kinds(model, opts, env, now, stdout):
+    """Cross-kind priority pick: the first kind of the list with a qualifying
+    account wins (the daemon's surface, pick-v2). Same rows, cache and policy
+    as the single-kind pick; read-only."""
+    caps = parse_caps(env, model)
+    try:
+        low, critical = thresholds(env)
+    except AkError:
+        if caps:
+            raise
+        low, critical = DEFAULT_LOW, DEFAULT_CRITICAL
+    leases = lease.active(env, now)
+    soonest = None
+    misses = []
+    for index, kind in enumerate(opts["kinds"]):
+        rows = one_per_profile(model, usage.filter_rows(model, usage.enumerate_rows(model, env), kind, None), kind)
+        if not rows:
+            misses.append("%s: no profile or login" % kind)
+            continue
+        results = usage.mark_defaults(model, usage.fetch_cached(rows, env, opts["timeout"], now, opts["max_age"]), env)
+        results = [{k: v for k, v in r.items() if not k.startswith("_")} for r in results]
+        chosen, candidates, kind_soonest = choose(
+            results, opts["model_for"].get(kind) or opts["model"], opts["reserve"], opts["needs"],
+            1, opts["exclude"], opts["allow_unknown"], now, caps, leases, opts["owner"], low, (), critical)
+        if kind_soonest and (soonest is None or kind_soonest < soonest):
+            soonest = kind_soonest
+        if chosen:
+            winner = chosen[0]
+            if opts["json"]:
+                usage.emit(stdout, _render_kinds_json(opts, index, kind, winner, leases, soonest, now))
+            else:
+                usage.emit(stdout, _line(winner, now) + "\n")
+            return EXIT_OK
+        misses.append("%s: %s" % (kind, "; ".join(
+            "%s %s" % (c["profile"], c["excluded_reason"]) for c in candidates[:2] if c.get("excluded_reason"))))
+    hint = (" Soonest reset: %s." % usage._relative(soonest, now)) if soonest else ""
+    common.warn("no account has room across %s (%s).%s" % (",".join(opts["kinds"]), " | ".join(misses), hint))
+    return EXIT_NONE
+
+
 def main(model, args, env, now=None, stdout=None):
     import sys
     stdout = stdout or sys.stdout
@@ -466,6 +571,9 @@ def main(model, args, env, now=None, stdout=None):
     if opts.get("help"):
         usage.emit(stdout, USAGE)
         return EXIT_OK
+    if opts["kinds"]:
+        now = usage.common_now() if now is None else now
+        return _pick_kinds(model, opts, env, now, stdout)
     now = usage.common_now() if now is None else now
     rows = one_per_profile(model, usage.filter_rows(model, usage.enumerate_rows(model, env), opts["target"],
                                                     opts["profile"]), opts["target"])

@@ -352,6 +352,44 @@ vendor whose reading is not in the [usage cache](#the-usage-cache) (younger
 than `--max-age`), as `ak usage` does. Using several accounts at once:
 [Orchestration](orchestration.md).
 
+### Cross-kind priority: `--kinds` (`pick-v2`)
+
+`ak pick --kinds claude,codex,grok [--model-for claude=sonnet] [--need
+WIN:PCT] [--owner ADDR] --json` answers one question for a daemon: **which
+kind and account do I launch right now?** The first kind of the list with a
+qualifying account wins (a kind with no profile or login simply does not
+qualify); the account inside it is chosen by the same policy as the
+single-kind pick, over the same cached rows. Nothing prompts, no login is
+refreshed, and the exit codes are the same (1 = nothing qualifies anywhere
+in the list, and the soonest reset across every kind is named).
+
+`--json` answers the versioned `pick-v2` envelope (check `schema` first):
+
+```json
+{"schema": "pick-v2", "interface": 1, "generated_at": "2026-11-15T12:00:00Z",
+ "kinds": ["claude-glm", "claude"], "priority_index": 1, "kind": "claude",
+ "cli": "claude", "profile": "@work", "model": "sonnet",
+ "headroom_pct": 45, "binding_window": "5h", "resets_at": "2099-01-01T00:00:00Z",
+ "reason": {"policy": "first qualifying kind in --kinds order", "priority_index": 1, "headroom_pct": 45},
+ "launch": {"argv": ["ak", "claude", "@work", "--", "--model", "sonnet"], "env_names": []},
+ "lease": null, "soonest_reset": "2099-01-01T00:00:00Z"}
+```
+
+`launch.argv` is the **exact interactive command** to run — the caller never
+learns any CLI's own flags. `--model-for KIND=NAME` rides that argv as the
+provider-neutral `--model` (below). `lease` carries the active lease on the
+chosen account, if one exists. The schema lives at
+`docs/schema/pick-v2.json`.
+
+### The provider-neutral `--model`
+
+`ak <kind> [@profile] --model NAME [--] [cli args…]` places the CLI's own
+model flag (providers.toml `model_flag`, default `--model`; Codex spells it
+`-m`) before your own arguments, so a caller needs no CLI-specific flag
+knowledge. A CLI that declares a `models` list in providers.toml refuses a
+value it does not accept; without one the value passes through and the CLI
+validates it (Claude accepts its sonnet/opus/haiku aliases natively).
+
 ## Windows, macOS and Linux
 
 One code path everywhere; only where a login lives differs.

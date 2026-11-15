@@ -36,6 +36,11 @@ home_env = "CLAUDE_CONFIG_DIR"
 profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
 interactive = ["{provider}", "{session}", "{auto}"]
+# `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
+# list (values the CLI accepts) makes ak refuse anything else; without one
+# the value passes through and the CLI validates it. Claude accepts its
+# aliases (sonnet, opus, haiku) natively.
+model_flag = "--model"
 docs = "https://docs.claude.com/en/docs/claude-code"
 
 [clis.claude.roots]
@@ -105,6 +110,8 @@ home_env = "CODEX_HOME"
 lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
 interactive = ["{provider}", "{session}", "{auto}"]
+# Codex spells the model flag -m (the long --model is not global here).
+model_flag = "-m"
 docs = "https://developers.openai.com/codex/cli"
 
 [clis.codex.roots]

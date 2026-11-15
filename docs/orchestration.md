@@ -95,7 +95,10 @@ to watch its own room and hand off **before** it runs dry, not after.
   leased to anyone — the lead itself included — and ranks the rest by
   `headroom / (1 + active leases)`, the lead's own leases counted, so the
   next lane never lands on an account the lead already handed out and several
-  leads in one workspace never collide. Kinds with no readable quota (Grok,
+  leads in one workspace never collide. A daemon that owns a dedicated agent
+  (a herdr-peers brain) leases the same way with
+  `--purpose brain` and releases when it replaces it, so two daemons or a
+  lead never double-book one account. Kinds with no readable quota (Grok,
   Cursor; Antigravity only on macOS, where its login is a Keychain item)
   are reached with `--allow-unknown`, after every measured account,
   verdict `unknown`.
