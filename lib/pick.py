@@ -383,6 +383,8 @@ def parse_args(args):
             opts["model"] = value(i, arg)
             if not _norm(opts["model"]):
                 raise AkError("--model needs a model name (fable, opus, ...)")
+            if opts["model"].startswith("-"):
+                raise AkError("--model needs a model name, never a dash-leading value. See: ak pick --help")
         elif arg == "--need":
             i += 1
             match = re.fullmatch(r"([a-z0-9][a-z0-9-]{0,40}):(\d{1,3})", value(i, arg))
@@ -499,7 +501,11 @@ def _render_kinds_json(opts, index, kind, winner, leases, soonest, now, env):
     or the no-qualifier form (qualifies=false, winner nulls) so a --json
     caller always gets a document, like pick-v1."""
     import json
-    permissions = "ask" if env.get("AGENTKIT_PERMISSIONS") == "ask" else "auto"
+    import launch
+    # The same normalization the launch itself applies (strips, lowercases,
+    # refuses an invalid value as a usage error) — never report a mode the
+    # suggested argv would not run with.
+    permissions = launch.permissions_mode(env)
     if winner is None:
         doc = {
             "schema": "pick-v2", "interface": 1,

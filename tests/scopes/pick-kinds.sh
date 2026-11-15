@@ -47,10 +47,19 @@ PY
   expect_eq "pick kinds: --model-for sets the model" "$(json_get "${doc}" 'd["model"]')" 'sonnet'
   expect_eq "pick kinds: the model rides the launch argv head-level" "$(json_get "${doc}" 'd["launch"]["argv"]')" '["ak", "claude", "@work", "--model", "sonnet"]'
 
-  # permissions reflects the ask opt-out when the pick itself runs with it.
+  # permissions reflects the ask opt-out when the pick itself runs with it —
+  # including the case-normalized form the launch itself accepts, and an
+  # invalid value is a usage error, never a silently wrong mode.
   ak_split "${url}" AGENTKIT_PERMISSIONS=ask -- pick --kinds claude-glm,claude --json; status=$?
   cp "${BOX}/out" "${doc}"
   expect_eq "pick kinds: permissions ask under the opt-out" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'ask'
+  ak_split "${url}" AGENTKIT_PERMISSIONS=" ASK " -- pick --kinds claude-glm,claude --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "pick kinds: permissions normalizes like the launch (ASK -> ask)" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'ask'
+  ak_split "${url}" AGENTKIT_PERMISSIONS=sideways -- pick --kinds claude-glm,claude --json; status=$?
+  expect_eq "pick kinds: an invalid AGENTKIT_PERMISSIONS is a usage error" "${status}" 2
+  ak_split "${url}" -- pick --kinds claude --model -x --json; status=$?
+  expect_eq "pick kinds: a dash-leading --model is a usage error" "${status}" 2
 
   # Human output stays the single-kind line.
   ak_split "${url}" -- pick --kinds claude-glm,claude; status=$?
