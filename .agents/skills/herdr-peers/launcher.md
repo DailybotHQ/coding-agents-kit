@@ -50,6 +50,48 @@ herdr agent start reviewer --kind claude --pane "$pane"
 herdr-peers ask --profile work "local:$pane" "<brief>"
 ```
 
+## Several agents at once (a lead that needs more hands)
+
+A lead whose human or plan asked for more agents can open a tab of them and
+give each its work. With coding-agents-kit (`ak`):
+
+```bash
+ak usage                                   # which accounts have room (read-only)
+ak pick codex --count 2 --json             # the accounts with the most headroom
+# One tab for the group, one pane per agent, each in its own folder or worktree.
+tab=$(herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd "$PWD/wt/a" --label lanes)
+p1=$(printf '%s' "$tab" | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["root_pane"]["pane_id"])')
+p2=$(herdr pane split "$p1" --direction right --cwd "$PWD/wt/b" --no-focus \
+  | python3 -c 'import json,sys; print(json.load(sys.stdin)["result"]["pane"]["pane_id"])')
+herdr pane run "$p1" "ak claude @work1 --trust-cwd"     # launch on a chosen account
+herdr pane run "$p2" "ak codex @work2 --trust-cwd"
+herdr agent wait "$p1" --until idle --timeout 60000     # ready before the brief
+herdr-peers lead claim --plan <id> --lanes "local:$p1,local:$p2"
+herdr-peers ask --profile work1 "local:$p1" "<self-contained brief; names its own pane $p1>"
+herdr-peers ask --profile work2 "local:$p2" "<self-contained brief; names its own pane $p2>"
+herdr-peers lanes                                       # who is working, blocked, done
+```
+
+Rules that keep this safe:
+
+- **Only when asked.** More agents because the human or the plan said so —
+  never because a task could be split.
+- **One writer per path.** Each writing agent gets its own worktree
+  ([discipline.md](discipline.md) §2); a reviewer needs none.
+- **Spend quota on purpose.** Pick accounts with `ak pick`, lease them
+  (`ak lease`) so two leads do not book the same one, and mix vendors so
+  lanes check each other ([orchestra.md](orchestra.md) §3).
+- **Stay inside the cap.** At most 4 open asks; raise it with `--fanout N
+  --reason` only when the plan needs it.
+- **First-run screens.** A new agent may stop at folder trust
+  (`--trust-cwd` avoids it), an update prompt or a sign-in before it is
+  ready. A lead keys only folder trust, on a pane it launched
+  ([orchestra.md](orchestra.md) §2). When the human runs
+  [autopilot](autopilot.md), it accepts folder trust and skips an update
+  prompt for you; a sign-in always waits for the human.
+- **Clean up.** Close the tab and panes you created when the work is
+  joined; release the leases.
+
 ## Without `ak`
 
 Start the agent with the CLI's own home — `herdr agent start <name> --kind

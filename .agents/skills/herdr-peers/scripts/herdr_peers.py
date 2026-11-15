@@ -23,11 +23,12 @@ import hashlib
 import json
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
 
-VERSION = '1.1.0'
+VERSION = '1.2.1'
 PROTOCOL = 1
 MARKER = '[herdr-peers]'
 DEFAULT_MAX_BYTES = 16384
@@ -855,12 +856,13 @@ class Store(object):
         self.replies = os.path.join(self.dir, 'replies')
 
     def ensure(self):
-        if not os.path.isdir(self.dir):
-            os.makedirs(self.dir, 0o700)
+        # exist_ok: two commands starting together (a daemon and a `status`)
+        # may both find the directory missing.
+        os.makedirs(self.dir, 0o700, exist_ok=True)
         if not self.owned_dir:
             parent = os.path.dirname(self.path)
-            if parent and not os.path.isdir(parent):
-                os.makedirs(parent, 0o700)
+            if parent:
+                os.makedirs(parent, 0o700, exist_ok=True)
         # XDG state is outside the checkout, so no repository .gitignore is
         # needed.
 
@@ -2838,6 +2840,220 @@ def cmd_debate(args):
     raise Stop(EXIT_USAGE, 'debate needs a sub-verb: tally, claims, anon, filings or panel')
 
 
+# ---------------------------------------------------------------- autopilot
+
+class AutopilotIO(object):
+    """Herdr and the record writer, as the autopilot loop needs them."""
+
+    def __init__(self, store, pane, terminal, scope, quiet=False):
+        self.store, self.pane, self.terminal, self.scope = store, pane, terminal, scope
+        self.quiet = quiet
+        self.self_machine = None
+
+    def sources(self):
+        out = ['local'] + [m['id'] for m in enabled_machines()]
+        if self.scope is not None:
+            out = [m for m in out if any(s[0] == m for s in self.scope)]
+        return [m for m in out if m != self.self_machine]
+
+    def agents(self, machine):
+        rc, out, _err = herdr(['agent', 'list'], machine=machine, timeout=12)
+        try:
+            agents = json.loads(out)['result']['agents'] if rc == 0 else None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            agents = None
+        if not isinstance(agents, list):
+            return None
+        if machine != 'local' and self.terminal and any(
+                isinstance(a, dict) and a.get('terminal_id') == self.terminal for a in agents):
+            self.self_machine = machine  # this saved machine is this very server
+            return []
+        rows = []
+        for a in agents:
+            pane = a.get('pane_id') if isinstance(a, dict) else None
+            if not (isinstance(pane, str) and re.fullmatch(PANE_RE, pane)):
+                continue
+            if not in_scope((machine, pane), self.scope):
+                continue
+            rows.append({'pane': pane, 'state': a.get('agent_status'), 'agent': kind_of(a),
+                         'seq': a.get('state_change_seq'), 'turn': a.get('completion_seq'),
+                         'you': machine == 'local' and pane == self.pane})
+        return rows
+
+    def read(self, machine, pane):
+        rc, out, _err = herdr(['pane', 'read', pane, '--source', 'visible'], machine=machine,
+                              timeout=20)
+        return out if rc == 0 else None
+
+    def state(self, machine, pane):
+        rc, out, _err = herdr(['pane', 'get', pane], machine=machine, timeout=12)
+        try:
+            return json.loads(out)['result']['pane'].get('agent_status') if rc == 0 else None
+        except (ValueError, KeyError, TypeError, AttributeError):
+            return None
+
+    def keys(self, machine, pane, keys):
+        return herdr(['pane', 'send-keys', pane] + list(keys), machine=machine, timeout=20)[0] == 0
+
+    def prompt(self, machine, pane, text):
+        return herdr(['agent', 'prompt', pane, text], machine=machine, timeout=30)[0] == 0
+
+    def warn(self, addr, exc):
+        warn('autopilot: skipped %s this pass (%s)' % (addr, safe(type(exc).__name__)))
+
+    def record(self, addr, kind, choice, outcome, dry_run):
+        note = ' '.join(filter(None, [
+            'keys=%s' % ','.join(choice.keys) if choice.keys else None,
+            'option=%d' % choice.option if choice.option is not None else None,
+            'action=%s' % choice.action, 'dry_run' if dry_run else None]))
+        self.store.append(make_record(outcome, 'autopilot', new_ulid(), addr,
+                                      'local:%s' % self.pane, kind=kind, reason=choice.cls,
+                                      note=note))
+        if not self.quiet:
+            print('%s %s %s %s %s' % (now_iso(), 'would' if dry_run else 'did', outcome,
+                                      addr, safe(note + ' class=' + choice.cls)))
+            sys.stdout.flush()
+
+
+def autopilot_paths(store):
+    return os.path.join(store.dir, 'autopilot.lock'), os.path.join(store.dir, 'autopilot.pid')
+
+
+def autopilot_pid(store):
+    """The pid of the autopilot running on this server, or None. The lock is
+    the truth: a pid file left by a dead autopilot may name another process
+    by now, and `stop` must never signal that one."""
+    lock_path, pid_path = autopilot_paths(store)
+    try:
+        fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | NOFOLLOW, 0o600)
+    except OSError:
+        return None
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        held = True
+    else:
+        held = False
+        fcntl.flock(fd, fcntl.LOCK_UN)
+    finally:
+        os.close(fd)
+    if not held:
+        return None
+    try:
+        with open(pid_path, 'r', encoding='utf-8') as fh:
+            return int(fh.read().strip())
+    except (OSError, ValueError):
+        return None
+
+
+def cmd_autopilot(args):
+    """A human starts this; no message can (protocol.md §13)."""
+    require_herdr_env()
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    sys.dont_write_bytecode = True  # no __pycache__ in the skill directory
+    import autopilot
+    store = Store()
+    store.ensure()
+    verb = args.autopilot_verb or 'run'
+    if verb == 'status':
+        pid = autopilot_pid(store)
+        print('autopilot: %s' % ('running (pid %d)' % pid if pid else 'not running'))
+        for rec in [r for r in store.records() if r.get('role') == 'autopilot'][-10:]:
+            print('%s %s %s %s %s' % (safe(rec.get('ts')), safe(rec.get('state')),
+                                      safe(rec.get('target')), safe(rec.get('reason')),
+                                      safe(rec.get('note'))))
+        return EXIT_OK
+    if verb == 'stop':
+        pid = autopilot_pid(store)
+        if not pid:
+            print('autopilot: not running')
+            return EXIT_OK
+        os.kill(pid, signal.SIGTERM)
+        print('autopilot: stop sent to pid %d' % pid)
+        return EXIT_OK
+    interval = args.interval if args.interval is not None else autopilot.DEFAULT_INTERVAL
+    passes = 1 if args.once else args.passes
+    if passes is not None and passes < 1:
+        raise Stop(EXIT_USAGE, '--passes is at least 1')
+    try:
+        confirm = float(os.environ.get('HERDR_PEERS_AUTOPILOT_CONFIRM') or autopilot.CONFIRM_DELAY)
+    except ValueError:
+        raise Stop(EXIT_USAGE, 'HERDR_PEERS_AUTOPILOT_CONFIRM must be a number of seconds')
+    if not 0 <= confirm <= 30:
+        raise Stop(EXIT_USAGE, 'HERDR_PEERS_AUTOPILOT_CONFIRM must be between 0 and 30 seconds')
+    if interval < autopilot.MIN_INTERVAL and passes is None:
+        raise Stop(EXIT_USAGE, '--interval is at least %d seconds' % autopilot.MIN_INTERVAL)
+    exclude = set()
+    for raw in args.exclude or []:
+        addr = parse_address(raw)
+        if addr is None:
+            raise Stop(EXIT_USAGE, '--exclude takes <machine_id>:<pane_id>')
+        exclude.add(fmt_address(resolve_machine(addr)))
+    current = herdr_json(['pane', 'current', '--current'], timeout=8)
+    me = ((current.get('result') or {}).get('pane') or {})
+    if not (isinstance(me.get('pane_id'), str) and re.fullmatch(PANE_RE, me['pane_id'])):
+        raise Stop(EXIT_ENV, 'cannot tell which pane this is; run autopilot inside a Herdr pane')
+    io = AutopilotIO(store, me.get('pane_id'), me.get('terminal_id'), scope_from(args))
+    lock_path, pid_path = autopilot_paths(store)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT | NOFOLLOW, 0o600)
+    for attempt in (1, 2):
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            break
+        except OSError:
+            if attempt == 1:
+                time.sleep(0.3)  # a `status` or `stop` probing the lock holds it for an instant
+                continue
+            os.close(fd)
+            raise Stop(EXIT_POLICY, 'autopilot is already running on this server '
+                       '(`herdr-peers autopilot status`, `herdr-peers autopilot stop`)')
+    write_private(pid_path, '%d\n' % os.getpid())  # at once: `stop` reads it while the lock is held
+
+    class Halt(Exception):
+        pass
+
+    def halt(_signum, _frame):
+        raise Halt()
+
+    loop = autopilot.Autopilot(io, dry_run=args.dry_run, nudge=not args.no_nudge,
+                               catch_up=args.catch_up, exclude=exclude, confirm=confirm)
+    previous = signal.signal(signal.SIGTERM, halt)
+    try:
+        if passes is None:
+            print('autopilot: watching every agent on every enabled machine every %ds%s — '
+                  'stop with `herdr-peers autopilot stop` or Ctrl-C'
+                  % (interval, ' (dry run: nothing is sent)' if args.dry_run else ''))
+            sys.stdout.flush()
+        done = 0
+        while True:
+            try:
+                loop.run_pass()
+            except (Stop, OSError) as exc:
+                if passes is not None:
+                    raise
+                # A failed pass (Herdr restarting, a full disk) never ends the watch.
+                warn('autopilot: pass failed (%s); trying again next pass'
+                     % safe(getattr(exc, 'message', None) or type(exc).__name__))
+            done += 1
+            if passes is not None and done >= passes:
+                break
+            time.sleep(max(0, interval))  # asleep between passes: no polling, no busy wait
+    except (Halt, KeyboardInterrupt):
+        print('autopilot: stopped')
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+        try:
+            os.unlink(pid_path)
+        except OSError:
+            pass
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        os.close(fd)
+    if passes is not None:
+        print('autopilot: %d pass(es), %d action(s)%s' % (
+            passes, loop.actions, ' (dry run: nothing was sent)' if args.dry_run else ''))
+    return EXIT_OK
+
+
 def cmd_skill(_args):
     here = os.path.dirname(os.path.realpath(__file__))
     sys.stdout.write(read_file(os.path.join(os.path.dirname(here), 'SKILL.md')))
@@ -3015,6 +3231,25 @@ def build_parser():
     dp.add_argument('--exclude', help='pane ids never to reuse, comma-separated (w1:p3,...)')
     dp.add_argument('--no-ak', action='store_true', help='do not call ak pick')
     dp.add_argument('--scope', help='allow-list for reused panes')
+    ap = sub.add_parser('autopilot', help='answer every waiting agent on every enabled machine: '
+                        'accept the recommended option, continue an agent that stopped to ask '
+                        '(started by a human only)')
+    ap.add_argument('autopilot_verb', nargs='?', choices=['run', 'stop', 'status'],
+                    help='run (default), stop the running autopilot, or show its last actions')
+    ap.add_argument('--once', action='store_true', help='one pass, then exit')
+    ap.add_argument('--dry-run', action='store_true',
+                    help='decide and record, send nothing')
+    ap.add_argument('--passes', type=int, help='run this many passes, then exit (diagnostics)')
+    ap.add_argument('--interval', type=int, help='seconds between passes (default 60, minimum 15)')
+    ap.add_argument('--exclude', action='append', help='a pane never to touch, '
+                    '<machine_id>:<pane_id> (repeatable)')
+    ap.add_argument('--no-nudge', action='store_true',
+                    help='never prompt an agent that ended its turn asking in prose')
+    ap.add_argument('--catch-up', action='store_true',
+                    help='also continue agents that had already stopped to ask before autopilot '
+                    'started')
+    ap.add_argument('--scope', help='allow-list: *, <machine>, <machine>:<workspace>, '
+                    'comma-separated (default: every enabled machine)')
     for sp in (dt, da, dc, df, dp):
         sp.add_argument('--pane', help="this session's pane id (w1:p2); wins over HERDR_PANE_ID")
     dp.add_argument('--json', action='store_true', help='herdr-peers/panel-v1 JSON')
@@ -3024,7 +3259,7 @@ def build_parser():
 VERBS = {'ask': cmd_ask, 'reply': cmd_reply, 'check': cmd_check, 'wait': cmd_wait,
          'list': cmd_list, 'log': cmd_log, 'cancel': cmd_cancel, 'status': cmd_status,
          'lanes': cmd_lanes, 'notify': cmd_notify, 'lead': cmd_lead,
-         'debate': cmd_debate}
+         'debate': cmd_debate, 'autopilot': cmd_autopilot}
 
 
 def main(argv=None):
