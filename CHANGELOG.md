@@ -13,6 +13,28 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Added
+
+- **`ak update` (`lib/update.py`, `docs/update.md`, `docs/schema/update-v1.json`):**
+  bring a CLI to the vendor's newest release without waiting for a kit
+  release, with `ak install`'s verification: discover (npm `dist-tags.latest`
+  or the vendor's channel file + `manifest.json`, mapped through
+  `install.platforms`), verify, install, and re-pin this kit's
+  `providers.toml` atomically (a `.bak` is kept). `--take-over` is required
+  to replace a vendor-managed symlink (codex's standalone layout, Claude's
+  native installer) — the update only counts when PATH resolves the new
+  release, so an install whose copy stays shadowed is reported as such and
+  the pin does not move. Downgrades are refused unless named with
+  `--version`; channels without a vendor manifest (cursor, grok,
+  antigravity) are skipped. Providers.toml gains an optional
+  `[clis.<cli>.install.latest]` table (`kind = "npm"` or `"manifest"`),
+  validated by `kinds`.
+- **Doctor version diagnostics** (`lib/doctor.py`): per-kind
+  `pinned_version` and `version_status` — the kit pin next to what PATH
+  actually resolves, with an `ak update` hint only when the resolved copy is
+  older than the pin; a newer vendor self-update is shown, never suggested
+  down.
+
 ## [1.2.0] - 2026-10-27
 
 A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and

@@ -15,7 +15,7 @@ agentkit (alias ak); skills agentkit, agentkit-setup, agentkit-orchestrate
 | Path | What |
 | --- | --- |
 | `bin/ak`, `bin/agentkit` | one byte-identical bash launcher: sources the env file, exec's the python core |
-| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `usage`, `pick` (`ak pick`, the account-selection policy over the usage rows), `capacity` (`ak capacity`, one account's room and verdict, pick's arithmetic), `state` (the machine state dir: usage cache, atomic 0600 writes), `lease` (`ak lease`, advisory account leases), `setup`, `aliases`, `installer`, `hooks`, `common` |
+| `lib/ak.py` + `lib/*.py` | the python3 stdlib core: `launch` (dispatcher), `kinds` (+ `tomlmini`, `writers`), `profiles`, `run`, `envcmd`, `doctor`, `usage`, `pick` (`ak pick`, the account-selection policy over the usage rows), `capacity` (`ak capacity`, one account's room and verdict, pick's arithmetic), `state` (the machine state dir: usage cache, atomic 0600 writes), `lease` (`ak lease`, advisory account leases), `setup`, `aliases`, `installer`, `update` (`ak update`, the verified vendor update: discover, install, resolve, re-pin; `docs/update.md`), `hooks`, `common` |
 | `lib/common.sh`, `lib/env.template` | the launcher's shell half; the env file template |
 | `providers.toml` | the kinds model as data (CLIs, providers, kinds) — see `docs/kinds.md` |
 | `skills/agentkit/` | the bundled skill (`ak --skill`): `SKILL.md` + `references/` (`accounts.md`, `usage.md`) |

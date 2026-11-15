@@ -129,6 +129,7 @@ to set the kit up on this machine or to write a container recipe ([setup](docs/s
 ```bash
 ak doctor                  # what is installed and configured
 ak install codex           # a missing CLI, from its vendor, pinned
+ak update codex            # the newest verified release, then the pin moves with it
 ak                         # list the kinds and which CLIs are installed
 ak claude                  # Claude Code with its autonomy flag (the default)
 ak codex -c                # continue the newest Codex session (codex resume --last)

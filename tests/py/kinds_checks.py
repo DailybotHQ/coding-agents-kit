@@ -130,15 +130,29 @@ cases = {
                                              '[kinds.codex-glm]\ncli = "codex"\nprovider = "nope"'),
     "a key on argv for a non-cline CLI": base_text.replace('args = ["-p", "glm"]', 'args = ["-p", "glm", "{key}"]'),
     "a key in a writer": base_text.replace('base_url = "{codex_base}"', 'base_url = "{key}"'),
-    "an install without a version": base_text.replace('version = "0.158.0"', 'version = ""'),
-    "the retired unpinned key": base_text.replace('version = "0.158.0"', 'version = "0.158.0"\nunpinned = "x"'),
-    "an npm install without integrity": base_text.replace('integrity = "sha512-GBhc', 'integrity_x = "sha512-GBhc'),
-    "a short sha256": base_text.replace('linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358"',
-                                        'linux-x64 = "4503bfe1"'),
-    "a platform without a digest": base_text.replace('linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358", ', ''),
+    "an install without a version": base_text.replace(
+        'version = "%s"' % kinds.load().clis["codex"]["install"]["version"], 'version = ""'),
+    "the retired unpinned key": base_text.replace(
+        'version = "%s"' % kinds.load().clis["codex"]["install"]["version"],
+        'version = "%s"\nunpinned = "x"' % kinds.load().clis["codex"]["install"]["version"]),
+    "an npm install without integrity": base_text.replace(
+        'integrity = "%s"' % kinds.load().clis["codex"]["install"]["integrity"],
+        'integrity_x = "%s"' % kinds.load().clis["codex"]["install"]["integrity"]),
+    "a short sha256": base_text.replace(
+        'linux-x64 = "%s"' % kinds.load().clis["claude"]["install"]["sha256"]["linux-x64"],
+        'linux-x64 = "%s"' % kinds.load().clis["claude"]["install"]["sha256"]["linux-x64"][:8]),
+    "a platform without a digest": base_text.replace(
+        'linux-x64 = "%s", ' % kinds.load().clis["claude"]["install"]["sha256"]["linux-x64"], ''),
     "an unknown platform": base_text.replace('linux-x64 = "linux-x64", linux-arm64', 'beos-x64 = "linux-x64", linux-arm64'),
     "a url without {platform}": base_text.replace('/{platform}/claude', '/linux-x64/claude'),
-    "the retired script channel": base_text.replace('channel = "binary"\nversion = "2.1.295"', 'channel = "script"\nversion = "2.1.295"'),
+    "the retired script channel": base_text.replace(
+        'channel = "binary"\nversion = "%s"' % kinds.load().clis["claude"]["install"]["version"],
+        'channel = "script"\nversion = "%s"' % kinds.load().clis["claude"]["install"]["version"]),
+    "an unknown latest kind": base_text.replace('[clis.codex.install.latest]\nkind = "npm"',
+                                                '[clis.codex.install.latest]\nkind = "rss"'),
+    "a latest manifest without {version}": base_text.replace(
+        'manifest = "https://downloads.claude.ai/claude-code-releases/{version}/manifest.json"',
+        'manifest = "https://downloads.claude.ai/claude-code-releases/latest/manifest.json"'),
     "a wrong schema": base_text.replace("schema = 1", "schema = 2"),
     "a key in the autonomy flag": base_text.replace('auto = ["--approve"]', 'auto = ["--approve", "{key}"]'),
     "an http artifact": base_text.replace("https://downloads.claude.ai/", "http://downloads.claude.ai/"),

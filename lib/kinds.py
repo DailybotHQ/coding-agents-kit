@@ -653,6 +653,17 @@ def install_problems(install):
         integrity = str(install.get("integrity", ""))
         if not integrity.startswith("sha512-") and not unverified:
             out.append("npm needs integrity = \"sha512-…\" (the registry's dist.integrity), or state unverified")
+    latest = install.get("latest")
+    if latest is not None:
+        if not isinstance(latest, dict) or latest.get("kind") not in ("npm", "manifest"):
+            out.append("latest.kind must be npm or manifest")
+        elif latest["kind"] == "manifest":
+            for key in ("channel", "manifest"):
+                url = str(latest.get(key, ""))
+                if not url.startswith("https://"):
+                    out.append("latest.%s must be an https URL" % key)
+            if "{version}" not in str(latest.get("manifest", "")):
+                out.append("latest.manifest must contain {version}")
     return out
 
 if __name__ == "__main__":
