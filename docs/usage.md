@@ -144,7 +144,11 @@ imputed). `advisory` is `{runs, tokens, coverage}`: each field of `tokens`
 sums only the runs that reported that field, `coverage` says how many did,
 and a field no run reported is `null`, never `0` (an explicit zero is a
 report). Claude reports no total, so a Claude account's `total` stays `null`;
-totals are never built from the components. Advisory sums never touch the vendor's quota windows, the
+totals are never built from the components. The sums cover the newest 5000
+observed runs of that account with **no time window** — they are not a
+quota window and not comparable to the vendor's 5-hour or weekly numbers. A
+provider kind's run (`claude-glm`, `codex-azure`, …) counts toward that
+provider key's row, not the CLI subscription's. Advisory sums never touch the vendor's quota windows, the
 capacity verdict or pick eligibility.
 
 Rows appear for: the CLI's own home (`@default`) when the CLI is installed,

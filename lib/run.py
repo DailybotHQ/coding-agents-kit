@@ -409,13 +409,13 @@ def _tokens_from(spec, stdout_text):
     if mode == "json":
         try:
             docs = [json.loads(stdout_text)]
-        except (ValueError, TypeError):
+        except (ValueError, TypeError, RecursionError):
             return fields
     elif mode == "jsonl":
         for line in (stdout_text or "").splitlines():
             try:
                 docs.append(json.loads(line))
-            except ValueError:
+            except (ValueError, RecursionError):
                 continue
     else:
         return fields
@@ -499,7 +499,11 @@ def main(model, args, env):
         if fmt == "json":
             tokens = _tokens_from(prep.kind.cli["run"].get("tokens"), stdout_text)
             if any(v is not None for v in tokens.values()):
-                state.tokens_add(env, prep.kind.cli_name, profile_label, tokens, time.time())
+                # Filed under the account `ak usage` shows: a provider kind's
+                # run (claude-glm, codex-azure, …) is the provider key's usage,
+                # not the CLI subscription's.
+                state.tokens_add(env, state.account_cli(prep.kind.cli_name, prep.kind.provider_name),
+                                 profile_label, tokens, time.time())
         if fmt == "json":
             sys.stdout.write(json.dumps(envelope(opts, opts.kind, profile_label, cwd, code, time.time() - start,
                                                  result_text, cli_exit, truncated, tokens=tokens)) + "\n")

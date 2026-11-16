@@ -165,6 +165,14 @@ def _count(value):
     return value
 
 
+def account_cli(cli_name, provider_name):
+    """The account name `ak usage` gives a kind's rows: the provider for a
+    provider kind (gemini's rows are named antigravity), else the CLI."""
+    if provider_name:
+        return "antigravity" if provider_name == "gemini" else provider_name
+    return cli_name
+
+
 def _tokens_dir(env, cli, profile):
     return os.path.join(root(env), "token-samples", "%s%s" % (cli, profile))
 

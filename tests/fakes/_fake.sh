@@ -13,6 +13,8 @@
 #                      else FAKE_RESULT as plain text
 #   FAKE_RESULT        the answer text (default "fake answer")
 #   FAKE_IS_ERROR=1    the JSON output reports an error
+#   FAKE_USAGE=i,o,cr,cw   claude/agent JSON result carries this usage object
+#   FAKE_CODEX_USAGE=<json> codex's turn.completed usage object
 #   FAKE_EXIT=<n>      exit status (default 0)
 #   FAKE_SLEEP=<s>     sleep before answering (timeouts, cancellation)
 #   FAKE_CHILD_PID=<f> start a grandchild `sleep`, write its pid to <f>
@@ -136,7 +138,9 @@ if [ "${FAKE_MODE:-}" = headless ]; then
         if [ "${err}" = true ]; then
           printf '{"type":"turn.failed","error":{"message":"fake failure"}}\n'
         else
-          printf '{"type":"turn.completed","usage":{"input_tokens":1,"output_tokens":1}}\n'
+          cx_usage='{"input_tokens":1,"output_tokens":1}'
+          [ -n "${FAKE_CODEX_USAGE:-}" ] && cx_usage="${FAKE_CODEX_USAGE}"
+          printf '{"type":"turn.completed","usage":%s}\n' "${cx_usage}"
         fi
       else
         printf '%s\n' "${FAKE_RESULT:-fake answer}"

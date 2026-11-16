@@ -313,7 +313,7 @@ def enumerate_rows(model, env):
             if suffix:
                 label = _profile_label(_match_profile_name(listing, suffix))
             kind_names = _kinds_of_provider(model, pname)
-            row_cli = "antigravity" if pname == "gemini" else pname
+            row_cli = state.account_cli(None, pname)
             if "unsupported" in table:
                 row = Row(row_cli, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))
                 row.connected, row.how = True, "%s set" % var

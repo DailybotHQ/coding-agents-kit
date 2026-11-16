@@ -57,6 +57,25 @@ scope_usage() {
   expect_eq "usage advisory: an unreported total stays null; partial coverage is visible" \
     "$(json_get "${doc}" '[[r["advisory"]["runs"], r["advisory"]["tokens"], r["advisory"]["coverage"]] for r in d["rows"] if r["cli"] == "claude" and r["profile"] == "@default"]')" \
     '[[2, {"cache_read": null, "cache_write": null, "input": 20, "output": 5, "total": null}, {"cache_read": 0, "cache_write": 0, "input": 2, "output": 1, "total": 0}]]'
+  # Advisory boundary: the block never reaches the usage cache that
+  # ak capacity and ak pick read, and neither reads the samples.
+  check "usage advisory: the cache capacity and pick read drops an advisory block (whitelisted keys)" \
+    box_run -- "${AK_PY}" -c '
+import os, sys
+sys.path.insert(0, sys.argv[1] + "/lib"); import state
+env = dict(os.environ)
+assert "advisory" not in state.ROW_KEYS
+row = {"cli": "claude", "profile": "@q", "status": "ok", "windows": [],
+       "advisory": {"runs": 1, "tokens": {"input": 5}}}
+assert state.cache_put(env, row, 1000)
+got, age = state.cache_get(env, "claude", "@q", 1000, 60)
+assert got is not None and "advisory" not in got, got
+' "${ROOT}"
+  if grep -nE 'tokens_get|token-samples|advisory' "${ROOT}/lib/capacity.py" "${ROOT}/lib/pick.py" >/dev/null; then
+    fail "usage advisory: capacity or pick reads the token samples"
+  else
+    pass "usage advisory: capacity and pick never read the token samples"
+  fi
   rm -rf "${BOX}/home/.local/state/agentkit/token-samples"
 
   # The writer: two runs in the same second from the same process keep two

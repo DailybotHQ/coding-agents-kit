@@ -147,11 +147,15 @@ json = ["--json"]
 result = "codex-jsonl"
 [clis.codex.run.tokens]
 # The last `turn.completed` event of the JSONL stream carries the run's
-# usage; codex reports no cache split and no total, so those stay null.
+# usage. Codex's input_tokens INCLUDES the cached ones (cached_input_tokens
+# is a subset), unlike Claude's; a field an event does not carry stays null.
 mode = "jsonl"
 event = "turn.completed"
 input = "usage.input_tokens"
 output = "usage.output_tokens"
+cache_read = "usage.cached_input_tokens"
+cache_write = "usage.cache_write_input_tokens"
+total = "usage.total_tokens"
 
 [clis.codex.login]
 command = "codex login"
