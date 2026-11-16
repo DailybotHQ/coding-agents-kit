@@ -168,6 +168,7 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "codex|-c=sandbox_mode=danger-full-access" "codex|-s=danger-full-access"
     "codex|-c|profiles.x.sandbox_mode=danger-full-access" "codex|-c|profiles.x.approval_policy=never"
     "claude|--model|--|--dangerously-skip-permissions"
+    "codex|-c|sandbox_workspace_write.network_access=true" "codex|-c|sandbox_permissions=[\"disk-full-read-access\"]"
   )
   local -a extra
   for row in "${undo[@]}"; do

@@ -224,8 +224,10 @@ def _posture_refusal(cli, rest):
     clusters = bool(cli.get("ask_clusters"))
 
     def config_hit(value):
+        # Any segment of a dotted key: profiles.x.sandbox_mode (a profile's
+        # setting), sandbox_workspace_write.network_access (inside a table).
         key = value.split("=", 1)[0].strip()
-        return key in config_keys or key.rsplit(".", 1)[-1].strip() in config_keys
+        return any(part.strip().strip('"') in config_keys for part in key.split("."))
 
     def judge(opt, value, shown):
         if opt in conflicts:

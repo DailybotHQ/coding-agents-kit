@@ -60,12 +60,17 @@ explicit ask flag where the CLI has one:
 | `grok` | `--permission-mode default` | the same |
 | `cursor`, `opencode`, `pi`, `cline` (and their provider kinds), `antigravity` | nothing: the CLI has no ask flag, and leaving its autonomy flag out is its ask mode | nothing |
 
+Codex's pinned `--sandbox workspace-write` also applies to an account whose
+own config is stricter (`sandbox_mode = "read-only"`): pass `-s read-only`
+after `--` to keep it — a stricter sandbox replaces the pinned one.
+
 **A user mode flag cannot undo the opt-out.** Under the opt-out, `ak` owns
 the CLI's permission flags: an argument after `--` (or after the first CLI
 argument) that would **loosen** the CLI's permission or approval mode is a
 usage error (exit 2) and launches nothing — its autonomy flag, Codex's
 `-a` / `--ask-for-approval` / `--approve-for-me` / `--full-auto`, a Codex
-config override of `approval_policy` or `sandbox_mode` (`-c` / `--config`, also
+config override of `approval_policy`, `sandbox_mode`, `sandbox_workspace_write`
+or `sandbox_permissions` (`-c` / `--config`, also
 profile-scoped keys such as `profiles.x.sandbox_mode`),
 Cursor's `--force` / `-f` / `--yolo` / `--auto-review`, and any mode value
 outside the allowed ones. Options are read the way the CLIs parse them:

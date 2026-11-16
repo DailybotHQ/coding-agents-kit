@@ -33,8 +33,8 @@ permission posture changes.
   its relatives (`ask_conflicts`), a mode value outside the allowed stricter
   ones (`ask_values`: Claude/Grok `plan` and `dontAsk`, Codex `read-only`,
   Antigravity `plan` stay allowed), a Codex config override of
-  `approval_policy` or `sandbox_mode`, profile-scoped keys included
-  (`ask_config`), in every spelling the CLI parses (`--opt=value`,
+  `approval_policy`, `sandbox_mode`, `sandbox_workspace_write` or
+  `sandbox_permissions`, in any segment of a dotted key (`ask_config`), in every spelling the CLI parses (`--opt=value`,
   `-ovalue`, `-o=value`, short clusters where accepted, Antigravity's
   Go-style `-opt`).
 - **`ak pick --json` delivers the mode it claims.** Under the opt-out,

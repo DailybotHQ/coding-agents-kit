@@ -137,7 +137,7 @@ ask_yield = { "--sandbox" = ["--sandbox", "-s"] }
 # is never read as flags: -pazure is a profile, not -a).
 ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo"]
 ask_values = { "--sandbox" = ["read-only", "workspace-write"], "-s" = ["read-only", "workspace-write"] }
-ask_config = { options = ["-c", "--config"], keys = ["approval_policy", "sandbox_mode"] }
+ask_config = { options = ["-c", "--config"], keys = ["approval_policy", "sandbox_mode", "sandbox_workspace_write", "sandbox_permissions"] }
 ask_clusters = true
 ask_value_opts = ["-m", "-p", "-C", "-i"]
 interactive = ["{provider}", "{session}", "{auto}"]
