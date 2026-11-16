@@ -13,6 +13,14 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-11-16
+
+A minor release. Interface stays **1**: `ak run --output-format json` gains
+the additive `tokens` field, and `ak usage --json` rows the additive
+`advisory` block. Under the permission opt-out, ak now forces each CLI's own
+ask mode, and pick-v2 `launch.argv` ends with `--ask`. herdr-peers 2.0.2 or
+later accepts that trailing `--ask` in its brain launch; 2.0.1 refuses it.
+
 ### Added
 
 - **Token metering** (`ak run --json`, the V8 pillar-4 item): the envelope
