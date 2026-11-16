@@ -12,6 +12,7 @@
     ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
     ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
     ak install [<cli>…] [--all]
+    ak update [<kind-or-cli>…] [--version VERSION] [--take-over] [--json]
     ak last [-c | -r] | ak last ls
     ak --skill [setup | orchestrate] | --version | --help
 """
@@ -38,6 +39,7 @@ USAGE = """usage:
   ak profiles [ls [--json] | add <kind> @name | path <kind> @name | run <kind> @name -- <cmd…> | rm <kind> @name [--yes] | hooks <kind> @name]
   ak alias [list | add <name> <kind> [@profile] [--ask | --auto] | rm <name> | preset classic|providers [--on|--off]]
   ak install [<cli>…] [--all]
+  ak update [<kind-or-cli>…] [--version VERSION] [--take-over] [--json]
   ak last [-c | -r] | ak last ls      (back to the last ak launch in this directory)
   ak --skill [setup | orchestrate] | --version | --help
 
@@ -140,6 +142,9 @@ def main(argv):
     if first == "install":
         import installer
         return installer.main(model, rest, env)
+    if first == "update":
+        import update
+        return update.main(model, rest, env)
     if first == "last":
         import last
         return last.main(model, rest, env)

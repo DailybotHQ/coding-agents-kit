@@ -1,0 +1,30 @@
+{
+  "title": "ak update --json (update-v1)",
+  "description": "One ak update run: what each requested CLI's vendor discovery found, what was installed, what PATH resolves afterwards, and whether the pin moved. Additive within interface 1: new fields may appear, existing ones do not change meaning.",
+  "type": "object",
+  "required": ["schema", "interface", "kit", "results"],
+  "properties": {
+    "schema": { "const": "update-v1" },
+    "interface": { "const": 1 },
+    "kit": { "type": "string", "description": "The kit version that performed the run." },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cli", "channel", "from_pin", "to_version", "resolution", "pin_written", "status", "note"],
+        "properties": {
+          "cli": { "type": "string", "description": "The canonical CLI name (kind names resolve to it)." },
+          "channel": { "type": "string", "description": "npm, binary or tarball." },
+          "from_pin": { "type": "string", "description": "The version providers.toml pinned before this run (empty when none)." },
+          "to_version": { "type": ["string", "null"], "description": "The version discovered, or named with --version; null when discovery did not run or failed." },
+          "resolution": { "type": "string", "description": "What PATH resolves after the run; empty when nothing is installed or the run stopped before an install." },
+          "pin_written": { "type": "boolean", "description": "True when providers.toml was re-pinned to to_version (a providers.toml.bak is kept first)." },
+          "status": { "enum": ["updated", "current", "skipped", "failed"], "description": "updated: installed and PATH resolves it. current: PATH already resolved it, at most the pin moved. skipped: nothing done (no vendor discovery, a refusal, a shadowed install). failed: an error; the pin is unchanged unless the note says otherwise." },
+          "note": { "type": "string", "description": "Human-readable detail: what moved, what was taken over, why nothing was." }
+        },
+        "additionalProperties": false
+      }
+    }
+  },
+  "additionalProperties": false
+}

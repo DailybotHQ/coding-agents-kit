@@ -114,7 +114,7 @@ scope_install() {
   : > "${BOX}/net.log"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install)"; status=$?
   expect_eq "ak install without names only reports" "${status}:$(wc -c < "${BOX}/net.log" | tr -d ' ')" "0:0"
-  expect_has "ak install says each npm CLI is verified against its integrity" "${out}" "verify @openai/codex@0.158.0 against its pinned integrity"
+  expect_has "ak install says each npm CLI is verified against its integrity" "${out}" "verify @openai/codex@0.169.0 against its pinned integrity"
   expect_has "ak install says each artifact is verified by sha256" "${out}" "verify sha256"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"
   expect_has "an installed CLI is skipped" "${out}" "claude: already installed — skip"
@@ -123,12 +123,12 @@ scope_install() {
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install claude)"; status=$?
   expect_eq "a tampered claude artifact is exit 1" "${status}" 1
   expect_has "the tampered artifact is a checksum mismatch" "${out}" "checksum mismatch"
-  check "the pinned version's artifact was requested over https" grep -q '^CURL https://downloads.claude.ai/claude-code-releases/2.1.295/' "${BOX}/net.log"
+  check "the pinned version's artifact was requested over https" grep -q '^CURL https://downloads.claude.ai/claude-code-releases/2.1.325/' "${BOX}/net.log"
   check "nothing was installed" test ! -e "${BOX}/home/.local/bin/claude"
   : > "${BOX}/net.log"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" -- install codex)"; status=$?
   expect_eq "a tampered npm tarball is exit 1" "${status}" 1
-  check "the registry tarball of the pinned version was requested" grep -qx 'CURL https://registry.npmjs.org/@openai/codex/-/codex-0.158.0.tgz' "${BOX}/net.log"
+  check "the registry tarball of the pinned version was requested" grep -qx 'CURL https://registry.npmjs.org/@openai/codex/-/codex-0.169.0.tgz' "${BOX}/net.log"
   check "npm never ran for a tarball that failed its integrity" bash -c "! grep -q '^NPM' '${BOX}/net.log'"
   : > "${BOX}/net.log"
   out="$(ak FAKE_NET_LOG="${BOX}/net.log" FAKE_CURL_FAIL=1 -- install cursor codex)"; status=$?

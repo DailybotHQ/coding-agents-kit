@@ -18,6 +18,8 @@
         "properties": {
           "installed": { "type": "boolean" },
           "version": { "type": ["string", "null"] },
+          "pinned_version": { "type": ["string", "null"], "description": "The kit's install.version pin, not the latest version available from the vendor." },
+          "version_status": { "enum": ["current", "older", "newer", "different", "unknown", "missing"], "description": "The resolved executable's version relative to pinned_version. Numeric releases are ordered; different vendor suffixes on the same release or different numbers of numeric components are not ordered. unknown means version output or pin cannot be parsed; missing means no executable resolved." },
           "logged_in": { "type": ["boolean", "null"], "description": "@default only. null = cannot tell from files. Provider kinds: their key variable is set." },
           "path": { "type": ["string", "null"] },
           "cli": { "type": "string" },

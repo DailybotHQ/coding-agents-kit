@@ -26,6 +26,7 @@ import os
 import platform as platform_mod
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 
@@ -251,7 +252,12 @@ def _install_npm(cli_name, inst, tmpdir, env, allow_unverified):
     if not _verify(cli_name, tgz, inst.get("integrity"), integrity_of, allow_unverified, inst):
         return False
     argv = [npm, "install", "-g"] + list(inst.get("npm_args", [])) + [tgz]
-    return subprocess.call(argv, env=env) == 0
+    # Progress goes to sys.stderr: the right home for an install's own
+    # output in both plain and --json runs (the JSON envelope is stdout
+    # only), and a stream with a real fileno the child can inherit — a
+    # caller capturing sys.stdout in a StringIO would otherwise crash the
+    # subprocess setup.
+    return subprocess.call(argv, env=env, stdout=sys.stderr) == 0
 
 
 def install_one(model, cli_name, env, allow_unverified=False, plat=None):

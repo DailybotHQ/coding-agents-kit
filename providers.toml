@@ -89,12 +89,16 @@ timeout_s = 10
 
 [clis.claude.install]
 # Native binary. sha256: the vendor's release manifest
-# (downloads.claude.ai/claude-code-releases/2.1.295/manifest.json).
+# (downloads.claude.ai/claude-code-releases/2.1.325/manifest.json).
 channel = "binary"
-version = "2.1.295"
+version = "2.1.325"
 url = "https://downloads.claude.ai/claude-code-releases/{version}/{platform}/claude"
 platforms = { linux-x64 = "linux-x64", linux-arm64 = "linux-arm64", macos-x64 = "darwin-x64", macos-arm64 = "darwin-arm64" }
-sha256 = { linux-x64 = "4503bfe11a6c7fcc1e0b39b5e0d347c04248f750b03b0977b3ad6b531fe6f358", linux-arm64 = "cfb9dc1332fb6f92a683f835823e91b3179a803398ca7852cd2381a3cb1dea3b", macos-x64 = "a6066492288585a1ef5e482cb28ad22714ab12cd48e367c0cee988b00cff724c", macos-arm64 = "0116ee2e0a513900b633d9951367f18747686478e2b462805b8c31609f047f70" }
+sha256 = { linux-x64 = "0dc4f4a9a165fc60746d7ae8489712e5fc352f1e7ad4eb22e7141bd0812eb0cf", linux-arm64 = "7b6e484b1989a5a14a4b354709ccc8672518a3ec5b9ccd7981fc6254327fde67", macos-x64 = "af9760c59f947044e2a0d5072343de563f31efb68bd18ccee4f43c5240570de7", macos-arm64 = "84590fefe6338be9087f5814b61f9a54c5f21524163a4c127cb5a808e31009f2" }
+[clis.claude.install.latest]
+kind = "manifest"
+channel = "https://downloads.claude.ai/claude-code-releases/latest"
+manifest = "https://downloads.claude.ai/claude-code-releases/{version}/manifest.json"
 
 [clis.claude.hooks]
 files = ["home:hooks/herdr-agent-state.sh"]
@@ -150,8 +154,15 @@ timeout_s = 10
 # integrity: the npm registry's dist.integrity for this version.
 channel = "npm"
 package = "@openai/codex"
-version = "0.158.0"
-integrity = "sha512-GBhcKpQmVLsCtEP5mUf6WFye6QQgTKotwsXrYPM0GFmEsoOSahik6hkf2FHabX9kZBl0Y0/PQowLu7uYMKT8dg=="
+version = "0.169.0"
+integrity = "sha512-KhzYlkKPxoNssR8CEm45IjqnFWn7UtlF4CiD3tOJPea51xBs7MaHy0UQG9GSbCqk6Lrjn5QdJDV0QD1/FgWlGw=="
+# `ak update` (lib/update.py): where the newest release is discovered. npm:
+# the registry's dist-tags.latest document (its version and dist.integrity).
+# manifest: the vendor's channel file naming the newest version and a
+# per-version manifest.json of platform digests. Absent: no vendor discovery
+# — move the pin with scripts/update-pins.sh.
+[clis.codex.install.latest]
+kind = "npm"
 
 [clis.codex.hooks]
 files = ["home:herdr-agent-state.sh"]
@@ -271,6 +282,8 @@ channel = "npm"
 package = "opencode-ai"
 version = "1.18.31"
 integrity = "sha512-J95feefeWwtIaw3irx76WjzWcgQXxmuHmDVphvs5ep9X30fBJ6T6bFhw50i9Kx50MG/xPn5w2pafXIfNtdry9w=="
+[clis.opencode.install.latest]
+kind = "npm"
 
 [clis.opencode.hooks]
 files = ["config:plugins/herdr-agent-state.js"]
@@ -310,6 +323,8 @@ package = "@earendil-works/pi-coding-agent"
 version = "0.85.1"
 integrity = "sha512-FGRN+OHbWaefBPGaTggAdLjrIHW+s2PzLyglz/5dfLzb9of7uuXMXYC0fJIeZTw+shS32o2cuQ9jF7YSDuL/oQ=="
 npm_args = ["--ignore-scripts"]
+[clis.pi.install.latest]
+kind = "npm"
 
 [clis.pi.hooks]
 files = ["home:extensions/herdr-agent-state.ts"]
@@ -352,6 +367,8 @@ channel = "npm"
 package = "cline"
 version = "3.0.70"
 integrity = "sha512-ekeGJ7YdVKL9p//KF0F5nxFXMvgSuhwPxvCUkS+SaBDJJoOUt+HMeJS+J+hkF3ezPekbSvpK1wCPGraZbAEO8A=="
+[clis.cline.install.latest]
+kind = "npm"
 
 
 [clis.grok]
