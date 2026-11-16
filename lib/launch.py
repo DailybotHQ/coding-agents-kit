@@ -164,6 +164,37 @@ def resolve_auto(flag_auto, flag_ask, env):
     return True
 
 
+def posture_args(cli, auto, run=None):
+    """The `{auto}` segment: the CLI's autonomy flag, or — under the opt-out —
+    its explicit ask flag (providers.toml `ask`; `run.ask` for a headless run
+    when the CLI's headless mode takes a different one). Ask is forced, not
+    assumed: an account whose own settings default to an autonomous mode
+    still starts asking."""
+    if auto:
+        return list(cli["auto"])
+    if run is not None and "ask" in run:
+        return list(run["ask"])
+    return list(cli.get("ask", []))
+
+
+def refuse_posture_override(cli, auto, rest):
+    """Under the opt-out, ak owns the CLI's permission flags: a user argument
+    (after `--`, or after the first CLI argument) that would set the CLI's
+    permission or approval mode is a usage error, so nothing typed after the
+    head can undo the opt-out. Matches a token equal to a providers.toml
+    `ask_conflicts` entry or starting with `<entry>=`."""
+    if auto:
+        return
+    conflicts = cli.get("ask_conflicts", [])
+    for tok in rest:
+        for entry in conflicts:
+            if tok == entry or tok.startswith(entry + "="):
+                raise AkError("'%s' would change %s's permission mode, and this launch asks "
+                              "(--ask or AGENTKIT_PERMISSIONS=ask): under the opt-out ak sets the "
+                              "permission flags itself. See: ak --help" % (tok, cli.get("executable", "the CLI")),
+                              EXIT_USAGE)
+
+
 class Prepared(object):
     """Everything a launch needs: the kind, executable, env and context."""
 
@@ -319,13 +350,14 @@ def session_args(prep, head):
 def interactive_argv(prep, head):
     """The argv after the executable, in the CLI's own segment order."""
     cli = prep.kind.cli
+    refuse_posture_override(cli, prep.auto, head.rest)
     sess = session_args(prep, head)
     if head.session in cli.get("session", {}).get("standalone", []):
         return sess + head.rest, True
     segments = {
         "provider": prep.ctx.expand_list(prep.kind.data.get("args", [])),
         "session": sess,
-        "auto": list(cli["auto"]) if prep.auto else [],
+        "auto": posture_args(cli, prep.auto),
     }
     return prep.ctx.expand_list(cli["interactive"], segments) + head.rest, False
 

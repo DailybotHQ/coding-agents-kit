@@ -50,10 +50,10 @@ scope_profiles() {
     out="$(ak -- claude ${args})"
     prof="$(var_of "${out}" CLAUDE_CONFIG_DIR)"
     prof="${prof:+${prof##*/}}"
-    if [[ "${prof:-default}|$(argv_of "${out}")" == "${want}" ]]; then
+    if [[ "${prof:-default}|$(grammar_argv "${out}")" == "${want}" ]]; then
       pass "parse '${args}' -> @${want%%|*} ${want#*|}"
     else
-      fail "parse '${args}': got '${prof:-default}|$(argv_of "${out}")', want '${want}'"
+      fail "parse '${args}': got '${prof:-default}|$(grammar_argv "${out}")', want '${want}'"
     fi
   done
   for bad in "@" "@.." "@.hidden" "@a/b" "@src/a.ts" "@a b" "@2 cats" "@$(printf 'a%.0s' {1..33})" '@x$y' "@../../etc"; do
@@ -68,7 +68,7 @@ scope_profiles() {
 
   # --- AGENTKIT_PROFILE: fallback only; a positional profile wins ----------
   out="$(ak AGENTKIT_PROFILE=@work -- claude -c)"
-  expect_eq "AGENTKIT_PROFILE selects the profile" "$(var_of "${out}" CLAUDE_CONFIG_DIR)|$(argv_of "${out}")" "${root}/claude/work|--continue"
+  expect_eq "AGENTKIT_PROFILE selects the profile" "$(var_of "${out}" CLAUDE_CONFIG_DIR)|$(grammar_argv "${out}")" "${root}/claude/work|--continue"
   out="$(ak AGENTKIT_PROFILE=work -- claude)"
   expect_eq "AGENTKIT_PROFILE accepts a name without @" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/work"
   out="$(ak AGENTKIT_PROFILE=@work -- claude @2)"
@@ -199,10 +199,10 @@ scope_profiles() {
         want="${knob//@DIR/${dir}}"
         want_cont="${cont//@KEY/$([[ "${prof}" == @2 ]] && echo two || echo work)}"
       fi
-      if grep -qxF -- "${want}" <<<"${out}" && [[ "$(argv_of "${out}")" == "${want_cont}" ]]; then
+      if grep -qxF -- "${want}" <<<"${out}" && [[ "$(grammar_argv "${out}")" == "${want_cont}" ]]; then
         pass "${k} ${prof:+${prof} }-c -> right account + continue"
       else
-        fail "${k} ${prof:+${prof} }-c: want '${want}' and '${want_cont}', got '$(argv_of "${out}")' $(cat "${BOX}/err")"
+        fail "${k} ${prof:+${prof} }-c: want '${want}' and '${want_cont}', got '$(grammar_argv "${out}")' $(cat "${BOX}/err")"
       fi
     done
   done
@@ -375,44 +375,44 @@ profiles_codex_daemon() {
   if [[ "$(uname -s)" == Darwin ]]; then native='\xcf\xfa\xed\xfe'; foreign='\x7fELF'; else native='\x7fELF'; foreign='\xcf\xfa\xed\xfe'; fi
 
   out="$(ak -- codex)"
-  expect_eq "codex daemon: nothing recorded, no flag" "$(argv_of "${out}")" ""
+  expect_eq "codex daemon: nothing recorded, no flag" "$(grammar_argv "${out}")" ""
   mkdir -p "${BOX}/home/.codex/${d}"
   printf "${native}rest" > "${BOX}/home/.codex/${d}/codex"; chmod +x "${BOX}/home/.codex/${d}/codex"
   out="$(ak -- codex -c)"
   expect_eq "codex daemon: a daemon built for this OS is reused, no --no-daemon; the account marker goes first" \
-    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"|resume|--last'
+    "$(grammar_argv "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"|resume|--last'
   out="$(ak -- codex -- -c 'shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"')"
   expect_eq "codex daemon: a marker the user passed is not repeated" \
-    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"'
+    "$(grammar_argv "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@default"'
   out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex)"
-  expect_eq "codex daemon: AGENTKIT_CODEX_NO_DAEMON=1 adds --no-daemon anyway" "$(argv_of "${out}")" "--no-daemon"
+  expect_eq "codex daemon: AGENTKIT_CODEX_NO_DAEMON=1 adds --no-daemon anyway" "$(grammar_argv "${out}")" "--no-daemon"
 
   mkdir -p "${root}/codex/work/packages/app-server-daemon"
   ln -s "${BOX}/elsewhere/0.158.0" "${root}/codex/work/packages/app-server-daemon/current"
   out="$(ak -- codex @work -c --model x)"
   expect_eq "codex daemon: a recorded daemon that is not here adds --no-daemon, and the head --model maps to codex -m" \
-    "$(argv_of "${out}")" "resume|--last|--no-daemon|-m|x"
+    "$(grammar_argv "${out}")" "resume|--last|--no-daemon|-m|x"
   out="$(ak -- codex @work -- --no-daemon)"
-  expect_eq "codex daemon: a --no-daemon the user passed is not repeated" "$(argv_of "${out}")" "--no-daemon"
+  expect_eq "codex daemon: a --no-daemon the user passed is not repeated" "$(grammar_argv "${out}")" "--no-daemon"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- codex @work)"
-  expect_eq "codex daemon: ... with autonomy" "$(argv_of "${out}")" "--dangerously-bypass-approvals-and-sandbox|--no-daemon"
+  expect_eq "codex daemon: ... with autonomy" "$(grammar_argv "${out}")" "--dangerously-bypass-approvals-and-sandbox|--no-daemon"
   mkdir -p "${root}/codex/host/${d}"
   printf "${foreign}rest" > "${root}/codex/host/${d}/codex"; chmod +x "${root}/codex/host/${d}/codex"
   out="$(ak -- codex @host)"
   expect_eq "codex daemon: a daemon built for another OS (a host home in a container) adds --no-daemon" \
-    "$(argv_of "${out}")" "--no-daemon"
+    "$(grammar_argv "${out}")" "--no-daemon"
   mkdir -p "${root}/codex/live/${d}"
   printf "${native}rest" > "${root}/codex/live/${d}/codex"; chmod +x "${root}/codex/live/${d}/codex"
   out="$(ak AGENTKIT_ACTIVE_ACCOUNT=codex/@ghost -- codex @live -c)"
   expect_eq "codex daemon: a reused profile daemon gets that launch's marker (not an inherited one)" \
-    "$(argv_of "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@live"|resume|--last'
+    "$(grammar_argv "${out}")" '-c|shell_environment_policy.set.AGENTKIT_ACTIVE_ACCOUNT="codex/@live"|resume|--last'
   out="$(ak AGENTKIT_CODEX_NO_DAEMON=1 -- codex @live)"
   expect_eq "codex daemon: no marker when the daemon is turned off (the shells inherit the launch)" \
-    "$(argv_of "${out}")" "--no-daemon"
+    "$(grammar_argv "${out}")" "--no-daemon"
   mkdir -p "${root}/codex/live2"
   out="$(ak -- codex @live2)"
   expect_eq "codex daemon: no marker when no daemon is recorded (the one codex starts inherits the launch)" \
-    "$(argv_of "${out}")" ""
+    "$(grammar_argv "${out}")" ""
 
   ak_split -- doctor --json
   doc="${BOX}/doctor.json"; cp "${BOX}/out" "${doc}"
@@ -438,7 +438,7 @@ profiles_default() {
   local D=AGENTKIT_DEFAULT_PROFILE_CLAUDE
 
   out="$(ak "${D}=@work" -- claude -c)"
-  expect_eq "default profile: a bare ak claude launches it" "$(var_of "${out}" CLAUDE_CONFIG_DIR)|$(argv_of "${out}")" "${root}/claude/work|--continue"
+  expect_eq "default profile: a bare ak claude launches it" "$(var_of "${out}" CLAUDE_CONFIG_DIR)|$(grammar_argv "${out}")" "${root}/claude/work|--continue"
   out="$(ak "${D}=work" -- claude)"
   expect_eq "default profile: a name without @ is accepted" "$(var_of "${out}" CLAUDE_CONFIG_DIR)" "${root}/claude/work"
   out="$(ak "${D}=@work" -- claude @default)"

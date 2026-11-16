@@ -13,6 +13,26 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Ask mode is forced, not assumed.** Under `--ask` or
+  `AGENTKIT_PERMISSIONS=ask`, `ak` left the autonomy flag out but did not set
+  the CLI's permission mode, so an account whose own settings default to an
+  autonomous mode (Claude's `defaultMode`, Codex's `approval_policy`) still
+  started autonomous. `ak` now passes each CLI's explicit ask flag
+  (`providers.toml` `ask`, `run.ask` for headless): Claude and Grok
+  `--permission-mode default`, Codex `--ask-for-approval on-request`
+  (interactive; `codex exec` takes none); CLIs without an ask flag are
+  unchanged.
+- **A user mode flag cannot undo the opt-out.** Under the opt-out, an
+  argument after `--` that would set the CLI's permission or approval mode
+  (`providers.toml` `ask_conflicts`, including the autonomy flag) is a usage
+  error (exit 2) and launches nothing.
+- **`ak pick --json` delivers the mode it claims.** Under the opt-out,
+  `launch.argv` now ends with `--ask`, so the suggested command asks even
+  where `AGENTKIT_PERMISSIONS` is not inherited (`launch.permissions` was
+  already `ask`).
+
 ## [1.4.0] - 2026-11-16
 
 A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and

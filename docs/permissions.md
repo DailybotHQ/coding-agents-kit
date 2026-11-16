@@ -9,12 +9,12 @@ wins.
 | How | Scope |
 | --- | --- |
 | nothing (the default) | every launch adds the CLI's autonomy flag |
-| `ak <kind> --ask …` | this launch (or this `ak run`) asks: no flag added |
+| `ak <kind> --ask …` | this launch (or this `ak run`) asks: the CLI's own ask flag instead of its autonomy flag |
 | `AGENTKIT_PERMISSIONS=ask` in the environment or in `~/.config/agentkit/env` | every launch that sees it asks, nested launches included |
 | `ak <kind> --auto …` / `AGENTKIT_PERMISSIONS=auto` | explicit autonomy (the default made explicit) |
 
 Resolution: **the opt-out always wins.** `--ask`, or `AGENTKIT_PERMISSIONS=ask`
-(set by you or inherited from an `ak` that asked), means no flag — even when
+(set by you or inherited from an `ak` that asked), means no autonomy flag — even when
 the command also says `--auto`, so an agent cannot type its way out of your
 opt-out. Otherwise the launch is autonomous (`--auto`,
 `AGENTKIT_PERMISSIONS=auto`, or the default). An inherited
@@ -45,6 +45,36 @@ launch carries exactly its own flag and that `--ask` or
 `--ask` and `--auto` may sit anywhere before the first CLI argument
 (`ak claude --ask @work -c` and `ak claude @work -c --ask` are the same);
 after `--` or after a CLI argument they belong to the CLI.
+
+## What the opt-out adds — ask is forced, not assumed
+
+An account's own settings can default to an autonomous mode (Claude's
+`permissions.defaultMode`, Codex's `approval_policy`), so leaving the
+autonomy flag out is not enough. Under the opt-out, `ak` passes each CLI's
+explicit ask flag where the CLI has one:
+
+| Kind | Flag added under the opt-out | `ak run` (headless) |
+| --- | --- | --- |
+| `claude`, `claude-glm` | `--permission-mode default` | the same |
+| `codex`, `codex-*` | `--ask-for-approval on-request` | nothing (`codex exec` takes no approval flag) |
+| `grok` | `--permission-mode default` | the same |
+| `cursor`, `opencode`, `pi`, `cline` (and their provider kinds), `antigravity` | nothing: the CLI has no ask flag, and leaving its autonomy flag out is its ask mode | nothing |
+
+**A user mode flag cannot undo the opt-out.** Under the opt-out, `ak` owns
+the CLI's permission flags: an argument after `--` (or after the first CLI
+argument) that would set the CLI's permission or approval mode — its
+autonomy flag, Claude's or Grok's `--permission-mode`, Codex's `-a` /
+`--ask-for-approval`, `--approve-for-me`, `-c approval_policy=…` or
+`sandbox_mode=…`, Cursor's `--force` / `--yolo` / `--auto-review`,
+Antigravity's `--mode`, in either `--flag value` or `--flag=value` form — is
+a usage error (exit 2) and launches nothing. Without the opt-out those
+arguments pass through to the CLI untouched. The lists live in
+`providers.toml` (`ask`, `ask_conflicts`, `run.ask`); the `permissions` test
+scope proves the flag and the refusal for every CLI.
+
+`ak pick --kinds … --json` under the opt-out reports `launch.permissions:
+"ask"` **and** puts `--ask` in `launch.argv`, so the suggested command asks
+even where `AGENTKIT_PERMISSIONS` is not inherited.
 
 ## The opt-out is inherited, autonomy is not exported
 

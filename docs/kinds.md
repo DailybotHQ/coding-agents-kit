@@ -91,7 +91,11 @@ The key set is closed: an unknown key, a non-https URL, a template other than `{
 
 1. Add `[kinds.<cli>-<provider>]` (and, for a new API, `[providers.<id>]`)
    to `providers.toml`. A new CLI needs a `[clis.<cli>]` block: executable,
-   isolation, roots, session mapping, autonomy flag, headless mapping, login
+   isolation, roots, session mapping, autonomy flag (`auto`), explicit ask
+   flag (`ask`, `[]` when the CLI has none; `run.ask` when its headless mode
+   takes a different one) and the permission flags a user may not pass under
+   the opt-out (`ask_conflicts`, which must include the autonomy flag),
+   headless mapping, login
    probe (`[clis.<cli>.login]`: `files` + `marker`, `env`, `keychain` —
    `{ service, account?, profile? | shared? }`, `profile = true` when the CLI suffixes a
    profile's item with the sha256 of its directory — and `token_files` when
@@ -116,6 +120,7 @@ provider and kind variables, `root.<name>`, `dir`, `id`, `prompt`, `cwd`,
 `seconds`, `kind`, `profile`. `{X:-default}` falls back when `X` is unset or
 empty, and defaults nest. A leading `~` is the user's home. In an argv list,
 an element that is exactly `{provider}`, `{session}`, `{auto}`, `{json}` or
-`{timeout}` expands to a list. `{key}` is the profile's provider key: it is
+`{timeout}` expands to a list (`{auto}`: the CLI's `auto` flags, or its `ask`
+flags under the opt-out). `{key}` is the profile's provider key: it is
 resolved only into the CLI's environment (or Cline's argv) and never for
 anything the kit prints.

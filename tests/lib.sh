@@ -97,6 +97,17 @@ argv_of() {
   printf '%s\n' "$1" | sed -n 's/^ARG=//p' | paste -sd '|' -
 }
 
+# grammar_argv <ak output> — argv_of without the posture segment a launch
+# under the opt-out carries (each CLI's explicit ask flag, providers.toml
+# `ask`): for the scopes that check argv grammar under `box_posture ask`.
+# The permissions scope owns the posture and asserts the full argv.
+grammar_argv() {
+  argv_of "$1" | sed -e 's/^--permission-mode|default$//' -e 's/^--permission-mode|default|//' \
+    -e 's/|--permission-mode|default$//' -e 's/|--permission-mode|default|/|/' \
+    -e 's/^--ask-for-approval|on-request$//' -e 's/^--ask-for-approval|on-request|//' \
+    -e 's/|--ask-for-approval|on-request$//' -e 's/|--ask-for-approval|on-request|/|/'
+}
+
 # check <name> <command...> — pass when the command succeeds (output hidden).
 check() {
   local name="$1"

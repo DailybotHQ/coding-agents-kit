@@ -217,6 +217,10 @@ class Model(object):
                 bad("%s.run.result must be one of %s" % (where, ", ".join(RESULT_EXTRACTORS)))
             if "{prompt}" not in run.get("argv", []):
                 bad("%s.run.argv: needs {prompt}" % where)
+            for field, value in (("ask", cli.get("ask", [])), ("ask_conflicts", cli.get("ask_conflicts", [])),
+                                 ("run.ask", run.get("ask", []))):
+                if not isinstance(value, list) or not all(isinstance(v, str) and v and "{" not in v for v in value):
+                    bad("%s.%s: must be a list of literal arguments" % (where, field))
             if references_secret(cli.get("auto", [])) or references_secret(run.get("argv", [])):
                 bad("%s: {key} is only allowed in a kind's env, args or pre" % where)
             install = cli.get("install", {})
@@ -369,6 +373,7 @@ class Kind(object):
             "key": self.key_var,
             "key_optional": self.key_optional,
             "auto": list(self.cli["auto"]),
+            "ask": list(self.cli.get("ask", [])),
             "isolation": self.cli["isolation"],
             "home_env": self.cli.get("home_env"),
         }

@@ -354,7 +354,7 @@ def build_argv(prep, opts, cwd):
     segments = {
         "provider": ctx.expand_list(prep.kind.data.get("args", [])),
         "json": list(run["json"]) if opts.fmt == "json" else [],
-        "auto": list(cli["auto"]) if prep.auto else [],
+        "auto": launch.posture_args(cli, prep.auto, run),
         "timeout": ctx.expand_list(run.get("timeout", [])) if opts.timeout else [],
     }
     return [prep.exe] + ctx.expand_list(run["argv"], segments)

@@ -7,7 +7,7 @@ dispatch_case() {
   shift 2
   # shellcheck disable=SC2086  # args is a word list on purpose
   out="$(ak "$@" -- ${args})"
-  expect_eq "ak ${args} -> ${want:-(no arguments)}" "$(argv_of "${out}")" "${want}"
+  expect_eq "ak ${args} -> ${want:-(no arguments)}" "$(grammar_argv "${out}")" "${want}"
 }
 
 scope_dispatch() {
@@ -86,7 +86,7 @@ scope_dispatch() {
   dispatch_case "claude -r -x" "--resume|-x"
   dispatch_case "codex -c -c" "resume|--last|-c"
   out="$(ak -- claude -p "two words" "")"
-  expect_eq "arguments keep their boundaries" "$(argv_of "${out}")" "-p|two words|"
+  expect_eq "arguments keep their boundaries" "$(grammar_argv "${out}")" "-p|two words|"
 
   # Provider variants put their arguments where each CLI expects them.
   dispatch_case "codex-glm -c" "-p|glm|resume|--last" ZAI_CODING_API_KEY=fake-zai-one
@@ -99,14 +99,14 @@ scope_dispatch() {
   out="$(ak ZAI_CODING_API_KEY=fake-zai-one -- claude-glm -c)"
   expect_line "claude-glm points Claude at Z.AI" "${out}" "ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic"
   expect_line "claude-glm passes the key in its environment" "${out}" "ANTHROPIC_AUTH_TOKEN=(set)"
-  expect_eq "claude-glm -c -> --continue" "$(argv_of "${out}")" "--continue"
+  expect_eq "claude-glm -c -> --continue" "$(grammar_argv "${out}")" "--continue"
   ak_split XAI_API_KEY=fake-xai-one FAKE_LOG="${BOX}/cline.log" FAKE_CLINE_HISTORY="${BOX}/cline-history.json" -- cline-xai -c
-  expect_eq "cline-xai -c -> provider flags then the session" "$(argv_of "$(cat "${BOX}/out")")" "-P|openai|-m|grok-4.3|-k|fake-xai-one|--id|sess-new"
+  expect_eq "cline-xai -c -> provider flags then the session" "$(grammar_argv "$(cat "${BOX}/out")")" "-P|openai|-m|grok-4.3|-k|fake-xai-one|--id|sess-new"
   expect_has "cline auth output goes to stderr, never stdout" "$(cat "${BOX}/err")" "ARG=auth"
   expect_eq "cline-xai authenticates first (one cline auth)" "$(grep -c '^ARG=auth$' "${BOX}/cline.log")" 1
   rm -f "${BOX}/cline.log"
   out="$(ak XAI_API_KEY=fake-xai-one FAKE_LOG="${BOX}/cline.log" -- cline-xai -r)"
-  expect_eq "cline-xai -r lists history without auth or key" "$(argv_of "${out}")" "history"
+  expect_eq "cline-xai -r lists history without auth or key" "$(grammar_argv "${out}")" "history"
   expect_eq "cline-xai -r runs no cline auth" "$(grep -c '^ARG=auth$' "${BOX}/cline.log")" 0
 
   # Refusals: one line, nothing launched.
@@ -138,10 +138,10 @@ scope_dispatch() {
   expect_has "ak --help shows the grammar" "${out}" "ak run <kind>"
   check "bin/ak and bin/agentkit are the same script" cmp -s "${ROOT}/bin/ak" "${ROOT}/bin/agentkit"
   out="$(box_run -- bash "${ROOT}/bin/agentkit" claude -c)"
-  expect_eq "agentkit dispatches like ak" "$(argv_of "${out}")" "--continue"
+  expect_eq "agentkit dispatches like ak" "$(grammar_argv "${out}")" "--continue"
   ln -s "${ROOT}/bin/ak" "${BOX}/bin/ak"
   out="$(box_run -- ak codex -l)"
-  expect_eq "ak works through a symlink on PATH" "$(argv_of "${out}")" "resume|--last"
+  expect_eq "ak works through a symlink on PATH" "$(grammar_argv "${out}")" "resume|--last"
   out="$(box_run -- sh -c 'echo "SHELL_PID=$$"; exec ak claude')"
   expect_eq "ak exec's the CLI (same process: Herdr sees the agent)" \
     "$(sed -n 's/^SHELL_PID=//p' <<<"${out}")" "$(sed -n 's/^PID=//p' <<<"${out}")"

@@ -34,8 +34,8 @@ scope_run() {
 
   # --- the frozen mapping, text and json, per kind ------------------------------
   local -a table=(
-    "claude|text|-p|do it"
-    "claude|json|-p|do it|--output-format|json"
+    "claude|text|-p|do it|--permission-mode|default"
+    "claude|json|-p|do it|--output-format|json|--permission-mode|default"
     "codex|text|exec|-C|@P|do it"
     "codex|json|exec|--json|-C|@P|do it"
     "cursor|text|-p|do it|--trust"
@@ -46,8 +46,8 @@ scope_run() {
     "pi|json|-p|do it|--mode|json"
     "cline|text|do it|-c|@P"
     "cline|json|do it|--json|-c|@P"
-    "grok|text|-p|do it|--cwd|@P"
-    "grok|json|-p|do it|--output-format|json|--cwd|@P"
+    "grok|text|-p|do it|--cwd|@P|--permission-mode|default"
+    "grok|json|-p|do it|--output-format|json|--cwd|@P|--permission-mode|default"
     "antigravity|text|-p|do it"
     "antigravity|json|-p|do it|--output-format|json"
   )
@@ -78,7 +78,7 @@ scope_run() {
   expect_eq "without --cwd the CLI runs in the current directory" "$(logged_field CWD)" "${BOX}/work"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run claude -- fix the "quoted \"bug\""
-  expect_eq "the prompt is one argument (words after -- joined)" "$(logged_argv)" '-p|fix the quoted "bug"'
+  expect_eq "the prompt is one argument (words after -- joined)" "$(logged_argv)" '-p|fix the quoted "bug"|--permission-mode|default'
   rm -f "${BOX}/log"
   printf 'from stdin\nsecond line' > "${BOX}/prompt.txt"
   ( cd "${BOX}/work" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" TMPDIR="${BOX}/tmp" FAKE_LOG="${BOX}/log" \
@@ -105,6 +105,12 @@ scope_run() {
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=ask -- run codex --auto --cwd "${p}" -- "x"
   expect_eq "ak run --auto under AGENTKIT_PERMISSIONS=ask still asks (the opt-out wins)" "$(logged_argv)" "exec|-C|${p}|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run claude --ask -- "x"
+  expect_eq "ak run claude --ask forces claude's ask mode (run.ask falls back to ask)" "$(logged_argv)" "-p|x|--permission-mode|default"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run claude -- "x"
+  expect_eq "ak run claude by default is autonomous" "$(logged_argv)" "-p|x|--dangerously-skip-permissions"
   box_posture ask
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=auto -- run grok --cwd "${p}" -- "x"

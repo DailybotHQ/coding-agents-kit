@@ -35,6 +35,8 @@ home_env = "CLAUDE_CONFIG_DIR"
 # it as CLAUDE_CODE_OAUTH_TOKEN; never a fallback to another account's token.
 profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
+ask = ["--permission-mode", "default"]
+ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "--permission-mode"]
 interactive = ["{provider}", "{session}", "{auto}"]
 # `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
 # list (values the CLI accepts) makes ak refuse anything else; without one
@@ -113,6 +115,8 @@ isolation = "env"
 home_env = "CODEX_HOME"
 lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
+ask = ["--ask-for-approval", "on-request"]
+ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo", "approval_policy", "sandbox_mode", "danger-full-access"]
 interactive = ["{provider}", "{session}", "{auto}"]
 # Codex spells the model flag -m (the long --model is not global here).
 model_flag = "-m"
@@ -135,6 +139,8 @@ last = "continue"
 argv = ["exec", "{provider}", "{json}", "-C", "{cwd}", "{auto}", "{prompt}"]
 json = ["--json"]
 result = "codex-jsonl"
+# `codex exec` takes no --ask-for-approval: a headless ask run adds nothing.
+ask = []
 
 [clis.codex.login]
 command = "codex login"
@@ -193,6 +199,8 @@ resolver = "cursor"
 herdr_kind = "cursor"
 isolation = "cursor-home"
 auto = ["--force"]
+ask = []
+ask_conflicts = ["--force", "-f", "--yolo", "--auto-review"]
 interactive = ["{session}", "{auto}"]
 docs = "https://cursor.com/docs/cli"
 
@@ -253,6 +261,8 @@ executable = "opencode"
 herdr_kind = "opencode"
 isolation = "xdg"
 auto = ["--auto"]
+ask = []
+ask_conflicts = ["--auto"]
 interactive = ["{auto}", "{provider}", "{session}"]
 docs = "https://opencode.ai/docs"
 
@@ -296,6 +306,8 @@ herdr_kind = "pi"
 isolation = "env"
 home_env = "PI_CODING_AGENT_DIR"
 auto = ["--approve"]
+ask = []
+ask_conflicts = ["--approve", "-a"]
 interactive = ["{auto}", "{provider}", "{session}"]
 docs = "https://github.com/earendil-works/pi"
 
@@ -337,6 +349,8 @@ herdr_kind = "cline"
 isolation = "env"
 home_env = "CLINE_DIR"
 auto = ["--yolo"]
+ask = []
+ask_conflicts = ["--yolo"]
 interactive = ["{auto}", "{provider}", "{session}"]
 secret_argv = true
 docs = "https://docs.cline.bot"
@@ -378,6 +392,8 @@ herdr_kind = "grok"
 isolation = "env"
 home_env = "GROK_HOME"
 auto = ["--always-approve"]
+ask = ["--permission-mode", "default"]
+ask_conflicts = ["--always-approve", "--permission-mode"]
 interactive = ["{session}", "{auto}"]
 docs = "https://x.ai/cli"
 
@@ -435,6 +451,8 @@ executable = "agy"
 isolation = "home"
 home_dir = ".gemini"
 auto = ["--dangerously-skip-permissions"]
+ask = []
+ask_conflicts = ["--dangerously-skip-permissions", "--mode"]
 interactive = ["{session}", "{auto}"]
 docs = "https://antigravity.google/docs/cli"
 
