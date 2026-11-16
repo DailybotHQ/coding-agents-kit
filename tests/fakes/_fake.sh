@@ -114,7 +114,17 @@ if [ "${FAKE_MODE:-}" = headless ]; then
   case "${fake_name}" in
     claude|agent)
       if fake_has json "$@"; then
-        printf '{"type":"result","subtype":"success","is_error":%s,"result":"%s","session_id":"fake-session"}\n' "${err}" "${text}"
+        usage=""
+        if [ -n "${FAKE_USAGE:-}" ]; then
+          in="${FAKE_USAGE%%,*}"
+          rest="${FAKE_USAGE#*,}"
+          out="${rest%%,*}"
+          rest="${rest#*,}"
+          cr="${rest%%,*}"
+          cw="${rest#*,}"
+          usage=",\"usage\":{\"input_tokens\":${in},\"output_tokens\":${out},\"cache_read_input_tokens\":${cr},\"cache_creation_input_tokens\":${cw}}"
+        fi
+        printf '{"type":"result","subtype":"success","is_error":%s,"result":"%s","session_id":"fake-session"%s}\n' "${err}" "${text}" "${usage}"
       else
         printf '%s\n' "${FAKE_RESULT:-fake answer}"
       fi
