@@ -55,7 +55,7 @@ from common import AkError, EXIT_NOT_READY, EXIT_OK, EXIT_USAGE
 SCHEMA = "update-v1"
 USAGE = "usage: ak update [<kind-or-cli>...] [--version VERSION] [--take-over] [--json]"
 
-_VERSION_RE = re.compile(r"v?(\d+(?:\.\d+)*)(\+[0-9A-Za-z.-]+)?$")
+_VERSION_RE = re.compile(r"v?([0-9]+(?:\.[0-9]+)*)(\+[0-9A-Za-z.-]+)?$")
 
 
 def parse_args(args):
@@ -189,7 +189,7 @@ def _npm_prefix_bin(env):
     return os.path.join(prefix, "bin")
 
 
-_VERSION_OK = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z")
+_VERSION_OK = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z")
 _INTEGRITY_OK = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
 _SHA256_OK = re.compile(r"[0-9a-f]{64}\Z")
 _VERSION_MAX = 32
@@ -279,6 +279,12 @@ class PinLock(object):
 
     @staticmethod
     def _alive(pid):
+        if common.os_name() == "windows":
+            # os.kill(pid, 0) is TerminateProcess on Windows: a second
+            # ak update would kill the first mid-install (or an unrelated
+            # process that reused the pid). A Windows lock holder is
+            # presumed live; recovery stays the named manual action.
+            return True
         try:
             os.kill(pid, 0)
         except ProcessLookupError:

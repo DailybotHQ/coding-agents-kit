@@ -289,6 +289,48 @@ PY
   expect_eq "a path-like version is refused" "${status}" 3
   expect_has "the traversal refusal names the shape" "$(cat "${BOX}/out")" "not a plain semver"
   check "no tarball URL was built from the crafted version" bash -c "! grep -q '.tgz' '${FAKE_NET_LOG}'"
+
+  # --- unicode digits are not versions -------------------------------------
+  python3 - "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')" <<'PY'
+import json, sys
+json.dump({"version": "\u0661.\u0662.\u0663", "dist": {"integrity": "sha512-notused"}}, open(sys.argv[1], "w"))
+PY
+  ak_up -- update codex; status=$?
+  expect_eq "arabic-indic digits are refused as a version" "${status}" 3
+  expect_has "the unicode-digit refusal names the shape" "$(cat "${BOX}/out")" "not a plain semver"
+  tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
+  printf '{"version":"9.9.9","dist":{"integrity":"%s"}}\n' "${intg}" \
+    > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
+
+  # --- the Windows lock check never signals with os.kill -------------------
+  # os.kill(pid, 0) is TerminateProcess on Windows: _alive must decide from
+  # the platform alone there, and never reach os.kill.
+  if AGENTKIT_ROOT="${dest}" python3 - "${dest}/lib" <<'PY'
+import os, sys
+sys.path.insert(0, sys.argv[1])
+import update
+
+def explode(pid, sig=None):
+    raise AssertionError("os.kill reached on windows")
+
+os.kill = explode
+update.common.os_name = lambda: "windows"
+assert update.PinLock._alive(4321) is True, "a windows lock holder must be presumed live"
+PY
+  then pass "_alive on Windows never calls os.kill"
+  else fail "_alive on Windows never calls os.kill"
+  fi
+
+  # --- the changelog entry lives under [Unreleased], not [1.3.0] -----------
+  check "the release section [1.3.0] exists" grep -q '^## \[1.3.0\]' "${ROOT}/CHANGELOG.md"
+  check "ak update is documented under [Unreleased], before [1.3.0]" python3 -c "
+import sys
+text = open('${ROOT}/CHANGELOG.md').read()
+unreleased = text.index('## [Unreleased]')
+release = text.index('## [1.3.0]')
+entry = text.index('\`ak update\` (\`lib/update.py\`', unreleased)
+assert unreleased < entry < release, 'the ak update entry must sit under [Unreleased]'
+"
   tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
 
   # --- codex: downgrades are refused --------------------------------------
