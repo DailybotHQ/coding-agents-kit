@@ -56,7 +56,7 @@ explicit ask flag where the CLI has one:
 | Kind | Flag added under the opt-out | `ak run` (headless) |
 | --- | --- | --- |
 | `claude`, `claude-glm` | `--permission-mode default` | the same |
-| `codex`, `codex-*` | `--ask-for-approval on-request` | nothing (`codex exec` takes no approval flag) |
+| `codex`, `codex-*` | `--ask-for-approval on-request --sandbox workspace-write` (a stricter `--sandbox` / `-s` you pass replaces the pinned one) | `--sandbox workspace-write` (`codex exec` takes no approval flag) |
 | `grok` | `--permission-mode default` | the same |
 | `cursor`, `opencode`, `pi`, `cline` (and their provider kinds), `antigravity` | nothing: the CLI has no ask flag, and leaving its autonomy flag out is its ask mode | nothing |
 
@@ -65,23 +65,29 @@ the CLI's permission flags: an argument after `--` (or after the first CLI
 argument) that would **loosen** the CLI's permission or approval mode is a
 usage error (exit 2) and launches nothing — its autonomy flag, Codex's
 `-a` / `--ask-for-approval` / `--approve-for-me` / `--full-auto`, a Codex
-config override of `approval_policy` or `sandbox_mode` (`-c` / `--config`),
+config override of `approval_policy` or `sandbox_mode` (`-c` / `--config`, also
+profile-scoped keys such as `profiles.x.sandbox_mode`),
 Cursor's `--force` / `-f` / `--yolo` / `--auto-review`, and any mode value
 outside the allowed ones. Options are read the way the CLIs parse them:
-`--opt value`, `--opt=value`, `-o value`, `-ovalue`, and short clusters
-(`-fw`) for CLIs that accept them. Stricter or equal modes stay allowed:
+`--opt value`, `--opt=value`, `-o value`, `-ovalue`, `-o=value`, short
+clusters (`-fw`) for CLIs that accept them, and Antigravity's Go-style
+`-opt`. Stricter or equal modes stay allowed:
 
 | CLI | Allowed under the opt-out |
 | --- | --- |
-| claude | `--permission-mode default`, `manual` or `plan` |
-| grok | `--permission-mode default` or `plan` |
+| claude | `--permission-mode default`, `manual`, `plan` or `dontAsk` |
+| grok | `--permission-mode default`, `plan` or `dontAsk` |
 | codex | `--sandbox` / `-s` `read-only` or `workspace-write` |
 | antigravity | `--mode plan` |
 
-Plain words (a prompt) are never matched, and a bare `--` ends the options.
+Plain words (a prompt) are never matched, and a bare `--` ends the options —
+except right after an option that may be waiting for its value, where the CLI
+would read `--` as that value (so `--verbose -- <flag>` is checked too; put
+the prompt first if it must contain such a word).
 Without the opt-out every argument passes through to the CLI untouched. The
 data lives in `providers.toml` (`ask`, `run.ask`, `ask_conflicts`,
-`ask_values`, `ask_config`, `ask_clusters`, `ask_value_opts`); the
+`ask_values`, `ask_config`, `ask_clusters`, `ask_value_opts`, `ask_yield`,
+`ask_single_dash_long`); the
 `permissions` test scope proves the flag, every refusal and every allowed
 case for each CLI.
 

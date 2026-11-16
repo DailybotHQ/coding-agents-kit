@@ -104,8 +104,8 @@ argv_of() {
 grammar_argv() {
   argv_of "$1" | sed -e 's/^--permission-mode|default$//' -e 's/^--permission-mode|default|//' \
     -e 's/|--permission-mode|default$//' -e 's/|--permission-mode|default|/|/' \
-    -e 's/^--ask-for-approval|on-request$//' -e 's/^--ask-for-approval|on-request|//' \
-    -e 's/|--ask-for-approval|on-request$//' -e 's/|--ask-for-approval|on-request|/|/'
+    -e 's/^--ask-for-approval|on-request|--sandbox|workspace-write$//' -e 's/^--ask-for-approval|on-request|--sandbox|workspace-write|//' \
+    -e 's/|--ask-for-approval|on-request|--sandbox|workspace-write$//' -e 's/|--ask-for-approval|on-request|--sandbox|workspace-write|/|/'
 }
 
 # check <name> <command...> — pass when the command succeeds (output hidden).

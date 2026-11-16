@@ -44,7 +44,7 @@ auto = ["--dangerously-skip-permissions"]
 # values. See docs/permissions.md.
 ask = ["--permission-mode", "default"]
 ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"]
-ask_values = { "--permission-mode" = ["default", "manual", "plan"] }
+ask_values = { "--permission-mode" = ["default", "manual", "plan", "dontAsk"] }
 interactive = ["{provider}", "{session}", "{auto}"]
 # `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
 # list (values the CLI accepts) makes ak refuse anything else; without one
@@ -123,10 +123,16 @@ isolation = "env"
 home_env = "CODEX_HOME"
 lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
-ask = ["--ask-for-approval", "on-request"]
+# The sandbox is pinned too: an account config with sandbox_mode =
+# "danger-full-access" would otherwise run unprompted commands unsandboxed.
+# `ask_yield`: a stricter --sandbox / -s the user passes replaces ak's pair
+# (codex refuses the option twice).
+ask = ["--ask-for-approval", "on-request", "--sandbox", "workspace-write"]
+ask_yield = { "--sandbox" = ["--sandbox", "-s"] }
 # `-a` is refused outright: ak already passes it, and codex rejects a second.
 # `ask_config` refuses a config override (-c / --config KEY=VALUE) of the
-# listed keys; `ask_clusters`: the CLI parses -xyz as -x -y -z, and
+# listed keys (also as the last segment of a dotted key, such as
+# profiles.x.sandbox_mode); `ask_clusters`: the CLI parses -xyz as -x -y -z, and
 # `ask_value_opts` names its other value-taking short options (their value
 # is never read as flags: -pazure is a profile, not -a).
 ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo"]
@@ -156,8 +162,8 @@ last = "continue"
 argv = ["exec", "{provider}", "{json}", "-C", "{cwd}", "{auto}", "{prompt}"]
 json = ["--json"]
 result = "codex-jsonl"
-# `codex exec` takes no --ask-for-approval: a headless ask run adds nothing.
-ask = []
+# `codex exec` takes no --ask-for-approval: a headless ask run pins only the sandbox.
+ask = ["--sandbox", "workspace-write"]
 
 [clis.codex.login]
 command = "codex login"
@@ -412,7 +418,7 @@ home_env = "GROK_HOME"
 auto = ["--always-approve"]
 ask = ["--permission-mode", "default"]
 ask_conflicts = ["--always-approve"]
-ask_values = { "--permission-mode" = ["default", "plan"] }
+ask_values = { "--permission-mode" = ["default", "plan", "dontAsk"] }
 interactive = ["{session}", "{auto}"]
 docs = "https://x.ai/cli"
 
@@ -471,8 +477,10 @@ isolation = "home"
 home_dir = ".gemini"
 auto = ["--dangerously-skip-permissions"]
 ask = []
+# agy parses Go-style flags: -opt is the same option as --opt.
 ask_conflicts = ["--dangerously-skip-permissions"]
 ask_values = { "--mode" = ["plan"] }
+ask_single_dash_long = true
 interactive = ["{session}", "{auto}"]
 docs = "https://antigravity.google/docs/cli"
 

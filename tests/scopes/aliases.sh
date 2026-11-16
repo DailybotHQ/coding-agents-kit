@@ -120,7 +120,7 @@ scope_aliases() {
   out="$(box_run ZAI_CODING_API_KEY=fake-zai -- bash -c ". '${script}'; codex-glm -c")"
   expect_eq "codex-glm runs ak codex-glm (default autonomy)" "$(argv_of "${out}")" "-p|glm|resume|--last|--dangerously-bypass-approvals-and-sandbox"
   out="$(box_run ZAI_CODING_API_KEY=fake-zai AGENTKIT_PERMISSIONS=ask -- bash -c ". '${script}'; codex-glm -c")"
-  expect_eq "codex-glm honours the opt-out" "$(argv_of "${out}")" "-p|glm|resume|--last|--ask-for-approval|on-request"
+  expect_eq "codex-glm honours the opt-out" "$(argv_of "${out}")" "-p|glm|resume|--last|--ask-for-approval|on-request|--sandbox|workspace-write"
   ak_split -- doctor --json
   expect_eq "doctor reports the providers preset" "$(json_get "${BOX}/out" 'd["aliases"]["providers"]')" "true"
   out="$(ak -- alias preset providers --off)"

@@ -164,25 +164,57 @@ def resolve_auto(flag_auto, flag_ask, env):
     return True
 
 
-def posture_args(cli, auto, run=None):
+def posture_args(cli, auto, run=None, rest=()):
     """The `{auto}` segment: the CLI's autonomy flag, or — under the opt-out —
-    its explicit ask flag (providers.toml `ask`; `run.ask` for a headless run
-    when the CLI's headless mode takes a different one). Ask is forced, not
+    its explicit ask flags (providers.toml `ask`; `run.ask` for a headless run
+    when the CLI's headless mode takes different ones). Ask is forced, not
     assumed: an account whose own settings default to an autonomous mode
-    still starts asking."""
+    still starts asking. `ask_yield` drops one of ak's option/value pairs
+    when the user passes that option (already checked to be no looser)."""
     if auto:
         return list(cli["auto"])
     if run is not None and "ask" in run:
-        return list(run["ask"])
-    return list(cli.get("ask", []))
+        args = list(run["ask"])
+    else:
+        args = list(cli.get("ask", []))
+    given = _user_options(cli, rest)
+    for opt, spellings in cli.get("ask_yield", {}).items():
+        if opt in args and given & set(spellings):
+            i = args.index(opt)
+            del args[i:i + 2]
+    return args
+
+
+def _normal(cli, tok):
+    """A token as the CLI parses it: Go-style CLIs (`ask_single_dash_long`)
+    read `-opt` as `--opt`."""
+    if cli.get("ask_single_dash_long") and tok.startswith("-") and not tok.startswith("--") and len(tok) > 1:
+        return "-" + tok
+    return tok
+
+
+def _user_options(cli, rest):
+    """The option names a user argument list passes (`--opt`, `-o`)."""
+    names = set()
+    for raw in rest:
+        if raw == "--":
+            break
+        tok = _normal(cli, raw)
+        if tok.startswith("--"):
+            names.add(tok.partition("=")[0])
+        elif tok.startswith("-") and len(tok) > 1:
+            names.add(tok[:2])
+    return names
 
 
 def _posture_refusal(cli, rest):
     """The first user argument that would loosen the CLI's permission mode,
     or None. Options are read the way the CLIs parse them: `--opt value`,
-    `--opt=value`, `-o value`, `-ovalue`, and — where the CLI parses them
-    (`ask_clusters`) — short clusters `-xyz`. Plain words (a prompt) are
-    never matched, and a bare `--` ends the options."""
+    `--opt=value`, `-o value`, `-ovalue`, `-o=value`, short clusters `-xyz`
+    where the CLI parses them (`ask_clusters`) and Go-style `-opt`
+    (`ask_single_dash_long`). Plain words (a prompt) are never matched. A
+    bare `--` ends the options — unless it directly follows an option that
+    may be waiting for its value, where a CLI would take it as that value."""
     conflicts = set(cli.get("ask_conflicts", []))
     values = cli.get("ask_values", {})
     config = cli.get("ask_config", {})
@@ -191,48 +223,65 @@ def _posture_refusal(cli, rest):
     takes_value = set(values) | config_opts | set(cli.get("ask_value_opts", []))
     clusters = bool(cli.get("ask_clusters"))
 
+    def config_hit(value):
+        key = value.split("=", 1)[0].strip()
+        return key in config_keys or key.rsplit(".", 1)[-1].strip() in config_keys
+
     def judge(opt, value, shown):
         if opt in conflicts:
             return shown
         if opt in values and value is not None and value not in values[opt]:
             return shown
-        if opt in config_opts and value is not None and value.split("=", 1)[0].strip() in config_keys:
+        if opt in config_opts and value is not None and config_hit(value):
             return shown
         return None
 
     i = 0
+    open_option = False        # the previous token was an option that may still want a value
     while i < len(rest):
-        tok = rest[i]
+        raw = rest[i]
+        tok = _normal(cli, raw)
         nxt = rest[i + 1] if i + 1 < len(rest) else None
-        if tok == "--":
-            return None
+        if raw == "--":
+            if not open_option:
+                return None
+            open_option = False
+            i += 1
+            continue
         if tok.startswith("--"):
             opt, eq, val = tok.partition("=")
             value = val if eq else (nxt if opt in takes_value else None)
-            hit = judge(opt, value, tok if eq or value is None else "%s %s" % (tok, value))
+            hit = judge(opt, value, raw if eq or value is None else "%s %s" % (raw, value))
             if hit:
                 return hit
-            i += 2 if (not eq and opt in takes_value) else 1
+            consumed = not eq and opt in takes_value
+            open_option = not eq and not consumed
+            i += 2 if consumed else 1
             continue
         if tok.startswith("-") and len(tok) > 1:
             if tok in conflicts:          # a listed multi-letter single-dash option
-                return tok
+                return raw
             chars = tok[1:] if clusters else tok[1]
+            open_option = True
             for pos, ch in enumerate(chars):
                 opt = "-" + ch
                 if opt in takes_value:
                     attached = tok[2 + pos:] if clusters else tok[2:]
+                    if attached.startswith("="):      # clap: -s=value is -s value
+                        attached = attached[1:]
                     value = attached or nxt
-                    hit = judge(opt, value, tok if attached else "%s %s" % (tok, value))
+                    hit = judge(opt, value, raw if attached else "%s %s" % (raw, value))
                     if hit:
                         return hit
                     if not attached:
                         i += 1
+                    open_option = False
                     break
                 if opt in conflicts:
-                    return tok
+                    return raw
             i += 1
             continue
+        open_option = False
         i += 1
     return None
 
@@ -415,7 +464,7 @@ def interactive_argv(prep, head):
     segments = {
         "provider": prep.ctx.expand_list(prep.kind.data.get("args", [])),
         "session": sess,
-        "auto": posture_args(cli, prep.auto),
+        "auto": posture_args(cli, prep.auto, rest=head.rest),
     }
     return prep.ctx.expand_list(cli["interactive"], segments) + head.rest, False
 

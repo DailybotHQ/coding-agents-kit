@@ -68,11 +68,11 @@ scope_permissions() {
 
   # The flag wins over the environment; the environment wins over the default.
   out="$(ak AGENTKIT_PERMISSIONS=ask -- codex --auto)"
-  expect_eq "AGENTKIT_PERMISSIONS=ask wins over an explicit --auto (an agent cannot type its way out)" "$(argv_of "${out}")" "--ask-for-approval|on-request"
+  expect_eq "AGENTKIT_PERMISSIONS=ask wins over an explicit --auto (an agent cannot type its way out)" "$(argv_of "${out}")" "--ask-for-approval|on-request|--sandbox|workspace-write"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- codex --ask)"
-  expect_eq "--ask overrides AGENTKIT_PERMISSIONS=auto" "$(argv_of "${out}")" "--ask-for-approval|on-request"
+  expect_eq "--ask overrides AGENTKIT_PERMISSIONS=auto" "$(argv_of "${out}")" "--ask-for-approval|on-request|--sandbox|workspace-write"
   out="$(ak AGENTKIT_PERMISSIONS=ASK -- codex)"
-  expect_eq "AGENTKIT_PERMISSIONS is case-insensitive" "$(argv_of "${out}")" "--ask-for-approval|on-request"
+  expect_eq "AGENTKIT_PERMISSIONS is case-insensitive" "$(argv_of "${out}")" "--ask-for-approval|on-request|--sandbox|workspace-write"
   out="$(ak AGENTKIT_PERMISSIONS=yolo -- codex)"; status=$?
   expect_eq "an invalid AGENTKIT_PERMISSIONS is a usage error" "${status}" 2
   expect_has "the invalid value is explained" "${out}" "AGENTKIT_PERMISSIONS must be 'ask' or 'auto'"
@@ -126,7 +126,7 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
   # flag ("" = the CLI has none; omitting its autonomy flag is its ask mode).
   local -a asktable=(
     "claude|--permission-mode|default" "claude-glm|--permission-mode|default"
-    "codex|--ask-for-approval|on-request" "codex-glm|-p|glm|--ask-for-approval|on-request"
+    "codex|--ask-for-approval|on-request|--sandbox|workspace-write" "codex-glm|-p|glm|--ask-for-approval|on-request|--sandbox|workspace-write"
     "cursor|" "opencode|" "pi|" "cline|" "grok|--permission-mode|default" "antigravity|"
   )
   for row in "${asktable[@]}"; do
@@ -139,8 +139,8 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
   # Placement: where the autonomy flag would sit, after the session segment.
   local -a placed=(
     "claude -c|--continue|--permission-mode|default"
-    "codex -c|resume|--last|--ask-for-approval|on-request"
-    "codex -r abc|resume|abc|--ask-for-approval|on-request"
+    "codex -c|resume|--last|--ask-for-approval|on-request|--sandbox|workspace-write"
+    "codex -r abc|resume|abc|--ask-for-approval|on-request|--sandbox|workspace-write"
     "grok -c|--continue|--permission-mode|default"
   )
   for row in "${placed[@]}"; do
@@ -164,6 +164,10 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "opencode|--auto" "pi|--approve" "pi|-a" "cline|--yolo"
     "grok|--always-approve" "grok|--permission-mode|bypassPermissions"
     "antigravity|--dangerously-skip-permissions" "antigravity|--mode|auto"
+    "antigravity|-dangerously-skip-permissions" "antigravity|-mode|auto" "antigravity|-mode=auto"
+    "codex|-c=sandbox_mode=danger-full-access" "codex|-s=danger-full-access"
+    "codex|-c|profiles.x.sandbox_mode=danger-full-access" "codex|-c|profiles.x.approval_policy=never"
+    "claude|--model|--|--dangerously-skip-permissions"
   )
   local -a extra
   for row in "${undo[@]}"; do
@@ -188,17 +192,22 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "codex|-s|read-only" "codex|--sandbox=workspace-write" "codex|-c|model=o3" "codex|-cmodel_reasoning_effort=high"
     "codex|-pazure" "codex|danger-full-access" "codex|explain|--approve-for-me-docs" "codex|--|--yolo"
     "cursor|-w" "pi|-na" "pi|explain" "claude|-p|x"
+    "claude|--permission-mode|dontAsk" "codex|-s=read-only" "antigravity|-mode|plan" "claude|x|--|--dangerously-skip-permissions"
   )
   for row in "${allowed[@]}"; do
     k="${row%%|*}"; IFS='|' read -r -a extra <<<"${row#*|}"
     ak_split -- "${k}" --ask -- "${extra[@]}"; status=$?
     expect_eq "${k} --ask -- ${extra[*]}: allowed (exit 0)" "${status}" 0
   done
+  # A stricter sandbox the user passes replaces ak's pinned one (codex
+  # refuses the option twice).
+  out="$(ak -- codex --ask -- -s read-only)"
+  expect_eq "codex --ask -- -s read-only: the user's stricter sandbox replaces ak's" "$(argv_of "${out}")" "--ask-for-approval|on-request|-s|read-only"
   out="$(ak -- codex --ask -- -c model=o3)"
-  expect_eq "an unrelated config override passes untouched after the ask flag" "$(argv_of "${out}")" "--ask-for-approval|on-request|-c|model=o3"
+  expect_eq "an unrelated config override passes untouched after the ask flag" "$(argv_of "${out}")" "--ask-for-approval|on-request|--sandbox|workspace-write|-c|model=o3"
 
   # Headless (ak run) under the opt-out: the run scope's argv table (claude and
-  # grok carry their ask flag; codex exec takes none, providers.toml run.ask).
+  # grok carry their ask flag; codex exec pins only its sandbox, providers.toml run.ask).
 
   # The ask flags are data too: no code path spells one.
   if grep -rnE -- '--permission-mode|on-request|--ask-for-approval' "${ROOT}/lib" "${ROOT}/bin" >/dev/null; then

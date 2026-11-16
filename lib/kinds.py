@@ -230,8 +230,14 @@ class Model(object):
             if not isinstance(ask_config, dict) or set(ask_config) - {"options", "keys"} or not all(
                     isinstance(ask_config.get(f, []), list) for f in ("options", "keys")):
                 bad("%s.ask_config: needs options and keys lists" % where)
-            if not isinstance(cli.get("ask_clusters", False), bool):
-                bad("%s.ask_clusters must be true or false" % where)
+            for flag in ("ask_clusters", "ask_single_dash_long"):
+                if not isinstance(cli.get(flag, False), bool):
+                    bad("%s.%s must be true or false" % (where, flag))
+            ask_yield = cli.get("ask_yield", {})
+            if not isinstance(ask_yield, dict) or not all(
+                    k in cli.get("ask", []) and isinstance(v, list) and all(isinstance(x, str) for x in v)
+                    for k, v in ask_yield.items()):
+                bad("%s.ask_yield: must map an option of ask to the user spellings that replace it" % where)
             if cli.get("ask") and cli.get("session", {}).get("standalone"):
                 # A standalone session mode returns before {auto}: it would
                 # silently skip the ask flag.

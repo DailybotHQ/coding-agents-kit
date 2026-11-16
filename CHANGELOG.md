@@ -21,17 +21,22 @@ permission posture changes.
   autonomous mode (Claude's `defaultMode`, Codex's `approval_policy`) still
   started autonomous. `ak` now passes each CLI's explicit ask flag
   (`providers.toml` `ask`, `run.ask` for headless): Claude and Grok
-  `--permission-mode default`, Codex `--ask-for-approval on-request`
-  (interactive; `codex exec` takes none); CLIs without an ask flag are
+  `--permission-mode default`; Codex `--ask-for-approval on-request
+  --sandbox workspace-write` (the sandbox pinned too, so an account config
+  with `sandbox_mode = "danger-full-access"` cannot run unprompted commands
+  unsandboxed; `codex exec` gets `--sandbox workspace-write`; a stricter
+  sandbox the user passes replaces it); CLIs without an ask flag are
   unchanged.
 - **A user mode flag cannot undo the opt-out.** Under the opt-out, an
   argument after `--` that would loosen the CLI's permission or approval
   mode is a usage error (exit 2) and launches nothing: the autonomy flag and
   its relatives (`ask_conflicts`), a mode value outside the allowed stricter
-  ones (`ask_values`: Claude/Grok `plan`, Codex `read-only`, Antigravity
-  `plan` stay allowed), a Codex config override of `approval_policy` or
-  `sandbox_mode` (`ask_config`), in every spelling the CLI parses
-  (`--opt=value`, `-ovalue`, short clusters where accepted).
+  ones (`ask_values`: Claude/Grok `plan` and `dontAsk`, Codex `read-only`,
+  Antigravity `plan` stay allowed), a Codex config override of
+  `approval_policy` or `sandbox_mode`, profile-scoped keys included
+  (`ask_config`), in every spelling the CLI parses (`--opt=value`,
+  `-ovalue`, `-o=value`, short clusters where accepted, Antigravity's
+  Go-style `-opt`).
 - **`ak pick --json` delivers the mode it claims.** Under the opt-out,
   `launch.argv` now ends with `--ask`, so the suggested command asks even
   where `AGENTKIT_PERMISSIONS` is not inherited (`launch.permissions` was
