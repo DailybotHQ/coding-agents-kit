@@ -54,4 +54,4 @@ The test map lives in [`docs/TESTING_GUIDE.md`](docs/TESTING_GUIDE.md).
 
 Structured work runs through the installed `deepworkplan` skill (`.agents/skills/deepworkplan/`); plans live in the gitignored `.dwp/`; only the addon registry `.dwp/config.json` is tracked (see the skill's `spec/CONFIG.md`).
 
-DWP standard: 7.0.0 (onboarded 2026-10-08; upgraded 2026-10-09, 2026-10-11, 2026-10-12, 2026-10-13, 2026-10-25 and 2026-11-15; skill 7.10.1, vendored 2026-11-15 together with herdr-peers 1.2.1, the version the pack's Herdr addon pins)
+DWP standard: 7.0.0 (onboarded 2026-10-08; upgraded 2026-10-09, 2026-10-11, 2026-10-12, 2026-10-13, 2026-10-25 and 2026-11-15; skill 7.12.1, vendored 2026-11-15 together with herdr-peers 1.3.1, the version the pack's Herdr addon pins)
