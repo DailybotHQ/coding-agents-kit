@@ -137,6 +137,20 @@ the kinds sharing it. Each row carries the provider's **own windows** (5-hour,
 weekly, per model, tokens, MCP, …); `ak` never merges them into an invented
 quota. No account identity (e-mail, organisation, id) is read or shown.
 
+Rows may also carry an **`advisory`** block: the sums of this account's
+observed `ak run` token samples (the kit records what each run's CLI itself
+reported — a run that reported nothing is not counted, and nothing is ever
+imputed). `advisory` is `{runs, tokens, coverage}`: each field of `tokens`
+sums only the runs that reported that field, `coverage` says how many did,
+and a field no run reported is `null`, never `0` (an explicit zero is a
+report). Claude reports no total, so a Claude account's `total` stays `null`;
+totals are never built from the components. The sums cover the newest 5000
+observed runs of that account with **no time window** — they are not a
+quota window and not comparable to the vendor's 5-hour or weekly numbers. A
+provider kind's run (`claude-glm`, `codex-azure`, …) counts toward that
+provider key's row, not the CLI subscription's. Advisory sums never touch the vendor's quota windows, the
+capacity verdict or pick eligibility.
+
 Rows appear for: the CLI's own home (`@default`) when the CLI is installed,
 every profile directory, and every provider key that is set (`ZAI_CODING_API_KEY`
 and `ZAI_CODING_API_KEY_<SUFFIX>`). A provider with no key set has no row.

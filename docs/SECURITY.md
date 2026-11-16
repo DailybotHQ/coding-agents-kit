@@ -139,6 +139,14 @@ profile and its headroom, nothing else.
   words are refused. They grant nothing; an exclusive (Codex) lease keeps two
   writers off one `auth.json`. Changes run under a lock directory and are
   written atomically; expired leases are swept.
+- **Token samples** (`<state>/token-samples/<account>/`, `0600` files in a
+  `0700` directory): one immutable file per observed `ak run --output-format
+  json` run, holding **counts only** — the CLI and profile names, the five
+  reported token fields (null when unreported) and the time; never a prompt,
+  answer, transcript, model payload, key or path. Written under a unique name
+  (no read-modify-write, safe under concurrent runs), pruned past the newest
+  5000 per account. Read only by `ak usage` for its `advisory` block, which
+  never reaches the usage cache, `ak capacity` or `ak pick`.
 - **Accounts:** work moves only among the accounts you declared for the work,
   within each vendor's terms; no agent creates an account, renews a login or
   spends a Codex reset.
