@@ -321,15 +321,15 @@ PY
   else fail "_alive on Windows never calls os.kill"
   fi
 
-  # --- the changelog entry lives under [Unreleased], not [1.3.0] -----------
+  # --- the updater first ships in [1.4.0], not historical [1.3.0] ----------
   check "the release section [1.3.0] exists" grep -q '^## \[1.3.0\]' "${ROOT}/CHANGELOG.md"
-  check "ak update is documented under [Unreleased], before [1.3.0]" python3 -c "
+  check "ak update is documented under [1.4.0], before [1.3.0]" python3 -c "
 import sys
 text = open('${ROOT}/CHANGELOG.md').read()
-unreleased = text.index('## [Unreleased]')
-release = text.index('## [1.3.0]')
-entry = text.index('\`ak update\` (\`lib/update.py\`', unreleased)
-assert unreleased < entry < release, 'the ak update entry must sit under [Unreleased]'
+release = text.index('## [1.4.0]')
+previous = text.index('## [1.3.0]')
+entry = text.index('\`ak update\` (\`lib/update.py\`', release)
+assert release < entry < previous, 'the ak update entry must sit under [1.4.0]'
 "
   tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
 

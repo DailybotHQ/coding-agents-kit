@@ -13,6 +13,13 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-11-16
+
+A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and
+`ak run` retain their existing contracts. `ak update` adds the separately
+versioned `update-v1` envelope; doctor adds compatible version diagnostics
+to compare the executable on PATH with the kit pin.
+
 ### Added
 - **`ak update` (`lib/update.py`, `docs/update.md`, `docs/schema/update-v1.json`):**
   bring a CLI to the vendor's newest release without waiting for a kit
@@ -765,7 +772,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...v1.1.0
