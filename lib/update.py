@@ -82,15 +82,18 @@ def parse_args(args):
     return opts
 
 
-def _vkey(text):
-    """(key, exact) from a --version banner: the FIRST token must be a
-    version (an optional v, optional +build metadata), so prose like
-    "requires Node 99.0.0" parses as nothing instead of a newer release.
-    exact is False when the token carries a suffix (0.169.0-alpha); only an
-    exact match may take the no-install shortcut, and ordering stays
-    conservative on the numeric part. (None, False) when unparsable."""
-    token = (text or "").strip().split()
-    found = _VERSION_RE.match(token[0]) if token else None
+def _vkey(text, labels=()):
+    """(key, exact) from a --version banner: an optional whitelisted CLI
+    label token (codex's banner is "codex-cli X.Y.Z"), then a version token
+    (an optional v, optional +build metadata) — prose like "requires Node
+    99.0.0" parses as nothing instead of a newer release. exact is False
+    when the token carries a suffix (0.169.0-alpha); only an exact match
+    may take the no-install shortcut, and ordering stays conservative on
+    the numeric part. (None, False) when unparsable."""
+    tokens = (text or "").strip().split()
+    if tokens and tokens[0].lower() in labels:
+        tokens = tokens[1:]
+    found = _VERSION_RE.match(tokens[0]) if tokens else None
     if not found:
         return None, False
     key = tuple(int(part) for part in found.group(1).split("."))
@@ -128,8 +131,11 @@ def discover(inst, explicit, env):
     if kind_ == "npm":
         url = "%s/%s/%s" % (installer.NPM_REGISTRY, inst["package"], explicit or "latest")
         doc = _fetch_json(url, env)
+        if not isinstance(doc, dict):
+            raise AkError("the registry document for %s is not a JSON object" % inst["package"], EXIT_NOT_READY)
         version = explicit or doc.get("version")
-        integrity = (doc.get("dist") or {}).get("integrity")
+        dist = doc.get("dist")
+        integrity = dist.get("integrity") if isinstance(dist, dict) else None
         if not version or not integrity:
             raise AkError("the registry document for %s names no version or integrity" % inst["package"], EXIT_NOT_READY)
         return str(version), {"integrity": str(integrity)}
@@ -138,11 +144,16 @@ def discover(inst, explicit, env):
         if not version or "/" in version or "{" in version or len(version) > 40:
             raise AkError("the channel file at %s names no version (got %r)" % (latest["channel"], version[:40]), EXIT_NOT_READY)
         manifest = _fetch_json(latest["manifest"].replace("{version}", version), env)
-        vendors = manifest.get("platforms") or {}
+        if not isinstance(manifest, dict):
+            raise AkError("the manifest for %s is not a JSON object" % version, EXIT_NOT_READY)
+        vendors = manifest.get("platforms")
+        if not isinstance(vendors, dict):
+            raise AkError("the manifest for %s names no platforms object" % version, EXIT_NOT_READY)
         platforms = inst.get("platforms") or {}
         digests = {}
         for plat, token in platforms.items():
-            checksum = (vendors.get(token) or {}).get("checksum")
+            entry = vendors.get(token)
+            checksum = entry.get("checksum") if isinstance(entry, dict) else None
             if checksum:
                 digests[plat] = checksum
         missing = [plat for plat in platforms if plat not in digests]
@@ -178,9 +189,10 @@ def _npm_prefix_bin(env):
     return os.path.join(prefix, "bin")
 
 
-_VERSION_OK = re.compile(r"[0-9A-Za-z._+~/-]+\Z")
+_VERSION_OK = re.compile(r"\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z")
 _INTEGRITY_OK = re.compile(r"sha512-[A-Za-z0-9+/]+={0,2}\Z")
 _SHA256_OK = re.compile(r"[0-9a-f]{64}\Z")
+_VERSION_MAX = 32
 
 
 def pin_value_problems(new_version, verification):
@@ -189,10 +201,14 @@ def pin_value_problems(new_version, verification):
     or digest carrying a quote, a newline or any character a TOML string
     cannot hold would inject configuration — npm_args with an attacker
     registry is the nightmare — so anything outside the strict shapes
-    refuses the whole write."""
+    refuses the whole write. The version is strict semver (X.Y.Z with
+    optional -pre and +build, at most 32 characters): no path segments, so
+    a crafted version cannot steer the tarball URL, and it always parses
+    for the downgrade checks."""
     problems = []
-    if not _VERSION_OK.match(new_version or ""):
-        problems.append("the discovered version is not a plain version string")
+    if len(new_version or "") > _VERSION_MAX or not _VERSION_OK.match(new_version or ""):
+        problems.append("the discovered version is not a plain semver (X.Y.Z[-pre][+build], at most %d characters)"
+                        % _VERSION_MAX)
     if verification.get("integrity") is not None and not _INTEGRITY_OK.match(str(verification["integrity"])):
         problems.append("the fetched integrity is not sha512-<base64>")
     for plat, digest in (verification.get("sha256") or {}).items():
@@ -228,40 +244,116 @@ def _verify_artifact(cli_name, cand, env):
 class PinLock(object):
     """The providers.toml read-modify-write and the install it describes are
     one critical section: two concurrent `ak update` runs must not interleave
-    an install with another's re-pin. A lock file next to providers.toml
-    carries the holding pid; a lock older than ten minutes is stale and is
-    removed once, anything fresher refuses."""
+    an install with another's re-pin, and a stale lock must never let two
+    runs hold the pin at once. Every enter runs under a short-lived guard
+    file (`providers.toml.lock-guard`): the staleness decision, the claim of
+    a stale lock by atomic rename, and the acquisition itself all happen
+    while holding the guard — so of two racing runs exactly one decides, and
+    the other then sees a live holder and refuses. The lock file names the
+    holding pid: a LIVE holder refuses however old the file is (a long npm
+    install must not lose its lock); a run on exit removes only a lock that
+    still names its own pid. AK_UPDATE_TEST_PAUSE_S (test-only) widens the
+    decide window so a second process can be interleaved deterministically."""
 
-    PATH = os.path.join(common.KIT_ROOT, "providers.toml.lock")
-    STALE_S = 600
+    NAME = "providers.toml.lock"
+    GUARD = "providers.toml.lock-guard"
+    TRIES = 4
+    GUARD_TRIES = 120                     # 120 * 25 ms = 3 s for the guard
+    GUARD_STEP_S = 0.025
+    PAUSE_S = float(os.environ.get("AK_UPDATE_TEST_PAUSE_S") or 0)
+
+    def __init__(self):
+        self.root = common.KIT_ROOT
+        self.path = os.path.join(self.root, self.NAME)
+        self.guard = os.path.join(self.root, self.GUARD)
+        self.mine = False
+        self.aside = None
+
+    @staticmethod
+    def _holder_pid(path):
+        try:
+            with open(path, "r", encoding="utf-8") as fh:
+                return int(fh.read().split()[0])
+        except (OSError, ValueError, IndexError):
+            return None
+
+    @staticmethod
+    def _alive(pid):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except OSError:
+            return pid > 0
+        return True
 
     def _acquire(self):
-        fd = os.open(self.PATH, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+        fd = os.open(self.path, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
         os.write(fd, ("%d %d\n" % (os.getpid(), int(time.time()))).encode())
         os.close(fd)
+        self.mine = True
 
-    def __enter__(self):
-        self.PATH = os.path.join(common.KIT_ROOT, "providers.toml.lock")
+    def _drop(self, path):
         try:
-            self._acquire()
-        except FileExistsError:
-            try:
-                age = time.time() - os.stat(self.PATH).st_mtime
-            except OSError:
-                age = 0
-            if age > self.STALE_S:
-                os.remove(self.PATH)
-                self._acquire()
-            else:
-                raise AkError("another ak update holds the pin lock (%s, %d s old); "
-                              "if no update is running, remove it" % (self.PATH, int(age)), EXIT_NOT_READY)
-        return self
-
-    def __exit__(self, *exc):
-        try:
-            os.remove(self.PATH)
+            os.remove(path)
         except OSError:
             pass
+
+    def _take_guard(self):
+        for _ in range(self.GUARD_TRIES):
+            try:
+                fd = os.open(self.guard, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            except FileExistsError:
+                # The guard is never auto-reclaimed: a second reclaimer
+                # would move a live guard aside and the race would simply
+                # move up a level. A crashed decider leaves a guard nobody
+                # holds; repairing that stays a named human action.
+                time.sleep(self.GUARD_STEP_S)
+                continue
+            os.write(fd, ("%d %d\n" % (os.getpid(), int(time.time()))).encode())
+            os.close(fd)
+            return
+        pid = self._holder_pid(self.guard)
+        raise AkError("another ak update is deciding on the pin lock (%s%s); if no update is "
+                      "running, remove the stale guard: rm %s"
+                      % (self.guard, " (pid %d)" % pid if pid else "", self.guard), EXIT_NOT_READY)
+
+    def __enter__(self):
+        self._take_guard()
+        try:
+            if self.PAUSE_S:
+                time.sleep(self.PAUSE_S)   # test-only: widen the decide window
+            for _ in range(self.TRIES):
+                try:
+                    self._acquire()
+                    return self
+                except FileExistsError:
+                    pass
+                pid = self._holder_pid(self.path)
+                if pid is not None and self._alive(pid):
+                    raise AkError("another ak update holds the pin lock (%s, pid %d); "
+                                  "if no update is running, remove it" % (self.path, pid), EXIT_NOT_READY)
+                # Stale or unreadable: claim it by atomic rename — of two
+                # racing claims exactly one succeeds, and the loser finds no
+                # lock and simply creates its own.
+                self.aside = "%s.stale-%d-%d" % (self.path, os.getpid(), int(time.time()))
+                try:
+                    os.rename(self.path, self.aside)
+                except FileNotFoundError:
+                    continue
+                self._acquire()
+                return self
+            raise AkError("another ak update holds the pin lock (%s); "
+                          "if no update is running, remove it" % self.path, EXIT_NOT_READY)
+        finally:
+            if self._holder_pid(self.guard) == os.getpid():
+                self._drop(self.guard)
+
+    def __exit__(self, *exc):
+        if self.mine and self._holder_pid(self.path) == os.getpid():
+            self._drop(self.path)
+        if self.aside:
+            self._drop(self.aside)
         return False
 
 
@@ -282,6 +374,8 @@ def update_one(model, cli_name, opts, env):
         return result
     before_exe = common.resolve_executable(cli, env)
     before = _resolved_version(before_exe)
+    labels = {cli_name.lower(), (cli_name + "-cli").lower(), str(cli.get("executable", "")).lower()}
+    labels.discard("")
     try:
         new_version, verification = discover(inst, opts["version"], env)
     except AkError as exc:
@@ -300,7 +394,7 @@ def update_one(model, cli_name, opts, env):
         result["status"] = "skipped"
         result["note"] = "refusing a downgrade: the pin (%s) is newer than %s; pass --version to name it" % (pin, new_version)
         return result
-    resolved_key, resolved_exact = _vkey(before)
+    resolved_key, resolved_exact = _vkey(before, labels)
     if resolved_key is not None and new_key is not None and resolved_key > new_key:
         result["status"] = "skipped"
         result["note"] = "PATH already resolves %s, newer than %s; refusing to downgrade it" % (before, new_version)
@@ -316,6 +410,7 @@ def update_one(model, cli_name, opts, env):
         cand.update(verification)
         try:
             if not _verify_artifact(cli_name, cand, env):
+                result["status"] = "failed"
                 result["note"] = "the release on PATH did not match the vendor's published digest; the pin is unchanged"
                 return result
         except AkError as exc:
@@ -326,21 +421,31 @@ def update_one(model, cli_name, opts, env):
 
     # The binary channel writes ~/.local/bin/<executable>: a vendor-managed
     # symlink there (Claude's native installer) is replaced only on purpose,
-    # and a foreign regular file is backed up, never deleted.
+    # and a foreign regular file is backed up, never deleted. Whatever this
+    # run replaces is recorded so a shadowed install can be rolled back: the
+    # durable `.agentkit-orig` keeps the first state ever seen, and an
+    # ephemeral `.agentkit-undo` snapshot (rewritten every attempt) holds
+    # the immediately previous bytes, which is what a rollback restores.
     extra = ""
     dest = os.path.join(installer.bin_dir(), cli["executable"]) if inst.get("channel") == "binary" else None
+    old_link = None
+    backup_path = None
+    undo_path = None
     if dest is not None and os.path.islink(dest):
         if not opts["take_over"]:
             result["status"] = "skipped"
             result["note"] = "%s is a link ak did not make (-> %s); rerun with --take-over to replace it" % (
                 dest, os.readlink(dest))
             return result
-        extra = " (took over %s, was a link to %s)" % (dest, os.readlink(dest))
+        old_link = os.readlink(dest)
+        extra = " (took over %s, was a link to %s)" % (dest, old_link)
     elif dest is not None and os.path.exists(dest):
-        backup = dest + ".agentkit-orig"
-        if not os.path.exists(backup):
-            shutil.copy2(dest, backup)
-            extra = " (the previous %s is kept at %s)" % (dest, backup)
+        backup_path = dest + ".agentkit-orig"
+        if not os.path.exists(backup_path):
+            shutil.copy2(dest, backup_path)
+            extra = " (the previous %s is kept at %s)" % (dest, backup_path)
+        undo_path = dest + ".agentkit-undo"
+        shutil.copy2(dest, undo_path)
 
     cand = dict(inst)
     cand["version"] = new_version
@@ -388,19 +493,55 @@ def update_one(model, cli_name, opts, env):
             after_version = _resolved_version(after)
             extra = " (took over %s, now a link to %s)" % (after, expected)
     result["resolution"] = after or ""
-    effective, _ = _vkey(after_version)
-    if after is None or (new_key is not None and effective is not None and effective < new_key):
+    effective, _ = _vkey(after_version, labels)
+    if after is None or new_key is None or effective is None or effective < new_key:
         # A parseable older banner is a shadowed install (the gap that makes
-        # a vendor's in-CLI update a lie); an unparsable banner is trusted to
-        # the verification that already happened.
+        # a vendor's in-CLI update a lie), and an unparsable one cannot prove
+        # that PATH resolves the new release at all — neither may count as
+        # success. A binary take-over that ended unverifiable is rolled back:
+        # the machine must not keep a new binary the pin does not describe.
+        rolled = ""
+        if dest is not None and old_link is not None:
+            try:
+                staged = dest + ".agentkit-new"
+                if os.path.lexists(staged):
+                    os.remove(staged)
+                os.symlink(old_link, staged)
+                os.replace(staged, dest)
+                result["resolution"] = dest
+                rolled = "rolled back: %s is the vendor's link again" % dest
+            except OSError as exc:
+                rolled = "the rollback itself failed (%s): %s holds the new binary while PATH resolves an older copy" % (exc, dest)
+        elif dest is not None and undo_path is not None and os.path.exists(undo_path):
+            try:
+                # Restore the immediately previous bytes, never an older
+                # generation: the durable .agentkit-orig may date back
+                # several updates.
+                shutil.copy2(undo_path, dest)
+                result["resolution"] = dest
+                rolled = "rolled back: the previous binary is back at %s" % dest
+                os.remove(undo_path)
+            except OSError as exc:
+                rolled = "the rollback itself failed (%s): %s holds the new binary while PATH resolves an older copy" % (exc, dest)
         result["status"] = "skipped"
-        result["note"] = "installed %s, but PATH still resolves %s%s; rerun with --take-over" % (
-            new_version, after_version or "nothing", (" at %s" % after) if after else "")
+        if effective is None or new_key is None:
+            reason = ("could not establish what PATH resolves (%s --version printed %r)"
+                      % (after or "nothing", (after_version or "")[:40]))
+        else:
+            reason = "PATH still resolves %s" % (after_version or "nothing")
+        location = " at %s" % after if after else ""
+        if rolled:
+            result["note"] = "installed %s, but %s%s; %s; the pin is unchanged" % (new_version, reason, location, rolled)
+        else:
+            result["note"] = "installed %s, but %s%s; the pin is unchanged; rerun with --take-over" % (
+                new_version, reason, location)
         return result
     if after_version:
         result["note"] = "%s -> %s%s" % (before or "?", after_version, extra)
     elif extra:
         result["note"] = extra.strip()
+    if undo_path is not None:
+        os.remove(undo_path)   # the snapshot matched the installed release; stale now
     result["status"] = "updated"
     return _repin(result, model, cli_name, inst, new_version, verification)
 

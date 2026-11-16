@@ -43,7 +43,11 @@ doctor, `ak install` and the next update agree.
 5. **Re-pin** — the verified version and digests are written back into this
    kit's `providers.toml` atomically (parsed before it replaces the old
    file; the previous file is kept as `providers.toml.bak`), so `ak doctor`,
-   `ak install` and the next `ak update` describe the same pin.
+   `ak install` and the next `ak update` describe the same pin. The
+   no-install "current" path also downloads the release and verifies it
+   before re-pinning. The digests for platforms other than this machine's
+   are the vendor manifest's own values; the install on each of those
+   platforms verifies its artifact against its entry before anything runs.
 
 ## Refusals
 

@@ -41,6 +41,7 @@ if [ "$1" = "install" ]; then
   cp -R "$tmp"/package/bin/. "${FAKE_NPM_PREFIX}/bin/" || { rm -rf "$tmp"; exit 1; }
   chmod -R +x "${FAKE_NPM_PREFIX}/bin" 2>/dev/null
   rm -rf "$tmp"
+  echo "npm: installing to ${FAKE_NPM_PREFIX} (progress line on stdout)"
   exit 0
 fi
 exit 0
@@ -79,6 +80,8 @@ PY
   pin0="$(field_of "${ROOT}/providers.toml" codex version)"
   local claude_sha0
   claude_sha0="$(field_of "${ROOT}/providers.toml" claude sha256)"
+  local claude_pin0
+  claude_pin0="$(field_of "${ROOT}/providers.toml" claude version)"
   update_fakes
 
   # The kit, installed once; every ak below is the installed copy.
@@ -99,7 +102,7 @@ PY
   # Fixtures. codex: registry doc (9.9.9) + a real tarball whose integrity
   # matches it. claude: a channel file (9.8.7), a manifest naming a digest
   # for every platform token, and the same artifact for each platform URL.
-  printf '#!/bin/sh\necho 0.166.0\n' > "${BOX}/vendor/codex-standalone/current/bin/codex"
+  printf '#!/bin/sh\necho "codex-cli 0.166.0"\n' > "${BOX}/vendor/codex-standalone/current/bin/codex"
   printf '#!/bin/sh\necho 9.9.9\n' > "${BOX}/build/package/bin/codex"
   printf '{"name":"@openai/codex","version":"1.0.0"}\n' > "${BOX}/build/package/package.json"
   chmod +x "${BOX}/vendor/codex-standalone/current/bin/codex" "${BOX}/build/package/bin/codex"
@@ -131,7 +134,7 @@ PY
   ak_up -- update codex; status=$?
   out="$(cat "${BOX}/out")"
   expect_eq "codex shadowed install is reported skipped" "${status}" 3
-  expect_has "the note names the shadowed winner" "${out}" "installed 9.9.9, but PATH still resolves 0.166.0"
+  expect_has "the note names the shadowed winner (labelled banner parsed)" "${out}" "installed 9.9.9, but PATH still resolves codex-cli 0.166.0"
   expect_has "the note offers --take-over" "${out}" "rerun with --take-over"
   check "the pin did not move" test "$(field_of "${dest}/providers.toml" codex version)" = "${pin0}"
   check "no backup was made for a refused update" test ! -e "${dest}/providers.toml.bak"
@@ -187,15 +190,65 @@ PY
     "current+true"
   check "the pin moved to the verified release" grep -q 'version = "9.9.9"' "${dest}/providers.toml"
 
-  # --- the pin lock: a fresh lock refuses, a stale one is reclaimed --------
-  : > "${dest}/providers.toml.lock"
-  ak_up -- update codex; status=$?
-  expect_eq "a fresh pin lock refuses the update" "${status}" 3
-  expect_has "the lock refusal names the lock" "$(cat "${BOX}/err")" "holds the pin lock"
+  # --- the pin lock: a live holder refuses, a dead one is reclaimed --------
+  printf '%d 1\n' "$$" > "${dest}/providers.toml.lock"
   touch -t 202601010000 "${dest}/providers.toml.lock"
   ak_up -- update codex; status=$?
-  expect_eq "a stale pin lock is reclaimed" "${status}" 0
+  expect_eq "a lock naming a live pid refuses however old it is" "${status}" 3
+  expect_has "the lock refusal names the holder pid" "$(cat "${BOX}/err")" "holds the pin lock"
+  check "the live holder's lock is not removed behind its back" test -e "${dest}/providers.toml.lock"
+  printf '999999 1\n' > "${dest}/providers.toml.lock"
+  touch -t 202601010000 "${dest}/providers.toml.lock"
+  ak_up -- update codex; status=$?
+  expect_eq "a lock naming a dead pid is reclaimed" "${status}" 0
   check "the reclaimed lock is cleaned up" test ! -e "${dest}/providers.toml.lock"
+
+  # --- a stale guard refuses with a named repair, never auto-reclaims -----
+  printf '999999 1\n' > "${dest}/providers.toml.lock-guard"
+  ak_up -- update codex; status=$?
+  expect_eq "a stale guard refuses the update" "${status}" 3
+  expect_has "the stale guard names the repair" "$(cat "${BOX}/err")" "remove the stale guard"
+  rm -f "${dest}/providers.toml.lock-guard"
+
+  # --- two processes cannot both hold the pin lock -------------------------
+  # P1 takes the guard and pauses inside its decide window over a stale
+  # lock; P2 must wait on the guard, then see P1's live pin lock and refuse
+  # (the QA-reported race: the old rename-aside let both enter).
+  printf '999999 1\n' > "${dest}/providers.toml.lock"
+  cat > "${BOX}/p1.py" <<'PY'
+import os, sys, time
+sys.path.insert(0, sys.argv[1])
+import update
+from common import AkError
+try:
+    with update.PinLock():
+        print("entered")
+        time.sleep(1.2)
+except AkError as exc:
+    print("refused: %s" % exc)
+    sys.exit(3)
+PY
+  cp "${BOX}/p1.py" "${BOX}/p2.py"
+  AK_UPDATE_TEST_PAUSE_S=0.6 AGENTKIT_ROOT="${dest}" python3 "${BOX}/p1.py" "${dest}/lib" >"${BOX}/p1.out" 2>&1 &
+  local p1=$!
+  sleep 0.2
+  AK_UPDATE_TEST_PAUSE_S=0 AGENTKIT_ROOT="${dest}" python3 "${BOX}/p2.py" "${dest}/lib" >"${BOX}/p2.out" 2>&1 &
+  local p2=$!
+  wait "${p1}"; local r1=$?
+  wait "${p2}"; local r2=$?
+  expect_eq "the first racer holds the pin lock" "${r1}" 0
+  expect_eq "the second racer refuses" "${r2}" 3
+  expect_has "the winner entered the pin lock" "$(cat "${BOX}/p1.out")" "entered"
+  expect_has "the loser was refused with the holder pid" "$(cat "${BOX}/p2.out")" "holds the pin lock"
+  check "no lock file outlives the two racers" test ! -e "${dest}/providers.toml.lock"
+
+  # --- the no-install path refuses a failed verification -------------------
+  printf 'tampered tarball bytes\n' > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
+  ak_up -- update codex; status=$?
+  expect_eq "the no-install run fails a mismatched artifact" "${status}" 3
+  expect_has "the failure says the pin is unchanged" "$(cat "${BOX}/out")" "the pin is unchanged"
+  check "the pin survived the failed verification" grep -q 'version = "9.9.9"' "${dest}/providers.toml"
+  tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
 
   # --- codex: network values that are not plain data refuse everything -----
   python3 - "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')" <<'PY'
@@ -206,10 +259,37 @@ json.dump(doc, open(sys.argv[1], "w"))
 PY
   ak_up -- update codex --take-over; status=$?
   expect_eq "an injecting integrity is refused" "${status}" 3
-  expect_has "the refusal names the bad value" "$(cat "${BOX}/out")" "not sha512-<base64>"
+  # --- hostile JSON shapes fail one CLI without aborting the list ---------
+  printf '[]\n' > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
+  printf '[]\n' > "$(netfile 'https://registry.npmjs.org/@openai/opencode-ai/latest')"
+  ak_up -- update codex opencode --json; status=$?
+  expect_eq "hostile registry shapes fail their CLIs, not the command" "${status}" 3
+  expect_eq "both results are reported (one malformed CLI does not abort the list)" \
+    "$(json_get "${BOX}/out" 'len(d["results"])')" "2"
+  expect_has "the array document is refused as data" "$(cat "${BOX}/out")" "not a JSON object"
+  python3 - "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')" <<'PY'
+import json, sys
+json.dump({"version": "9.9.9", "dist": ["unexpected"]}, open(sys.argv[1], "w"))
+PY
+  ak_up -- update codex --json; status=$?
+  expect_eq "a non-object dist fails as an AkError result" "${status}" 3
+  expect_has "the missing integrity is reported" "$(cat "${BOX}/out")" "names no version or integrity"
+  printf '{"version":"9.9.9","dist":{"integrity":"%s"}}\n' "${intg}" \
+    > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
+  expect_has "the refusal names the missing integrity" "$(cat "${BOX}/out")" "names no version or integrity"
   check "providers.toml carries no injected configuration" bash -c "! grep -q 'attacker.invalid' '${dest}/providers.toml'"
   check "the pin survived the injection attempt" grep -q 'version = "9.9.9"' "${dest}/providers.toml"
   expect_eq "the vendor link survived the injection attempt" "$(readlink "${BOX}/bin/codex")" "${FAKE_NPM_PREFIX}/bin/codex"
+  python3 - "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')" <<'PY'
+import json, sys
+json.dump({"version": "9.9.9/../../evil", "dist": {"integrity": "sha512-notused"}}, open(sys.argv[1], "w"))
+PY
+  : > "${FAKE_NET_LOG}"
+  ak_up -- update codex --take-over; status=$?
+  expect_eq "a path-like version is refused" "${status}" 3
+  expect_has "the traversal refusal names the shape" "$(cat "${BOX}/out")" "not a plain semver"
+  check "no tarball URL was built from the crafted version" bash -c "! grep -q '.tgz' '${FAKE_NET_LOG}'"
+  tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
 
   # --- codex: downgrades are refused --------------------------------------
   printf '{"version":"9.5.0","dist":{"integrity":"sha512-notused"}}\n' \
@@ -250,6 +330,20 @@ for t in ("linux-x64", "linux-arm64", "darwin-x64", "darwin-arm64"):
     doc["platforms"][t] = {"checksum": sys.argv[2]}
 json.dump(doc, open(sys.argv[1], "w"))
 PY
+  # --- claude: a shadowed take-over rolls the binary back ------------------
+  # A blocker earlier on PATH resolves an older parseable version, so the
+  # take-over installs 9.8.7 and then finds PATH still resolving 1.0.0: the
+  # run must roll the binary back (vendor link restored, pin unmoved).
+  mv "${BOX}/bin/claude" "${BOX}/bin/claude.fake"
+  printf '#!/bin/sh\necho "1.0.0 (Claude Code)"\n' > "${BOX}/bin/claude"
+  chmod +x "${BOX}/bin/claude"
+  ak_up -- update claude --take-over; status=$?
+  expect_eq "a shadowed binary take-over is reported skipped" "${status}" 3
+  expect_has "the note says the binary was rolled back" "$(cat "${BOX}/out")" "rolled back"
+  expect_eq "the vendor link is restored" "$(readlink "${BOX}/home/.local/bin/claude")" "${BOX}/vendor/claude-native/2.1.325/claude"
+  check "the pin did not move for a rolled-back install" test "$(field_of "${dest}/providers.toml" claude version)" = "${claude_pin0}"
+  rm -f "${BOX}/bin/claude"
+
   ak_up -- update claude; status=$?
   expect_eq "claude's vendor link is refused without --take-over" "${status}" 3
   expect_has "the refusal names the link and its target" "$(cat "${BOX}/out")" "is a link ak did not make"
@@ -263,6 +357,53 @@ PY
   check "the manifest digests re-pinned under the kit's platform names" \
     grep -q "macos-arm64 = \"${sha}\"" "${dest}/providers.toml"
   check "the old claude digest is gone" bash -c "! grep -q '${claude_sha0}' '${dest}/providers.toml'"
+
+  # --- claude: an unparsable winner cannot count as success ----------------
+  # Whatever PATH resolves must prove it is the new release; garbage output
+  # cannot, so the run is skipped, the binary is rolled back, the pin is
+  # unchanged.
+  printf '#!/bin/sh\necho claude-gibberish\n' > "${BOX}/build/claude-artifact"
+  sha_g="$(python3 -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "${BOX}/build/claude-artifact")"
+  for plat in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+    cp "${BOX}/build/claude-artifact" "$(netfile "https://downloads.claude.ai/claude-code-releases/9.8.8/${plat}/claude")"
+  done
+  printf '{"platforms":{"linux-x64":{"checksum":"%s"},"linux-arm64":{"checksum":"%s"},"darwin-x64":{"checksum":"%s"},"darwin-arm64":{"checksum":"%s"}}}\n' \
+    "${sha_g}" "${sha_g}" "${sha_g}" "${sha_g}" \
+    > "$(netfile 'https://downloads.claude.ai/claude-code-releases/9.8.8/manifest.json')"
+  printf '9.8.8\n' > "$(netfile 'https://downloads.claude.ai/claude-code-releases/latest')"
+  ak_up -- update claude; status=$?
+  expect_eq "an unparsable winner is a skipped update" "${status}" 3
+  expect_has "the note says the release cannot be established" "$(cat "${BOX}/out")" "could not establish"
+  expect_eq "the previous binary is back" "$(box_run -- "${BOX}/home/.local/bin/claude" --version)" "9.8.7 (Claude Code)"
+  check "the pin survived the unverifiable install" test "$(field_of "${dest}/providers.toml" claude version)" = "9.8.7"
+  # restore the 9.8.7 fixtures and the machine the later checks expect
+  printf '#!/bin/sh\necho "9.8.7 (Claude Code)"\n' > "${BOX}/build/claude-artifact"
+  sha="$(python3 -c "import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],'rb').read()).hexdigest())" "${BOX}/build/claude-artifact")"
+  for plat in linux-x64 linux-arm64 darwin-x64 darwin-arm64; do
+    cp "${BOX}/build/claude-artifact" "$(netfile "https://downloads.claude.ai/claude-code-releases/9.8.7/${plat}/claude")"
+  done
+  printf '{"platforms":{"linux-x64":{"checksum":"%s"},"linux-arm64":{"checksum":"%s"},"darwin-x64":{"checksum":"%s"},"darwin-arm64":{"checksum":"%s"}}}\n' \
+    "${sha}" "${sha}" "${sha}" "${sha}" \
+    > "$(netfile 'https://downloads.claude.ai/claude-code-releases/9.8.7/manifest.json')"
+  printf '9.8.7\n' > "$(netfile 'https://downloads.claude.ai/claude-code-releases/latest')"
+  rm -f "${BOX}/home/.local/bin/claude.agentkit-orig"
+  printf '#!/bin/sh\necho "9.8.7 (Claude Code)"\n' > "${BOX}/home/.local/bin/claude"
+  chmod +x "${BOX}/home/.local/bin/claude"
+
+  # --- rollback restores the immediately previous bytes -------------------
+  # The durable .agentkit-orig may be generations old; the rollback must
+  # restore the state this update replaced, not that older generation.
+  printf '#!/bin/sh\necho "1.0.0 (Claude Code)"\n' > "${BOX}/bin/claude"
+  chmod +x "${BOX}/bin/claude"
+  printf '#!/bin/sh\necho "2.1.325 (Claude Code)"\n' > "${BOX}/home/.local/bin/claude"
+  chmod +x "${BOX}/home/.local/bin/claude"
+  printf '#!/bin/sh\necho "1.0.0-ancient"\n' > "${BOX}/home/.local/bin/claude.agentkit-orig"
+  chmod +x "${BOX}/home/.local/bin/claude.agentkit-orig"
+  ak_up -- update claude; status=$?
+  expect_eq "a shadowed regular-file install is skipped" "${status}" 3
+  expect_eq "the rollback restores the immediate previous binary" "$(box_run -- "${BOX}/home/.local/bin/claude" --version)" "2.1.325 (Claude Code)"
+  expect_eq "the durable backup is untouched" "$(box_run -- "${BOX}/home/.local/bin/claude.agentkit-orig" --version)" "1.0.0-ancient"
+  rm -f "${BOX}/bin/claude" "${BOX}/home/.local/bin/claude.agentkit-orig"
 
   # --- claude: a foreign regular file is backed up, never deleted ---------
   cp "${BOX}/vendor/claude-native/2.1.325/claude" "${BOX}/home/.local/bin/claude"
