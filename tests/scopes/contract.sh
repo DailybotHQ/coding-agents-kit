@@ -107,7 +107,7 @@ scope_contract() {
   # §2.1 ak run: exit codes and envelope keys.
   ak_split FAKE_MODE=headless -- run claude --output-format json -- x
   expect_eq "§2.1 ak run --output-format json: exactly the frozen keys" \
-    "$(json_get "${BOX}/out" 'sorted(d)')" '["cli_exit", "cwd", "duration_s", "exit", "interface", "kind", "profile", "result_text", "truncated"]'
+    "$(json_get "${BOX}/out" 'sorted(d)')" '["cli_exit", "cwd", "duration_s", "exit", "interface", "kind", "profile", "result_text", "tokens", "truncated"]'
   check "§2.1 ak run exit codes 0 1 2 3 4 5 and >= 64 are defined" "${AK_PY}" -c '
 import sys; sys.path.insert(0, sys.argv[1] + "/lib"); import common as c
 assert (c.EXIT_OK, c.EXIT_AGENT_FAILED, c.EXIT_USAGE, c.EXIT_NOT_READY, c.EXIT_TIMEOUT, c.EXIT_CANCELLED) == (0, 1, 2, 3, 4, 5)

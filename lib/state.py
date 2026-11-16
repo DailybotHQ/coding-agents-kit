@@ -145,3 +145,93 @@ def cache_get(env, cli, profile, now, max_age):
     if age < 0 or age > max_age:
         return None, None
     return _clean_row(row), age
+
+
+# ------------------------------------------------------- advisory tokens
+# One immutable sample file per observed run, written once and never
+# rewritten: concurrent runs cannot lose each other's observations (no
+# read-modify-write exists), a crashed write leaves one partial file the
+# reader skips, and the sums are recomputed from the samples at read time.
+# .agentkit-orig-style durability is not needed: samples are additive
+# evidence, each carrying only what its own run reported.
+
+_TOKEN_KEYS = ("input", "output", "cache_read", "cache_write", "total")
+_TOKEN_SAMPLES_MAX = 5000
+
+
+def _tokens_dir(env, cli, profile):
+    return os.path.join(root(env), "token-samples", "%s%s" % (cli, profile))
+
+
+def tokens_add(env, cli, profile, tokens, now):
+    """Record one observed run's REPORTED token counts as an immutable
+    sample file. Only non-null fields count: a run that reported nothing
+    is not recorded, and no field is ever imputed. Best effort: a write
+    failure loses that one sample and is otherwise silent."""
+    counted = {k: tokens[k] for k in _TOKEN_KEYS
+               if isinstance(tokens.get(k), int) and not isinstance(tokens.get(k), bool)}
+    if not counted or not cli or not profile:
+        return False
+    directory = _tokens_dir(env, cli, profile)
+    try:
+        os.makedirs(directory, exist_ok=True)
+        fd, staged = tempfile.mkstemp(dir=directory, prefix="sample-", suffix=".json")
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"cli": cli, "profile": profile,
+                       "tokens": {k: counted.get(k) for k in _TOKEN_KEYS},
+                       "recorded_at": int(now)}, fh)
+        os.replace(staged, os.path.join(directory, "sample-%d-%d.json" % (int(now), os.getpid())))
+    except OSError:
+        return False
+    return True
+
+
+def tokens_get(env, cli, profile):
+    """The advisory sums for one account over its recorded samples:
+    {"runs": n, "tokens": {..}} or {} when nothing was ever observed —
+    absence is not zero, it is unknown. Each sample contributes only the
+    fields its own run reported; totals are never synthesized."""
+    directory = _tokens_dir(env, cli, profile)
+    if not os.path.isdir(directory):
+        return {}
+    runs = 0
+    sums = {k: 0 for k in _TOKEN_KEYS}
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return {}
+    for name in names[-_TOKEN_SAMPLES_MAX:]:
+        try:
+            with open(os.path.join(directory, name), "r", encoding="utf-8") as fh:
+                sample = json.load(fh)
+        except (OSError, ValueError):
+            continue  # a partial or corrupt sample is skipped, not counted
+        if not isinstance(sample, dict) or sample.get("cli") != cli:
+            continue
+        reported = sample.get("tokens")
+        if not isinstance(reported, dict) or not any(
+                isinstance(v, int) and not isinstance(v, bool) for v in reported.values()):
+            continue
+        runs += 1
+        for k in _TOKEN_KEYS:
+            v = reported.get(k)
+            if isinstance(v, int) and not isinstance(v, bool) and v > 0:
+                sums[k] += v
+    if not runs:
+        return {}
+    return {"runs": runs, "tokens": sums}
+
+
+def tokens_prune(env, cli, profile):
+    """Drop samples beyond the reader's window (housekeeping, optional):
+    oldest first."""
+    directory = _tokens_dir(env, cli, profile)
+    try:
+        names = sorted(os.listdir(directory))
+    except OSError:
+        return
+    for name in names[:-_TOKEN_SAMPLES_MAX]:
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            pass

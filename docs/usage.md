@@ -137,6 +137,12 @@ the kinds sharing it. Each row carries the provider's **own windows** (5-hour,
 weekly, per model, tokens, MCP, …); `ak` never merges them into an invented
 quota. No account identity (e-mail, organisation, id) is read or shown.
 
+Rows may also carry an **`advisory`** block: the sums of this account's
+observed `ak run` token samples (the kit records what each run's CLI itself
+reported — a run that reported nothing is not counted, and nothing is ever
+imputed). Advisory sums never touch the vendor's quota windows, the
+capacity verdict or pick eligibility.
+
 Rows appear for: the CLI's own home (`@default`) when the CLI is installed,
 every profile directory, and every provider key that is set (`ZAI_CODING_API_KEY`
 and `ZAI_CODING_API_KEY_<SUFFIX>`). A provider with no key set has no row.

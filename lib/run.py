@@ -41,6 +41,7 @@ import time
 import common
 import launch
 import profiles
+import state
 import trust
 from common import (AkError, EXIT_AGENT_FAILED, EXIT_CANCELLED, EXIT_INTERNAL, EXIT_NOT_READY, EXIT_OK,
                     EXIT_TIMEOUT, EXIT_USAGE)
@@ -360,7 +361,7 @@ def build_argv(prep, opts, cwd):
     return [prep.exe] + ctx.expand_list(run["argv"], segments)
 
 
-def envelope(opts, kind, profile, cwd, code, duration, result_text, cli_exit, truncated, error=None):
+def envelope(opts, kind, profile, cwd, code, duration, result_text, cli_exit, truncated, error=None, tokens=None):
     out = {
         "interface": common.INTERFACE,
         "kind": kind,
@@ -372,9 +373,67 @@ def envelope(opts, kind, profile, cwd, code, duration, result_text, cli_exit, tr
         "cli_exit": cli_exit,
         "truncated": truncated,
     }
+    if tokens is not None:
+        out["tokens"] = tokens
     if error:
         out["error"] = error
     return out
+
+
+def _walk(doc, path):
+    """A dotted path's integer value in a parsed JSON document, or None —
+    a missing field stays missing, and a negative or non-integer value is
+    garbage, not a count: token counts are reported, never computed."""
+    cur = doc
+    for part in str(path).split("."):
+        if not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    if isinstance(cur, bool) or not isinstance(cur, int) or cur < 0:
+        return None
+    return cur
+
+
+def _tokens_from(spec, stdout_text):
+    """The run's token counts from the CLI's own JSON output, per the
+    providers.toml `run.tokens` table: reported values only — a field the
+    CLI does not report stays null, and nothing is ever imputed or summed
+    by ak. Declared event semantics: for a `jsonl` table, the LAST event
+    of the recorded type carries the usage ak reports (a repeated terminal
+    report is a snapshot, and ak never adds snapshots together)."""
+    fields = {"input": None, "output": None, "cache_read": None, "cache_write": None, "total": None}
+    if not spec:
+        return fields
+    mode = spec.get("mode", "json")
+    docs = []
+    if mode == "json":
+        try:
+            docs = [json.loads(stdout_text)]
+        except (ValueError, TypeError):
+            return fields
+    elif mode == "jsonl":
+        for line in (stdout_text or "").splitlines():
+            try:
+                docs.append(json.loads(line))
+            except ValueError:
+                continue
+    else:
+        return fields
+    if mode == "json":
+        doc = docs[0] if docs else None
+    else:  # jsonl: the LAST event of the recorded type carries the reported usage
+        event = spec.get("event")
+        doc = None
+        for d in docs:
+            if isinstance(d, dict) and d.get("type") == event:
+                doc = d
+    if not isinstance(doc, dict):
+        return fields
+    for field in fields:
+        path = spec.get(field)
+        if path:
+            fields[field] = _walk(doc, path)
+    return fields
 
 
 def _early_format(args):
@@ -436,9 +495,14 @@ def main(model, args, env):
                 code = EXIT_AGENT_FAILED
         truncated = overflow or len(result_text) > RESULT_CAP
         result_text = result_text[:RESULT_CAP]
+        tokens = None
+        if fmt == "json":
+            tokens = _tokens_from(prep.kind.cli["run"].get("tokens"), stdout_text)
+            if any(v is not None for v in tokens.values()):
+                state.tokens_add(env, prep.kind.cli_name, profile_label, tokens, time.time())
         if fmt == "json":
             sys.stdout.write(json.dumps(envelope(opts, opts.kind, profile_label, cwd, code, time.time() - start,
-                                                 result_text, cli_exit, truncated)) + "\n")
+                                                 result_text, cli_exit, truncated, tokens=tokens)) + "\n")
         return code
     except AkError as exc:
         if fmt != "json":

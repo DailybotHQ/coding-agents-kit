@@ -1401,6 +1401,10 @@ def main(model, args, env, now=None, stdout=None, platform=None):
     for result in results:          # always live; refreshes what ak capacity / ak pick read
         state.cache_put(env, result, now)
     results = mark_defaults(model, results, env)
+    for result in results:          # advisory: sums of this account's observed run samples (absent when none)
+        advisory = state.tokens_get(env, result["cli"], result["profile"])
+        if advisory:
+            result["advisory"] = advisory
     if opts["json"]:
         emit(stdout, render_json(results, now))
     else:

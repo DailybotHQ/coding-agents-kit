@@ -4,49 +4,213 @@
   "title": "ak usage --json (usage-v1)",
   "description": "Quota and usage of each account the kit can see, one row per credential identity. Never contains a secret value, an account identity (e-mail, organisation, id) or a token. The endpoints behind it are vendor-internal and unofficial: a row whose source changed shape reports status `error`, never a crash. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
-  "required": ["schema", "interface", "generated_at", "rows"],
+  "required": [
+    "schema",
+    "interface",
+    "generated_at",
+    "rows"
+  ],
   "properties": {
-    "schema": { "const": "usage-v1" },
-    "interface": { "const": 1 },
-    "generated_at": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$" },
+    "schema": {
+      "const": "usage-v1"
+    },
+    "interface": {
+      "const": 1
+    },
+    "generated_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
     "rows": {
       "type": "array",
       "description": "Ordered: CLI order of providers.toml, then @default, then profile names sorted.",
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["cli", "profile", "kinds", "plan", "status", "windows", "source", "error", "reason"],
+        "required": [
+          "cli",
+          "profile",
+          "kinds",
+          "plan",
+          "status",
+          "windows",
+          "source",
+          "error",
+          "reason"
+        ],
         "properties": {
-          "cli": { "type": "string", "description": "The CLI (claude, codex, ...) or the provider (zai) that owns the credential." },
-          "profile": { "type": "string", "pattern": "^@[a-z0-9._-]{1,32}$", "description": "@default or @name." },
-          "default": { "const": true, "description": "Since 0.5.2, present only on the account a bare `ak <cli>` launches by AGENTKIT_DEFAULT_PROFILE_<CLI> (for `pick`: the portable-login account ranked first)." },
-          "kinds": { "type": "array", "items": { "type": "string" }, "description": "Every kind that shares this credential identity." },
-          "plan": { "type": ["string", "null"], "description": "The provider's own plan label when reported." },
-          "status": { "enum": ["ok", "expired", "no_login", "no_scope", "rate_limited", "unsupported", "error"] },
+          "cli": {
+            "type": "string",
+            "description": "The CLI (claude, codex, ...) or the provider (zai) that owns the credential."
+          },
+          "profile": {
+            "type": "string",
+            "pattern": "^@[a-z0-9._-]{1,32}$",
+            "description": "@default or @name."
+          },
+          "default": {
+            "const": true,
+            "description": "Since 0.5.2, present only on the account a bare `ak <cli>` launches by AGENTKIT_DEFAULT_PROFILE_<CLI> (for `pick`: the portable-login account ranked first)."
+          },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Every kind that shares this credential identity."
+          },
+          "plan": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The provider's own plan label when reported."
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "expired",
+              "no_login",
+              "no_scope",
+              "rate_limited",
+              "unsupported",
+              "error"
+            ]
+          },
           "windows": {
             "type": "array",
             "description": "The provider's own windows; never merged into an invented quota. Empty unless status is ok.",
             "items": {
               "type": "object",
               "additionalProperties": false,
-              "required": ["id", "label", "used_pct", "resets_at", "window_seconds"],
+              "required": [
+                "id",
+                "label",
+                "used_pct",
+                "resets_at",
+                "window_seconds"
+              ],
               "properties": {
-                "id": { "type": "string", "description": "Stable machine id: 5h, 7d, 7d-opus, tokens, mcp, ..." },
-                "label": { "type": "string" },
-                "used_pct": { "type": ["number", "null"], "description": "0..100, null when unknown." },
-                "resets_at": { "type": ["string", "null"], "description": "ISO-8601 UTC, null when unknown." },
-                "window_seconds": { "type": ["integer", "null"] },
-                "used": { "type": "number", "minimum": 0, "description": "Optional (additive): the absolute amount used, when the source reports it (Z.AI credits)." },
-                "limit": { "type": "number", "minimum": 0, "description": "Optional (additive): the window's absolute limit, in the same unit as used." },
-                "unit": { "type": "string", "description": "Optional (additive): what used and limit count (credits, tokens)." }
+                "id": {
+                  "type": "string",
+                  "description": "Stable machine id: 5h, 7d, 7d-opus, tokens, mcp, ..."
+                },
+                "label": {
+                  "type": "string"
+                },
+                "used_pct": {
+                  "type": [
+                    "number",
+                    "null"
+                  ],
+                  "description": "0..100, null when unknown."
+                },
+                "resets_at": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "ISO-8601 UTC, null when unknown."
+                },
+                "window_seconds": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "used": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Optional (additive): the absolute amount used, when the source reports it (Z.AI credits)."
+                },
+                "limit": {
+                  "type": "number",
+                  "minimum": 0,
+                  "description": "Optional (additive): the window's absolute limit, in the same unit as used."
+                },
+                "unit": {
+                  "type": "string",
+                  "description": "Optional (additive): what used and limit count (credits, tokens)."
+                }
               }
             }
           },
-          "source": { "type": "string", "description": "The adapter id (anthropic-oauth, chatgpt-wham, zai-quota, antigravity-quota) or `none`." },
-          "error": { "type": ["string", "null"], "description": "One line, never a secret. Set for every status except ok and unsupported." },
-          "reason": { "type": ["string", "null"], "description": "One line explaining an `unsupported` row; null otherwise." },
-          "connected": { "type": "boolean", "description": "Optional (additive), unsupported rows only: whether the account is connected anyway — a login found (file, credential variable name or Keychain item presence; nothing is read) or its provider key set. Absent when it cannot be told." },
-          "resets_available": { "type": "integer", "minimum": 0, "description": "Optional (additive): the limit resets the account holds, when the source reports them (Codex: rate_limit_reset_credits.available_count). Absent when not reported." }
+          "source": {
+            "type": "string",
+            "description": "The adapter id (anthropic-oauth, chatgpt-wham, zai-quota, antigravity-quota) or `none`."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One line, never a secret. Set for every status except ok and unsupported."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One line explaining an `unsupported` row; null otherwise."
+          },
+          "connected": {
+            "type": "boolean",
+            "description": "Optional (additive), unsupported rows only: whether the account is connected anyway \u2014 a login found (file, credential variable name or Keychain item presence; nothing is read) or its provider key set. Absent when it cannot be told."
+          },
+          "resets_available": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Optional (additive): the limit resets the account holds, when the source reports them (Codex: rate_limit_reset_credits.available_count). Absent when not reported."
+          },
+          "advisory": {
+            "description": "Advisory sums of this account's OBSERVED ak run token samples (state-recorded): runs seen and per-field sums. Present only when at least one run reported tokens - absence is not zero, it is unknown. Never imputed: fields the CLI did not report are not counted.",
+            "type": "object",
+            "required": [
+              "runs",
+              "tokens"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "runs": {
+                "type": "integer",
+                "minimum": 1,
+                "description": "How many observed runs reported at least one token count."
+              },
+              "tokens": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "input",
+                  "output",
+                  "cache_read",
+                  "cache_write",
+                  "total"
+                ],
+                "properties": {
+                  "input": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

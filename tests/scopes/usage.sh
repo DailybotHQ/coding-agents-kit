@@ -25,6 +25,21 @@ scope_usage() {
   expect_eq "usage core: unsupported sources are listed with a reason, not hidden" \
     "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["cline", "cursor", "grok", "opencode", "pi"]'
 
+  # --- advisory token sums: observed samples only, absence is unknown ------
+  mkdir -p "${BOX}/home/.local/state/agentkit/token-samples/claude@default"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":40,"output":20,"cache_read":0,"cache_write":10,"total":70},"recorded_at":1}\n' > "${BOX}/home/.local/state/agentkit/token-samples/claude@default/sample-1.json"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":60,"output":30,"cache_read":20,"cache_write":0,"total":110},"recorded_at":2}\n' > "${BOX}/home/.local/state/agentkit/token-samples/claude@default/sample-2.json"
+  ak_split -- usage --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "usage advisory: json still matches the schema with advisory rows" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")" "valid"
+  expect_eq "usage advisory: the sampled account carries its observed sums" \
+    "$(json_get "${doc}" '[[r["advisory"]["runs"], r["advisory"]["tokens"]["input"], r["advisory"]["tokens"]["total"]] for r in d["rows"] if r["cli"] == "claude" and r["profile"] == "@default"]')"     '[[2, 100, 180]]'
+  expect_eq "usage advisory: accounts with no samples carry no advisory key" \
+    "$(json_get "${doc}" '[r.get("advisory", "absent") for r in d["rows"] if r["cli"] == "codex"]')" \
+    '["absent"]'
+  rm -f "${BOX}/home/.local/share/agentkit/token-samples/claude@default.json"
+
   out="$(ak -- usage --no-color)"; status=$?
   expect_eq "usage core: the table exits like the JSON" "${status}" 1
   expect_has "usage core: the table has a header" "${out}" "PROFILE"

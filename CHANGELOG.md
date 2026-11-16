@@ -13,6 +13,22 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Token metering** (`ak run --json`, the V8 pillar-4 item): the envelope
+  gains `tokens: {input, output, cache_read, cache_write, total}` — the
+  run's **reported** counts, extracted from the CLI's own JSON per new
+  `providers.toml` `run.tokens` tables (Claude's `usage`; Codex's last
+  `turn.completed`). Honesty rule: a field the CLI does not report stays
+  `null` — never imputed, never summed into a total by `ak`; negative or
+  non-integer values are garbage and stay `null`; text runs carry no
+  `tokens` key. Observed samples are recorded per account (append-only,
+  one immutable file per run — safe under concurrent runs) and surface as
+  advisory sums in `ak usage --json` (`advisory`); they never change the
+  vendor's quota windows, the capacity verdict or pick eligibility.
+  Claude and Codex carry tables today; every other kind reports all-null
+  fields.
+
 ## [1.4.0] - 2026-11-16
 
 A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and
