@@ -32,6 +32,37 @@ permission posture changes.
   Claude and Codex carry tables today; every other kind reports all-null
   fields.
 
+### Fixed
+
+- **Ask mode is forced, not assumed.** Under `--ask` or
+  `AGENTKIT_PERMISSIONS=ask`, `ak` left the autonomy flag out but did not set
+  the CLI's permission mode, so an account whose own settings default to an
+  autonomous mode (Claude's `defaultMode`, Codex's `approval_policy`) still
+  started autonomous. `ak` now passes each CLI's explicit ask flag
+  (`providers.toml` `ask`, `run.ask` for headless): Claude and Grok
+  `--permission-mode default`; Codex `--ask-for-approval on-request
+  --sandbox workspace-write` (the sandbox pinned too, so an account config
+  with `sandbox_mode = "danger-full-access"` cannot run unprompted commands
+  unsandboxed; `codex exec` gets `--sandbox workspace-write`; a stricter
+  sandbox the user passes replaces it); CLIs without an ask flag are
+  unchanged.
+- **A user mode flag cannot undo the opt-out.** Under the opt-out, an
+  argument after `--` that would loosen the CLI's permission or approval
+  mode is a usage error (exit 2) and launches nothing: the autonomy flag and
+  its relatives, and pre-approvals that leave the mode alone (Claude
+  `--allowedTools`, `--settings`, `--permission-prompt-tool`,
+  `--permission-prompts host`; Grok `--allow`) (`ask_conflicts`), a mode value outside the allowed stricter
+  ones (`ask_values`: Claude/Grok `plan` and `dontAsk`, Codex `read-only`,
+  Antigravity `plan` stay allowed), a Codex config override of
+  `approval_policy`, `sandbox_mode`, `sandbox_workspace_write` or
+  `sandbox_permissions`, in any segment of a dotted key (`ask_config`),
+  in every spelling the CLI parses (`--opt=value`, `-ovalue`, `-o=value`,
+  short clusters where accepted, Antigravity's Go-style `-opt`).
+- **`ak pick --json` delivers the mode it claims.** Under the opt-out,
+  `launch.argv` now ends with `--ask`, so the suggested command asks even
+  where `AGENTKIT_PERMISSIONS` is not inherited (`launch.permissions` was
+  already `ask`).
+
 ## [1.4.0] - 2026-11-16
 
 A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and

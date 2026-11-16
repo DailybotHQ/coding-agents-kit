@@ -97,6 +97,17 @@ argv_of() {
   printf '%s\n' "$1" | sed -n 's/^ARG=//p' | paste -sd '|' -
 }
 
+# grammar_argv <ak output> — argv_of without the posture segment a launch
+# under the opt-out carries (each CLI's explicit ask flag, providers.toml
+# `ask`): for the scopes that check argv grammar under `box_posture ask`.
+# The permissions scope owns the posture and asserts the full argv.
+grammar_argv() {
+  argv_of "$1" | sed -e 's/^--permission-mode|default$//' -e 's/^--permission-mode|default|//' \
+    -e 's/|--permission-mode|default$//' -e 's/|--permission-mode|default|/|/' \
+    -e 's/^--ask-for-approval|on-request|--sandbox|workspace-write$//' -e 's/^--ask-for-approval|on-request|--sandbox|workspace-write|//' \
+    -e 's/|--ask-for-approval|on-request|--sandbox|workspace-write$//' -e 's/|--ask-for-approval|on-request|--sandbox|workspace-write|/|/'
+}
+
 # check <name> <command...> — pass when the command succeeds (output hidden).
 check() {
   local name="$1"
@@ -170,21 +181,26 @@ py_checks() {
 # usage_server_start <routes.json> — starts the fake endpoint; sets USAGE_PORT
 # and USAGE_PID. The routes file is re-read on every request.
 usage_server_start() {
-  local routes="$1" portfile="${BOX}/port"
-  rm -f "${portfile}"
-  "${AK_PY}" "${ROOT}/tests/py/fake_usage_server.py" --routes "${routes}" --port-file "${portfile}" --log "${BOX}/server.log" \
-    >/dev/null 2>&1 &
-  USAGE_PID=$!
-  # A cold python start on a CI runner can take seconds: wait up to 30s, and
-  # say so plainly when the endpoint never came up instead of failing later.
-  local _
-  for _ in $(seq 1 120); do
+  local routes="$1" portfile="${BOX}/port" errfile="${BOX}/server.err" _
+  # A cold python start on a slow CI runner can take many seconds, and a
+  # start can die outright: wait up to 60s per attempt, retry once if the
+  # process is gone, and keep its stderr so a failure says why.
+  for _ in 1 2; do
+    rm -f "${portfile}"
+    "${AK_PY}" "${ROOT}/tests/py/fake_usage_server.py" --routes "${routes}" --port-file "${portfile}" --log "${BOX}/server.log" \
+      >/dev/null 2>"${errfile}" &
+    USAGE_PID=$!
+    for _ in $(seq 1 240); do
+      [[ -s "${portfile}" ]] && break
+      kill -0 "${USAGE_PID}" 2>/dev/null || break
+      sleep 0.25
+    done
     [[ -s "${portfile}" ]] && break
-    sleep 0.25
+    kill "${USAGE_PID}" 2>/dev/null
   done
   USAGE_PORT="$(cat "${portfile}" 2>/dev/null)"
   export USAGE_PORT
-  [[ -n "${USAGE_PORT}" ]] || fail "the fake usage endpoint did not start (no port after 30s)"
+  [[ -n "${USAGE_PORT}" ]] || fail "the fake usage endpoint did not start (2 attempts, 60s each): $(tail -3 "${errfile}" 2>/dev/null | tr '\n' ' ')"
 }
 
 usage_server_stop() {

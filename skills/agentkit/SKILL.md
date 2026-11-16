@@ -188,8 +188,11 @@ Ask before installing: it installs software on the user's machine.
 By default `ak` adds the CLI's own autonomy flag: the agent acts without
 asking. Autonomy is meant for disposable or sandboxed environments. The
 opt-out is `--ask` on one command or `AGENTKIT_PERMISSIONS=ask` in the user's
-environment; it always wins and is inherited by nested launches. Choosing a
-posture is the user's decision (see the trust boundary).
+environment; it always wins and is inherited by nested launches. Under the
+opt-out `ak` forces each CLI's own ask mode (for example Claude's
+`--permission-mode default`) and refuses a permission-mode argument after
+`--` (exit 2), so never pass one to get around it. Choosing a posture is the
+user's decision (see the trust boundary).
 
 ## Trust boundary (write scope)
 

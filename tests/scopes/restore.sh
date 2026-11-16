@@ -71,7 +71,7 @@ scope_restore() {
   expect_has "in the same profile" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/work"
   expect_has "and says what it runs" "${out}" "ak: ak claude @work -c"
   out="$(BOX_CWD="${BOX}/work/repo-b" ak -- last -r)"
-  expect_eq "ak last -r opens the picker, opt-out kept" "$(argv_of "${out}")" "--resume"
+  expect_eq "ak last -r opens the picker, opt-out kept" "$(argv_of "${out}")" "--resume|--permission-mode|default"
   expect_has "the opted-out launch stays opted out" "${out}" "AGENTKIT_PERMISSIONS=ask"
   out="$(ak -- last ls)"
   expect_has "ak last ls lists each directory" "${out}" "ak claude @work  "

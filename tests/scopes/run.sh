@@ -34,10 +34,10 @@ scope_run() {
 
   # --- the frozen mapping, text and json, per kind ------------------------------
   local -a table=(
-    "claude|text|-p|do it"
-    "claude|json|-p|do it|--output-format|json"
-    "codex|text|exec|-C|@P|do it"
-    "codex|json|exec|--json|-C|@P|do it"
+    "claude|text|-p|do it|--permission-mode|default"
+    "claude|json|-p|do it|--output-format|json|--permission-mode|default"
+    "codex|text|exec|-C|@P|--sandbox|workspace-write|do it"
+    "codex|json|exec|--json|-C|@P|--sandbox|workspace-write|do it"
     "cursor|text|-p|do it|--trust"
     "cursor|json|-p|do it|--output-format|json|--trust"
     "opencode|text|run|do it"
@@ -46,8 +46,8 @@ scope_run() {
     "pi|json|-p|do it|--mode|json"
     "cline|text|do it|-c|@P"
     "cline|json|do it|--json|-c|@P"
-    "grok|text|-p|do it|--cwd|@P"
-    "grok|json|-p|do it|--output-format|json|--cwd|@P"
+    "grok|text|-p|do it|--cwd|@P|--permission-mode|default"
+    "grok|json|-p|do it|--output-format|json|--cwd|@P|--permission-mode|default"
     "antigravity|text|-p|do it"
     "antigravity|json|-p|do it|--output-format|json"
   )
@@ -66,7 +66,7 @@ scope_run() {
   expect_eq "ak run cline --timeout passes -t" "$(logged_argv)" "x|-c|${p}|-t|30"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex-azure --cwd "${p}" --output-format json -- "x"
-  expect_eq "provider kinds add their arguments (codex-azure)" "$(logged_argv)" "exec|-p|azure|--json|-C|${p}|x"
+  expect_eq "provider kinds add their arguments (codex-azure)" "$(logged_argv)" "exec|-p|azure|--json|-C|${p}|--sandbox|workspace-write|x"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run claude-glm -- "x"
   expect_eq "claude-glm runs with Z.AI's base URL" "$(logged_field ANTHROPIC_BASE_URL)" "https://api.z.ai/api/anthropic"
@@ -78,7 +78,7 @@ scope_run() {
   expect_eq "without --cwd the CLI runs in the current directory" "$(logged_field CWD)" "${BOX}/work"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run claude -- fix the "quoted \"bug\""
-  expect_eq "the prompt is one argument (words after -- joined)" "$(logged_argv)" '-p|fix the quoted "bug"'
+  expect_eq "the prompt is one argument (words after -- joined)" "$(logged_argv)" '-p|fix the quoted "bug"|--permission-mode|default'
   rm -f "${BOX}/log"
   printf 'from stdin\nsecond line' > "${BOX}/prompt.txt"
   ( cd "${BOX}/work" && env -i HOME="${BOX}/home" PATH="${BOX}/bin:${BASE_PATH}" TMPDIR="${BOX}/tmp" FAKE_LOG="${BOX}/log" \
@@ -92,10 +92,10 @@ scope_run() {
   expect_eq "ak run adds the autonomy flag by default" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex --ask --cwd "${p}" -- "x"
-  expect_eq "ak run --ask adds no autonomy flag" "$(logged_argv)" "exec|-C|${p}|x"
+  expect_eq "ak run --ask: no autonomy flag, the sandbox pinned (run.ask)" "$(logged_argv)" "exec|-C|${p}|--sandbox|workspace-write|x"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=ask -- run codex --cwd "${p}" -- "x"
-  expect_eq "ak run under AGENTKIT_PERMISSIONS=ask adds no autonomy flag" "$(logged_argv)" "exec|-C|${p}|x"
+  expect_eq "ak run under AGENTKIT_PERMISSIONS=ask: no autonomy flag, the sandbox pinned" "$(logged_argv)" "exec|-C|${p}|--sandbox|workspace-write|x"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" -- run codex --ask --auto --cwd "${p}" -- "x"; status=$?
   expect_eq "ak run --ask --auto is a usage error" "${status}" 2
@@ -104,7 +104,13 @@ scope_run() {
   expect_eq "ak run --auto adds the flag for this run (no opt-out in effect)" "$(logged_argv)" "exec|-C|${p}|--dangerously-bypass-approvals-and-sandbox|x"
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=ask -- run codex --auto --cwd "${p}" -- "x"
-  expect_eq "ak run --auto under AGENTKIT_PERMISSIONS=ask still asks (the opt-out wins)" "$(logged_argv)" "exec|-C|${p}|x"
+  expect_eq "ak run --auto under AGENTKIT_PERMISSIONS=ask still asks (the opt-out wins)" "$(logged_argv)" "exec|-C|${p}|--sandbox|workspace-write|x"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run claude --ask -- "x"
+  expect_eq "ak run claude --ask forces claude's ask mode (run.ask falls back to ask)" "$(logged_argv)" "-p|x|--permission-mode|default"
+  rm -f "${BOX}/log"
+  ak_split FAKE_LOG="${BOX}/log" -- run claude -- "x"
+  expect_eq "ak run claude by default is autonomous" "$(logged_argv)" "-p|x|--dangerously-skip-permissions"
   box_posture ask
   rm -f "${BOX}/log"
   ak_split FAKE_LOG="${BOX}/log" AGENTKIT_PERMISSIONS=auto -- run grok --cwd "${p}" -- "x"

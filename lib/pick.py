@@ -534,6 +534,11 @@ def _render_kinds_json(opts, index, kind, winner, leases, soonest, now, env):
     argv = ["ak", kind, winner["profile"]]
     if model:
         argv += ["--model", model]
+    if permissions == "ask":
+        # The argv carries the opt-out itself: run in a pane that does not
+        # inherit AGENTKIT_PERMISSIONS, it still asks — launch.permissions
+        # is a claim the argv delivers, not a hope about the caller's env.
+        argv.append("--ask")
     doc = {
         "schema": "pick-v2", "interface": 1,
         "generated_at": usage.iso_utc(now),

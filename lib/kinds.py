@@ -217,6 +217,31 @@ class Model(object):
                 bad("%s.run.result must be one of %s" % (where, ", ".join(RESULT_EXTRACTORS)))
             if "{prompt}" not in run.get("argv", []):
                 bad("%s.run.argv: needs {prompt}" % where)
+            for field, value in (("ask", cli.get("ask", [])), ("ask_conflicts", cli.get("ask_conflicts", [])),
+                                 ("run.ask", run.get("ask", [])), ("ask_value_opts", cli.get("ask_value_opts", []))):
+                if not isinstance(value, list) or not all(isinstance(v, str) and v and "{" not in v for v in value):
+                    bad("%s.%s: must be a list of literal arguments" % (where, field))
+            ask_values = cli.get("ask_values", {})
+            if not isinstance(ask_values, dict) or not all(
+                    isinstance(k, str) and k.startswith("-") and isinstance(v, list) and all(isinstance(x, str) for x in v)
+                    for k, v in ask_values.items()):
+                bad("%s.ask_values: must map an option to the list of values allowed under the opt-out" % where)
+            ask_config = cli.get("ask_config", {})
+            if not isinstance(ask_config, dict) or set(ask_config) - {"options", "keys"} or not all(
+                    isinstance(ask_config.get(f, []), list) for f in ("options", "keys")):
+                bad("%s.ask_config: needs options and keys lists" % where)
+            for flag in ("ask_clusters", "ask_single_dash_long"):
+                if not isinstance(cli.get(flag, False), bool):
+                    bad("%s.%s must be true or false" % (where, flag))
+            ask_yield = cli.get("ask_yield", {})
+            if not isinstance(ask_yield, dict) or not all(
+                    k in cli.get("ask", []) and isinstance(v, list) and all(isinstance(x, str) for x in v)
+                    for k, v in ask_yield.items()):
+                bad("%s.ask_yield: must map an option of ask to the user spellings that replace it" % where)
+            if cli.get("ask") and cli.get("session", {}).get("standalone"):
+                # A standalone session mode returns before {auto}: it would
+                # silently skip the ask flag.
+                bad("%s: a CLI with an ask flag cannot have standalone session modes" % where)
             if references_secret(cli.get("auto", [])) or references_secret(run.get("argv", [])):
                 bad("%s: {key} is only allowed in a kind's env, args or pre" % where)
             install = cli.get("install", {})
@@ -369,6 +394,7 @@ class Kind(object):
             "key": self.key_var,
             "key_optional": self.key_optional,
             "auto": list(self.cli["auto"]),
+            "ask": list(self.cli.get("ask", [])),
             "isolation": self.cli["isolation"],
             "home_env": self.cli.get("home_env"),
         }

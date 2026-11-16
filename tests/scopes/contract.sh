@@ -60,7 +60,7 @@ scope_contract() {
 
   # §2.1 profiles: only a first @ after the kind; @default/@1 = own home; names.
   out="$(ak -- claude --ask x @work)"
-  expect_eq "§2.1 only a first argument starting with @ is a profile" "$(argv_of "${out}")" "x|@work"
+  expect_eq "§2.1 only a first argument starting with @ is a profile" "$(argv_of "${out}")" "--permission-mode|default|x|@work"
   for k in @default @1; do
     out="$(ak -- grok "${k}")"
     expect_line "§2.1 ${k} is the CLI's own home" "${out}" "GROK_HOME="
@@ -86,9 +86,9 @@ scope_contract() {
   out="$(ak -- claude)"
   expect_eq "§2.1 §9 autonomy by default: the CLI's own flag" "$(argv_of "${out}")" "--dangerously-skip-permissions"
   out="$(ak -- claude --ask)"
-  expect_eq "§2.1 --ask opts out: no flag added" "$(argv_of "${out}")" ""
+  expect_eq "§2.1 --ask opts out: the CLI's explicit ask flag instead" "$(argv_of "${out}")" "--permission-mode|default"
   out="$(ak AGENTKIT_PERMISSIONS=ask -- grok)"
-  expect_eq "§2.1 AGENTKIT_PERMISSIONS=ask opts out" "$(argv_of "${out}")" ""
+  expect_eq "§2.1 AGENTKIT_PERMISSIONS=ask opts out" "$(argv_of "${out}")" "--permission-mode|default"
   out="$(ak -- claude --auto)"
   expect_eq "§2.1 --auto adds the CLI's own flag" "$(argv_of "${out}")" "--dangerously-skip-permissions"
   out="$(ak AGENTKIT_PERMISSIONS=auto -- grok)"

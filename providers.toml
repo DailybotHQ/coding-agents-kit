@@ -35,6 +35,20 @@ home_env = "CLAUDE_CONFIG_DIR"
 # it as CLAUDE_CODE_OAUTH_TOKEN; never a fallback to another account's token.
 profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
+# Under the opt-out (--ask / AGENTKIT_PERMISSIONS=ask) `{auto}` expands to
+# `ask`: the CLI's explicit ask mode, forced even when the account's own
+# settings default to an autonomous one. `default` is Claude's long-standing
+# value (newer releases also name it `manual` and keep `default` as an alias).
+# `ask_conflicts` are options a user argument may not pass under the
+# opt-out; `ask_values` allows an option only with the listed (no looser)
+# values. See docs/permissions.md.
+ask = ["--permission-mode", "default"]
+# Pre-approval routes that loosen ask without touching the mode are refused
+# too: allow rules, a --settings file or JSON (permissions.allow,
+# defaultMode), and handing prompts to a tool or host that can say yes.
+ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+                 "--allowedTools", "--allowed-tools", "--settings", "--permission-prompt-tool"]
+ask_values = { "--permission-mode" = ["default", "manual", "plan", "dontAsk"], "--permission-prompts" = ["none"] }
 interactive = ["{provider}", "{session}", "{auto}"]
 # `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
 # list (values the CLI accepts) makes ak refuse anything else; without one
@@ -123,6 +137,23 @@ isolation = "env"
 home_env = "CODEX_HOME"
 lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
+# The sandbox is pinned too: an account config with sandbox_mode =
+# "danger-full-access" would otherwise run unprompted commands unsandboxed.
+# `ask_yield`: a stricter --sandbox / -s the user passes replaces ak's pair
+# (codex refuses the option twice).
+ask = ["--ask-for-approval", "on-request", "--sandbox", "workspace-write"]
+ask_yield = { "--sandbox" = ["--sandbox", "-s"] }
+# `-a` is refused outright: ak already passes it, and codex rejects a second.
+# `ask_config` refuses a config override (-c / --config KEY=VALUE) of the
+# listed keys (also as the last segment of a dotted key, such as
+# profiles.x.sandbox_mode); `ask_clusters`: the CLI parses -xyz as -x -y -z, and
+# `ask_value_opts` names its other value-taking short options (their value
+# is never read as flags: -pazure is a profile, not -a).
+ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo"]
+ask_values = { "--sandbox" = ["read-only", "workspace-write"], "-s" = ["read-only", "workspace-write"] }
+ask_config = { options = ["-c", "--config"], keys = ["approval_policy", "sandbox_mode", "sandbox_workspace_write", "sandbox_permissions"] }
+ask_clusters = true
+ask_value_opts = ["-m", "-p", "-C", "-i"]
 interactive = ["{provider}", "{session}", "{auto}"]
 # Codex spells the model flag -m (the long --model is not global here).
 model_flag = "-m"
@@ -145,6 +176,8 @@ last = "continue"
 argv = ["exec", "{provider}", "{json}", "-C", "{cwd}", "{auto}", "{prompt}"]
 json = ["--json"]
 result = "codex-jsonl"
+# `codex exec` takes no --ask-for-approval: a headless ask run pins only the sandbox.
+ask = ["--sandbox", "workspace-write"]
 [clis.codex.run.tokens]
 # The last `turn.completed` event of the JSONL stream carries the run's
 # usage. Codex's input_tokens INCLUDES the cached ones (cached_input_tokens
@@ -214,6 +247,9 @@ resolver = "cursor"
 herdr_kind = "cursor"
 isolation = "cursor-home"
 auto = ["--force"]
+ask = []
+ask_conflicts = ["--force", "-f", "--yolo", "--auto-review"]
+ask_clusters = true
 interactive = ["{session}", "{auto}"]
 docs = "https://cursor.com/docs/cli"
 
@@ -274,6 +310,8 @@ executable = "opencode"
 herdr_kind = "opencode"
 isolation = "xdg"
 auto = ["--auto"]
+ask = []
+ask_conflicts = ["--auto"]
 interactive = ["{auto}", "{provider}", "{session}"]
 docs = "https://opencode.ai/docs"
 
@@ -317,6 +355,8 @@ herdr_kind = "pi"
 isolation = "env"
 home_env = "PI_CODING_AGENT_DIR"
 auto = ["--approve"]
+ask = []
+ask_conflicts = ["--approve", "-a"]
 interactive = ["{auto}", "{provider}", "{session}"]
 docs = "https://github.com/earendil-works/pi"
 
@@ -358,6 +398,8 @@ herdr_kind = "cline"
 isolation = "env"
 home_env = "CLINE_DIR"
 auto = ["--yolo"]
+ask = []
+ask_conflicts = ["--yolo"]
 interactive = ["{auto}", "{provider}", "{session}"]
 secret_argv = true
 docs = "https://docs.cline.bot"
@@ -399,6 +441,9 @@ herdr_kind = "grok"
 isolation = "env"
 home_env = "GROK_HOME"
 auto = ["--always-approve"]
+ask = ["--permission-mode", "default"]
+ask_conflicts = ["--always-approve", "--allow", "--allowedTools", "--allowed-tools"]
+ask_values = { "--permission-mode" = ["default", "plan", "dontAsk"] }
 interactive = ["{session}", "{auto}"]
 docs = "https://x.ai/cli"
 
@@ -456,6 +501,11 @@ executable = "agy"
 isolation = "home"
 home_dir = ".gemini"
 auto = ["--dangerously-skip-permissions"]
+ask = []
+# agy parses Go-style flags: -opt is the same option as --opt.
+ask_conflicts = ["--dangerously-skip-permissions"]
+ask_values = { "--mode" = ["plan"] }
+ask_single_dash_long = true
 interactive = ["{session}", "{auto}"]
 docs = "https://antigravity.google/docs/cli"
 

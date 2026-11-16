@@ -397,10 +397,10 @@ check — a dash-leading value is refused at parse time. A `--json` call with
 nothing qualifying still answers a document: `qualifies: false`, the winner
 fields null, `launch.argv` null. `lease` carries the active lease on the
 chosen account, if one exists. `launch.permissions` says which permission
-mode the argv implies — ak's default (`auto`) or `ask` when the pick ran
-under the opt-out; a caller that wants ask-mode launches appends
-`["--ask"]` before any `--` (a documented head flag — never the CLI's own
-bypass flag). Exit codes match pick-v1: 0 chosen, 1 nothing qualifies, 3
+mode the argv runs with — ak's default (`auto`) or `ask` when the pick ran
+under the opt-out; under the opt-out `launch.argv` ends with `--ask` itself
+(a documented head flag), so the command asks wherever it runs and the
+launch forces the CLI's own ask mode (see [permissions](permissions.md)). Exit codes match pick-v1: 0 chosen, 1 nothing qualifies, 3
 nothing to pick from, 2 usage. The schema lives at
 `docs/schema/pick-v2.json`.
 

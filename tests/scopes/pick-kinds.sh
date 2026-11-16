@@ -53,6 +53,12 @@ PY
   ak_split "${url}" AGENTKIT_PERMISSIONS=ask -- pick --kinds claude-glm,claude --json; status=$?
   cp "${BOX}/out" "${doc}"
   expect_eq "pick kinds: permissions ask under the opt-out" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'ask'
+  # The contract delivers what it claims: the argv carries --ask itself, so
+  # run where AGENTKIT_PERMISSIONS is not inherited it still asks, and the
+  # launch it names forces the CLI's own ask mode.
+  expect_eq "pick kinds: under the opt-out the launch argv carries --ask" "$(json_get "${doc}" 'd["launch"]["argv"]')" '["ak", "claude", "@work", "--ask"]'
+  out="$(ak -- claude @work --ask)"
+  expect_eq "pick kinds: that argv launches claude in its explicit ask mode" "$(argv_of "${out}")" "--permission-mode|default"
   ak_split "${url}" AGENTKIT_PERMISSIONS=" ASK " -- pick --kinds claude-glm,claude --json; status=$?
   cp "${BOX}/out" "${doc}"
   expect_eq "pick kinds: permissions normalizes like the launch (ASK -> ask)" "$(json_get "${doc}" 'd["launch"]["permissions"]')" 'ask'

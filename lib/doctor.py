@@ -229,7 +229,7 @@ def render_text(model, report):
     w("agentkit %s (interface %d) on %s — %s" % (report["version"], report["interface"], report["os"], common.KIT_ROOT))
     ef = report["env_file"]
     w("env file: %s (%s)" % (ef["path"], ("mode " + ef["mode"]) if ef["exists"] else "missing — ./install.sh creates it"))
-    w("permissions: %s%s" % (report["permissions"], "  (opt-out: no autonomy flag is added)"
+    w("permissions: %s%s" % (report["permissions"], "  (opt-out: no autonomy flag; each CLI's ask flag is forced)"
                              if report["permissions"] == "ask" else
                              "  (default: every launch adds the CLI's autonomy flag; opt out with --ask"
                              " or AGENTKIT_PERMISSIONS=ask)"))

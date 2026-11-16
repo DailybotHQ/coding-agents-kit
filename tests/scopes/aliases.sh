@@ -29,7 +29,7 @@ scope_aliases() {
   out="$(box_run -- bash -c ". '${script}'; claudex @work -c")"
   expect_eq "claudex @work -c runs ak claude @work -c (default autonomy)" "$(argv_of "${out}")" "--continue|--dangerously-skip-permissions"
   out="$(box_run AGENTKIT_PERMISSIONS=ask -- bash -c ". '${script}'; claudex @work -c")"
-  expect_eq "claudex honours the opt-out" "$(argv_of "${out}")" "--continue"
+  expect_eq "claudex honours the opt-out" "$(argv_of "${out}")" "--continue|--permission-mode|default"
   expect_line "claudex keeps the profile" "${out}" "CLAUDE_CONFIG_DIR=${BOX}/home/.local/share/agentkit/profiles/claude/work"
   out="$(box_run -- bash -c ". '${script}'; codexx -l")"
   expect_eq "codexx -l runs codex resume --last with its autonomy flag" "$(argv_of "${out}")" "resume|--last|--dangerously-bypass-approvals-and-sandbox"
@@ -58,7 +58,7 @@ scope_aliases() {
   out="$(ak -- alias add careful claude --ask)"
   expect_has "alias add records an --ask posture" "${out}" "added careful -> ak claude --ask"
   out="$(box_run -- bash -c ". '${script}'; careful")"
-  expect_eq "a custom alias with --ask adds no autonomy flag" "$(argv_of "${out}")" ""
+  expect_eq "a custom alias with --ask adds no autonomy flag" "$(argv_of "${out}")" "--permission-mode|default"
   out="$(ak -- alias add both claude --ask --auto)"; status=$?
   expect_eq "alias add refuses --ask with --auto" "${status}" 2
   out="$(ak -- alias add glm codex)"
@@ -120,7 +120,7 @@ scope_aliases() {
   out="$(box_run ZAI_CODING_API_KEY=fake-zai -- bash -c ". '${script}'; codex-glm -c")"
   expect_eq "codex-glm runs ak codex-glm (default autonomy)" "$(argv_of "${out}")" "-p|glm|resume|--last|--dangerously-bypass-approvals-and-sandbox"
   out="$(box_run ZAI_CODING_API_KEY=fake-zai AGENTKIT_PERMISSIONS=ask -- bash -c ". '${script}'; codex-glm -c")"
-  expect_eq "codex-glm honours the opt-out" "$(argv_of "${out}")" "-p|glm|resume|--last"
+  expect_eq "codex-glm honours the opt-out" "$(argv_of "${out}")" "-p|glm|resume|--last|--ask-for-approval|on-request|--sandbox|workspace-write"
   ak_split -- doctor --json
   expect_eq "doctor reports the providers preset" "$(json_get "${BOX}/out" 'd["aliases"]["providers"]')" "true"
   out="$(ak -- alias preset providers --off)"

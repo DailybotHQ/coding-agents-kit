@@ -36,7 +36,7 @@
       "properties": {
         "argv": { "type": ["array", "null"], "minItems": 2, "items": { "type": "string" }, "description": "The exact interactive argv, e.g. [\"ak\",\"claude\",\"@work\",\"--model\",\"sonnet\"] — the model is head-level so it goes through the CLI's model_flag mapping, the models allowlist and the leading-dash check. Null on the no-qualifier form." },
         "env_names": { "type": "array", "items": { "type": "string" }, "description": "Environment variable NAMES the caller may need; empty on the default path (ak sets the CLI homes itself)." },
-        "permissions": { "enum": ["auto", "ask"], "description": "Which permission mode the argv implies: ak's default (auto — the CLI's own bypass flag) or ask when the pick ran with the opt-out. A caller that wants ask-mode launches appends [\"--ask\"] before any -- (a documented head flag); it never needs the CLI's own bypass flag." }
+        "permissions": { "enum": ["auto", "ask"], "description": "Which permission mode the argv implies: ak's default (auto — the CLI's own bypass flag) or ask when the pick ran with the opt-out. Under the opt-out the argv itself ends with \"--ask\" (a documented head flag), so it asks wherever it runs; the caller never needs any CLI's own permission flags." }
       }
     },
     "lease": {
