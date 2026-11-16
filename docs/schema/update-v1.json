@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.4.0/docs/schema/update-v1.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.5.0/docs/schema/update-v1.json",
   "title": "ak update --json (update-v1)",
   "description": "One ak update run: what each requested CLI's vendor discovery found, what was installed, what PATH resolves afterwards, and whether the pin moved. Additive within interface 1: new fields may appear, existing ones do not change meaning.",
   "type": "object",
