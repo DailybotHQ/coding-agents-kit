@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/main/docs/schema/pick-v2.json",
+  "$id": "https://github.com/DailybotHQ/coding-agents-kit/blob/v1.3.0/docs/schema/pick-v2.json",
   "title": "ak pick --kinds --json (pick-v2)",
   "description": "The cross-kind priority pick for daemons (herdr-peers autopilot --loop and its agents): the FIRST kind of --kinds with a qualifying account, chosen by the same rows, cache and policy as pick-v1 (docs/usage.md#choosing-an-account). Read-only: no login is refreshed, no reset is spent. `launch.argv` is the exact interactive argv to start that agent, so a caller never learns any CLI's own flags; `model` is what the caller asked for that kind (resolution happens at launch). Never contains a secret value or an account identity. Consumers check `schema` and `interface` before reading anything else; additional top-level keys may appear in later minor versions.",
   "type": "object",
