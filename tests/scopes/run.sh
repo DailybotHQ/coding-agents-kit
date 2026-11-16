@@ -130,12 +130,41 @@ scope_run() {
   done
   ak_split FAKE_MODE=headless FAKE_RESULT="ok" FAKE_STDERR="cli-progress-line" -- run claude --cwd "${p}" --output-format json -- "q"
   expect_eq "the envelope has exactly the contract's fields" \
-    "$(envelope_field 'sorted(d)')" '["cli_exit", "cwd", "duration_s", "exit", "interface", "kind", "profile", "result_text", "truncated"]'
+    "$(envelope_field 'sorted(d)')" '["cli_exit", "cwd", "duration_s", "exit", "interface", "kind", "profile", "result_text", "tokens", "truncated"]'
+
   expect_eq "envelope values" "$(envelope_field '[d["interface"], d["kind"], d["profile"], d["cwd"], d["exit"], d["cli_exit"], d["truncated"]]')" \
     "[1, \"claude\", \"@default\", \"${p}\", 0, 0, false]"
   expect_eq "duration_s is a non-negative number" "$(envelope_field 'isinstance(d["duration_s"], (int, float)) and d["duration_s"] >= 0')" true
   expect_has "the CLI's own output (transcript) goes to stderr" "$(cat "${BOX}/err")" '"result":"ok"'
   expect_has "the CLI's stderr reaches stderr" "$(cat "${BOX}/err")" "cli-progress-line"
+
+  # --- token metering: reported values only, never imputed -----------------
+  ak_split FAKE_MODE=headless FAKE_USAGE="10,5,3,2" FAKE_RESULT="ok" -- run claude --cwd "${p}" --output-format json -- "q"
+  expect_eq "claude reports its usage tokens" "$(envelope_field '[d["tokens"]["input"], d["tokens"]["output"], d["tokens"]["cache_read"], d["tokens"]["cache_write"]]')" "[10, 5, 3, 2]"
+  expect_eq "a total the CLI does not report stays null" "$(envelope_field 'd["tokens"]["total"]')" "null"
+  ak_split FAKE_MODE=headless FAKE_RESULT="ok" -- run codex --cwd "${p}" --output-format json -- "q"
+  expect_eq "codex reports its turn usage" "$(envelope_field '[d["tokens"]["input"], d["tokens"]["output"]]')" "[1, 1]"
+  expect_eq "fields codex's event does not carry stay null (not zero)" "$(envelope_field '[d["tokens"]["cache_read"], d["tokens"]["total"]]')" "[null, null]"
+  ak_split FAKE_MODE=headless FAKE_RESULT="ok" FAKE_CODEX_USAGE='{"input_tokens":100,"cached_input_tokens":40,"output_tokens":7}' -- run codex --cwd "${p}" --output-format json -- "q"
+  expect_eq "codex reports its cached input as cache_read (input includes it, as codex reports)" \
+    "$(envelope_field '[d["tokens"][k] for k in ("input", "output", "cache_read", "cache_write", "total")]')" "[100, 7, 40, null, null]"
+  # A provider kind's run is the provider key's usage: its sample is filed
+  # under the provider's account (the zai row of ak usage), never the CLI's.
+  local samples="${BOX}/home/.local/state/agentkit/token-samples"
+  rm -rf "${samples}"
+  ak_split FAKE_MODE=headless FAKE_USAGE="9,1,0,0" FAKE_RESULT="ok" -- run claude-glm --cwd "${p}" --output-format json -- "q"
+  expect_eq "a claude-glm run's sample is filed under zai, not claude" \
+    "$(ls "${samples}" 2>/dev/null | paste -sd ' ' -)" "zai@default"
+  rm -rf "${samples}"
+  check "deeply nested CLI output leaves tokens null instead of crashing" "${AK_PY}" -c '
+import sys; sys.path.insert(0, sys.argv[1] + "/lib"); import kinds, run
+m = kinds.load()
+deep = "[" * 200000
+for cli in ("claude", "codex"):
+    t = run._tokens_from(m.clis[cli]["run"]["tokens"], deep)
+    assert all(v is None for v in t.values()), (cli, t)' "${ROOT}"
+  ak_split FAKE_MODE=headless FAKE_RESULT="ok" -- run opencode --cwd "${p}" --output-format json -- "q"
+  expect_eq "a CLI without a tokens table reports all-null fields" "$(envelope_field 'sorted(str(v) for v in d["tokens"].values())')" '["None", "None", "None", "None", "None"]'
   ak_split FAKE_MODE=headless FAKE_RESULT="$(printf 'x%.0s' $(seq 1 70000))" -- run claude --output-format json -- "q"
   expect_eq "a result over 64 KiB is cut and marked truncated" "$(envelope_field '[len(d["result_text"]), d["truncated"]]')" "[65536, true]"
   mkdir -p "${BOX}/home/.local/share/agentkit/profiles/claude/work"

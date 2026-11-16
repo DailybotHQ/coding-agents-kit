@@ -25,6 +25,80 @@ scope_usage() {
   expect_eq "usage core: unsupported sources are listed with a reason, not hidden" \
     "$(json_get "${doc}" 'sorted(r["cli"] for r in d["rows"] if r["status"] == "unsupported")')" '["cline", "cursor", "grok", "opencode", "pi"]'
 
+  # --- advisory token sums: observed samples only, absence is unknown ------
+  mkdir -p "${BOX}/home/.local/state/agentkit/token-samples/claude@default"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":40,"output":20,"cache_read":0,"cache_write":10,"total":70},"recorded_at":1}\n' > "${BOX}/home/.local/state/agentkit/token-samples/claude@default/sample-1.json"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":60,"output":30,"cache_read":20,"cache_write":0,"total":110},"recorded_at":2}\n' > "${BOX}/home/.local/state/agentkit/token-samples/claude@default/sample-2.json"
+  ak_split -- usage --json; status=$?
+  cp "${BOX}/out" "${doc}"
+  expect_eq "usage advisory: json still matches the schema with advisory rows" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")" "valid"
+  expect_eq "usage advisory: the sampled account carries its observed sums" \
+    "$(json_get "${doc}" '[[r["advisory"]["runs"], r["advisory"]["tokens"]["input"], r["advisory"]["tokens"]["total"]] for r in d["rows"] if r["cli"] == "claude" and r["profile"] == "@default"]')"     '[[2, 100, 180]]'
+  expect_eq "usage advisory: accounts with no samples carry no advisory key" \
+    "$(json_get "${doc}" '[r.get("advisory", "absent") for r in d["rows"] if r["cli"] == "codex"]')" \
+    '["absent"]'
+  expect_eq "usage advisory: an explicit zero is a report (coverage counts it)" \
+    "$(json_get "${doc}" '[[r["advisory"]["tokens"]["cache_read"], r["advisory"]["coverage"]["cache_read"]] for r in d["rows"] if r["cli"] == "claude" and r["profile"] == "@default"]')" '[[20, 2]]'
+  # Runs that report no total (claude publishes none) leave the total null —
+  # never zero, never the sum of the components; a corrupt sample and a
+  # staged .tmp- file are not counted.
+  local sd="${BOX}/home/.local/state/agentkit/token-samples/claude@default"
+  rm -f "${sd}"/sample-*.json
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":17,"output":5,"cache_read":null,"cache_write":null,"total":null},"recorded_at":3}\n' > "${sd}/sample-3.json"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":3,"output":null,"cache_read":null,"cache_write":null,"total":null},"recorded_at":4}\n' > "${sd}/sample-4.json"
+  printf '{"cli":"claude","prof' > "${sd}/sample-5.json"
+  printf '{"cli":"claude","profile":"@default","tokens":{"input":1000,"output":1000,"cache_read":null,"cache_write":null,"total":2000},"recorded_at":6}\n' > "${sd}/.tmp-staged.json"
+  printf '{"cli":"claude","profile":"@work","tokens":{"input":1000,"output":null,"cache_read":null,"cache_write":null,"total":null},"recorded_at":7}\n' > "${sd}/sample-7.json"
+  ak_split -- usage --json
+  cp "${BOX}/out" "${doc}"
+  expect_eq "usage advisory: still matches the schema with null sums" \
+    "$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")" "valid"
+  expect_eq "usage advisory: an unreported total stays null; partial coverage is visible" \
+    "$(json_get "${doc}" '[[r["advisory"]["runs"], r["advisory"]["tokens"], r["advisory"]["coverage"]] for r in d["rows"] if r["cli"] == "claude" and r["profile"] == "@default"]')" \
+    '[[2, {"cache_read": null, "cache_write": null, "input": 20, "output": 5, "total": null}, {"cache_read": 0, "cache_write": 0, "input": 2, "output": 1, "total": 0}]]'
+  # Advisory boundary: the block never reaches the usage cache that
+  # ak capacity and ak pick read, and neither reads the samples.
+  check "usage advisory: the cache capacity and pick read drops an advisory block (whitelisted keys)" \
+    box_run -- "${AK_PY}" -c '
+import os, sys
+sys.path.insert(0, sys.argv[1] + "/lib"); import state
+env = dict(os.environ)
+assert "advisory" not in state.ROW_KEYS
+row = {"cli": "claude", "profile": "@q", "status": "ok", "windows": [],
+       "advisory": {"runs": 1, "tokens": {"input": 5}}}
+assert state.cache_put(env, row, 1000)
+got, age = state.cache_get(env, "claude", "@q", 1000, 60)
+assert got is not None and "advisory" not in got, got
+' "${ROOT}"
+  if grep -nE 'tokens_get|token-samples|advisory' "${ROOT}/lib/capacity.py" "${ROOT}/lib/pick.py" >/dev/null; then
+    fail "usage advisory: capacity or pick reads the token samples"
+  else
+    pass "usage advisory: capacity and pick never read the token samples"
+  fi
+  rm -rf "${BOX}/home/.local/state/agentkit/token-samples"
+
+  # The writer: two runs in the same second from the same process keep two
+  # samples (unique names, no replacement), private files, nothing recorded
+  # for a run that reported nothing, and an explicit zero kept as zero.
+  check "usage advisory: tokens_add keeps every sample, 0600, zero kept, nothing for nothing" \
+    box_run -- "${AK_PY}" -c '
+import os, stat, sys
+sys.path.insert(0, sys.argv[1] + "/lib"); import state
+env = dict(os.environ)
+t = {"input": 4, "output": 0, "cache_read": None, "cache_write": None, "total": None}
+assert state.tokens_add(env, "claude", "@w", t, 100) and state.tokens_add(env, "claude", "@w", t, 100)
+assert not state.tokens_add(env, "claude", "@w", dict.fromkeys(t), 100)
+d = state._tokens_dir(env, "claude", "@w")
+names = os.listdir(d)
+assert len(names) == 2 and all(n.startswith("sample-") for n in names), names
+assert all(stat.S_IMODE(os.stat(os.path.join(d, n)).st_mode) == 0o600 for n in names)
+assert stat.S_IMODE(os.stat(d).st_mode) == 0o700
+g = state.tokens_get(env, "claude", "@w")
+assert g["runs"] == 2 and g["tokens"]["input"] == 8 and g["tokens"]["output"] == 0 and g["tokens"]["total"] is None, g
+assert g["coverage"]["output"] == 2 and g["coverage"]["total"] == 0, g
+' "${ROOT}"
+
   out="$(ak -- usage --no-color)"; status=$?
   expect_eq "usage core: the table exits like the JSON" "${status}" 1
   expect_has "usage core: the table has a header" "${out}" "PROFILE"

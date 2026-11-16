@@ -13,6 +13,25 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Added
+
+- **Token metering** (`ak run --json`, the V8 pillar-4 item): the envelope
+  gains `tokens: {input, output, cache_read, cache_write, total}` — the
+  run's **reported** counts, extracted from the CLI's own JSON per new
+  `providers.toml` `run.tokens` tables (Claude's `usage`; Codex's last
+  `turn.completed`). Honesty rule: a field the CLI does not report stays
+  `null` — never imputed, never summed into a total by `ak`; negative or
+  non-integer values are garbage and stay `null`; text runs carry no
+  `tokens` key. Observed samples are recorded per account (append-only,
+  one immutable, uniquely named 0600 file per run — safe under concurrent
+  runs, pruned past 5000) and surface as advisory sums in `ak usage --json`
+  (`advisory: {runs, tokens, coverage}`: a field's sum covers only the runs
+  that reported it, `coverage` counts them, and a field no run reported is
+  `null` — never 0; an explicit zero is a report); they never change the
+  vendor's quota windows, the capacity verdict or pick eligibility.
+  Claude and Codex carry tables today; every other kind reports all-null
+  fields.
+
 ### Fixed
 
 - **Ask mode is forced, not assumed.** Under `--ask` or
@@ -34,9 +53,9 @@ permission posture changes.
   ones (`ask_values`: Claude/Grok `plan` and `dontAsk`, Codex `read-only`,
   Antigravity `plan` stay allowed), a Codex config override of
   `approval_policy`, `sandbox_mode`, `sandbox_workspace_write` or
-  `sandbox_permissions`, in any segment of a dotted key (`ask_config`), in every spelling the CLI parses (`--opt=value`,
-  `-ovalue`, `-o=value`, short clusters where accepted, Antigravity's
-  Go-style `-opt`).
+  `sandbox_permissions`, in any segment of a dotted key (`ask_config`),
+  in every spelling the CLI parses (`--opt=value`, `-ovalue`, `-o=value`,
+  short clusters where accepted, Antigravity's Go-style `-opt`).
 - **`ak pick --json` delivers the mode it claims.** Under the opt-out,
   `launch.argv` now ends with `--ask`, so the suggested command asks even
   where `AGENTKIT_PERMISSIONS` is not inherited (`launch.permissions` was

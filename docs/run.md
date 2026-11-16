@@ -81,8 +81,9 @@ stdout is **exactly one JSON object**, also when the run never started; the
 CLI's own output (its transcript, including its JSON stream) goes to stderr.
 
 ```json
-{"interface": 1, "kind": "codex", "profile": "@default", "cwd": "/repo",
- "exit": 0, "duration_s": 41.207, "result_text": "Done: …", "cli_exit": 0, "truncated": false}
+{"interface": 1, "kind": "claude", "profile": "@default", "cwd": "/repo",
+ "exit": 0, "duration_s": 41.207, "result_text": "Done: …", "cli_exit": 0, "truncated": false,
+ "tokens": {"input": 1204, "output": 356, "cache_read": 0, "cache_write": 256, "total": null}}
 ```
 
 | Field | Meaning |
@@ -94,6 +95,7 @@ CLI's own output (its transcript, including its JSON stream) goes to stderr.
 | `result_text` | the agent's final answer, extracted from the CLI's JSON (Claude/Cursor/Grok `result`, Codex's last `agent_message`, OpenCode's last `text` part, Pi's last assistant message, Cline's `completion_result`, Antigravity's `response` — or its `error` when `status` is not `SUCCESS`); the raw output when the shape is not recognised |
 | `cli_exit` | the CLI's own exit status (`null` when it never started; negative = killed by that signal) |
 | `truncated` | `result_text` was cut at 64 KiB, or the CLI's output exceeded the 8 MiB kept for extraction |
+| `tokens` | present on `--output-format json` runs that started (a run that never started carries `error` instead): the run's **reported** token counts `{input, output, cache_read, cache_write, total}` extracted from the CLI's own JSON per the providers.toml `run.tokens` table (Claude's `usage`, Codex's last `turn.completed`) — a field the CLI does not report stays `null`, never imputed and never summed by ak; a CLI with no `run.tokens` table reports all-null fields. Fields mean what each CLI reports: Codex's `input` **includes** its cached input (`cache_read` is a subset of it), Claude's `input` excludes cache reads and writes, and Claude reports no `total`. Only `--output-format json` envelopes carry `tokens`. Advisory per-account sums of these observed values surface in `ak usage --json` (`advisory`); runs whose counts the CLI did not report are never counted |
 | `error` | present only when the run never started: the one-line reason |
 
 The result is the agent's claim. A caller that needs proof runs its own

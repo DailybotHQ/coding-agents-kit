@@ -145,3 +145,122 @@ def cache_get(env, cli, profile, now, max_age):
     if age < 0 or age > max_age:
         return None, None
     return _clean_row(row), age
+
+
+# ------------------------------------------------------- advisory tokens
+# One immutable sample file per observed run, written once under a unique
+# name and never rewritten: concurrent runs cannot lose each other's
+# observations (no read-modify-write and no shared final name exists), a
+# crashed write leaves only a `.tmp-` file the reader ignores, and the sums
+# are recomputed from the samples at read time.
+
+_TOKEN_KEYS = ("input", "output", "cache_read", "cache_write", "total")
+_TOKEN_SAMPLES_MAX = 5000
+
+
+def _count(value):
+    """A reported token count: a non-negative int (bools excluded), else None."""
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def account_cli(cli_name, provider_name):
+    """The account name `ak usage` gives a kind's rows: the provider for a
+    provider kind (gemini's rows are named antigravity), else the CLI."""
+    if provider_name:
+        return "antigravity" if provider_name == "gemini" else provider_name
+    return cli_name
+
+
+def _tokens_dir(env, cli, profile):
+    return os.path.join(root(env), "token-samples", "%s%s" % (cli, profile))
+
+
+def tokens_add(env, cli, profile, tokens, now):
+    """Record one observed run's REPORTED token counts as an immutable
+    sample file (mode 0600, directory 0700). Only reported fields are kept —
+    an explicit zero is a report, a missing field is not — and a run that
+    reported nothing is not recorded. Best effort: a write failure loses that
+    one sample and is otherwise silent. Samples beyond the reader's window
+    are pruned, oldest first."""
+    counted = {k: _count(tokens.get(k)) for k in _TOKEN_KEYS}
+    if all(v is None for v in counted.values()) or not cli or not profile:
+        return False
+    tmp = None
+    try:
+        directory = ensure_dir(_tokens_dir(env, cli, profile))
+        fd, tmp = tempfile.mkstemp(prefix=".tmp-", suffix=".json", dir=directory)
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump({"cli": cli, "profile": profile, "tokens": counted, "recorded_at": int(now)}, fh)
+        os.chmod(tmp, 0o600)
+        # Unique final name: the zero-padded time keeps lexical order
+        # chronological, and the random part of the staged name rules out
+        # two runs (or a reused pid) replacing each other's sample.
+        unique = os.path.basename(tmp)[len(".tmp-"):-len(".json")]
+        os.replace(tmp, os.path.join(directory, "sample-%012d-%d-%s.json" % (int(now), os.getpid(), unique)))
+        tmp = None
+    except OSError:
+        return False
+    finally:
+        if tmp:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+    tokens_prune(env, cli, profile)
+    return True
+
+
+def _sample_names(directory):
+    try:
+        return sorted(n for n in os.listdir(directory) if n.startswith("sample-") and n.endswith(".json"))
+    except OSError:
+        return []
+
+
+def tokens_get(env, cli, profile):
+    """The advisory sums for one account over its recorded samples, or {}
+    when nothing was ever observed — absence is unknown, not zero.
+
+    {"runs": n, "tokens": {field: sum or null}, "coverage": {field: runs}}:
+    a field's sum covers only the runs that reported it (`coverage` says how
+    many), and is null when no run did — never zero for "not reported".
+    Totals come only from explicitly reported totals; components are never
+    added into one."""
+    directory = _tokens_dir(env, cli, profile)
+    runs = 0
+    sums = {k: None for k in _TOKEN_KEYS}
+    coverage = {k: 0 for k in _TOKEN_KEYS}
+    for name in _sample_names(directory)[-_TOKEN_SAMPLES_MAX:]:
+        try:
+            with open(os.path.join(directory, name), "r", encoding="utf-8") as fh:
+                sample = json.load(fh)
+        except (OSError, ValueError):
+            continue  # a corrupt sample is skipped, not counted
+        if not isinstance(sample, dict) or sample.get("cli") != cli or sample.get("profile") != profile:
+            continue
+        reported = sample.get("tokens")
+        if not isinstance(reported, dict):
+            continue
+        values = {k: _count(reported.get(k)) for k in _TOKEN_KEYS}
+        if all(v is None for v in values.values()):
+            continue
+        runs += 1
+        for k, v in values.items():
+            if v is not None:
+                sums[k] = (sums[k] or 0) + v
+                coverage[k] += 1
+    if not runs:
+        return {}
+    return {"runs": runs, "tokens": sums, "coverage": coverage}
+
+
+def tokens_prune(env, cli, profile):
+    """Drop samples beyond the reader's window, oldest first."""
+    directory = _tokens_dir(env, cli, profile)
+    for name in _sample_names(directory)[:-_TOKEN_SAMPLES_MAX]:
+        try:
+            os.remove(os.path.join(directory, name))
+        except OSError:
+            pass

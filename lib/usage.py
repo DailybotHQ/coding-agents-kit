@@ -313,7 +313,7 @@ def enumerate_rows(model, env):
             if suffix:
                 label = _profile_label(_match_profile_name(listing, suffix))
             kind_names = _kinds_of_provider(model, pname)
-            row_cli = "antigravity" if pname == "gemini" else pname
+            row_cli = state.account_cli(None, pname)
             if "unsupported" in table:
                 row = Row(row_cli, label, kind_names, table, "none", unsupported=table["unsupported"], short=table.get("short"))
                 row.connected, row.how = True, "%s set" % var
@@ -1401,6 +1401,10 @@ def main(model, args, env, now=None, stdout=None, platform=None):
     for result in results:          # always live; refreshes what ak capacity / ak pick read
         state.cache_put(env, result, now)
     results = mark_defaults(model, results, env)
+    for result in results:          # advisory: sums of this account's observed run samples (absent when none)
+        advisory = state.tokens_get(env, result["cli"], result["profile"])
+        if advisory:
+            result["advisory"] = advisory
     if opts["json"]:
         emit(stdout, render_json(results, now))
     else:
