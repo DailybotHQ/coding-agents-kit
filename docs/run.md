@@ -47,6 +47,10 @@ for any other batch target.
 | grok | `grok -p "<prompt>" [--output-format json] --cwd <cwd>` |
 | antigravity | `agy -p "<prompt>" [--output-format json]` |
 
+`{auto}` (not shown) is the CLI's autonomy flag by default, or under the
+opt-out its explicit ask flag where its headless mode has one (claude and
+grok `--permission-mode default`; see [permissions](permissions.md)).
+
 The CLI's process always starts in `<cwd>`. Provider kinds add their own
 arguments (`codex exec -p azure …`, `opencode run -m xai/… …`) and
 environment exactly as an interactive launch does; Cline variants run

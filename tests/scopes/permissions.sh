@@ -136,8 +136,18 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     out="$(ak AGENTKIT_PERMISSIONS=ask -- "${k}" --auto)"
     expect_eq "${k} under AGENTKIT_PERMISSIONS=ask (even with --auto): exactly '${flag}'" "$(argv_of "${out}")" "${flag}"
   done
-  out="$(ak -- claude --ask -c)"
-  expect_eq "the ask flag sits where the autonomy flag would (after the session)" "$(argv_of "${out}")" "--continue|--permission-mode|default"
+  # Placement: where the autonomy flag would sit, after the session segment.
+  local -a placed=(
+    "claude -c|--continue|--permission-mode|default"
+    "codex -c|resume|--last|--ask-for-approval|on-request"
+    "codex -r abc|resume|abc|--ask-for-approval|on-request"
+    "grok -c|--continue|--permission-mode|default"
+  )
+  for row in "${placed[@]}"; do
+    # shellcheck disable=SC2086
+    out="$(ak -- ${row%%|*} --ask)"
+    expect_eq "ak ${row%%|*} --ask: the ask flag after the session" "$(argv_of "${out}")" "${row#*|}"
+  done
 
   # --- a user mode flag cannot undo the opt-out: kind | an argument after --
   # that would set the CLI's permission mode. Refused (exit 2, nothing
@@ -147,7 +157,10 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "claude|--permission-mode=auto" "claude|--allow-dangerously-skip-permissions"
     "codex|--dangerously-bypass-approvals-and-sandbox" "codex|-a|never" "codex|--ask-for-approval=never"
     "codex|-c|approval_policy=never" "codex|--sandbox|danger-full-access" "codex|--approve-for-me"
-    "cursor|--force" "cursor|-f" "cursor|--yolo" "cursor|--auto-review"
+    "codex|--sandbox=danger-full-access" "codex|-sdanger-full-access" "codex|-s|danger-full-access"
+    "codex|--config=approval_policy=never" "codex|-capproval_policy=never" "codex|-c|approval_policy =never"
+    "codex|--config|sandbox_mode=danger-full-access" "codex|-anever" "codex|x|--yolo"
+    "cursor|--force" "cursor|-f" "cursor|--yolo" "cursor|--auto-review" "cursor|-fw" "cursor|-wf"
     "opencode|--auto" "pi|--approve" "pi|-a" "cline|--yolo"
     "grok|--always-approve" "grok|--permission-mode|bypassPermissions"
     "antigravity|--dangerously-skip-permissions" "antigravity|--mode|auto"
@@ -166,8 +179,23 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
   done
   out="$(ak -- claude --ask fix --dangerously-skip-permissions)"; status=$?
   expect_eq "a mode flag after a CLI argument is refused too" "${status}" 2
+  # What stays allowed under the opt-out: stricter modes (providers.toml
+  # ask_values), unrelated options and config keys, other value-taking short
+  # options, and plain words — a prompt is never matched.
+  local -a allowed=(
+    "claude|--permission-mode|plan" "claude|--permission-mode=plan" "claude|--permission-mode|manual"
+    "grok|--permission-mode|plan" "antigravity|--mode|plan"
+    "codex|-s|read-only" "codex|--sandbox=workspace-write" "codex|-c|model=o3" "codex|-cmodel_reasoning_effort=high"
+    "codex|-pazure" "codex|danger-full-access" "codex|explain|--approve-for-me-docs" "codex|--|--yolo"
+    "cursor|-w" "pi|-na" "pi|explain" "claude|-p|x"
+  )
+  for row in "${allowed[@]}"; do
+    k="${row%%|*}"; IFS='|' read -r -a extra <<<"${row#*|}"
+    ak_split -- "${k}" --ask -- "${extra[@]}"; status=$?
+    expect_eq "${k} --ask -- ${extra[*]}: allowed (exit 0)" "${status}" 0
+  done
   out="$(ak -- codex --ask -- -c model=o3)"
-  expect_eq "an unrelated config override still passes under the opt-out" "$(argv_of "${out}")" "--ask-for-approval|on-request|-c|model=o3"
+  expect_eq "an unrelated config override passes untouched after the ask flag" "$(argv_of "${out}")" "--ask-for-approval|on-request|-c|model=o3"
 
   # Headless (ak run) under the opt-out: the run scope's argv table (claude and
   # grok carry their ask flag; codex exec takes none, providers.toml run.ask).

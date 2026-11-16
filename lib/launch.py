@@ -177,22 +177,80 @@ def posture_args(cli, auto, run=None):
     return list(cli.get("ask", []))
 
 
+def _posture_refusal(cli, rest):
+    """The first user argument that would loosen the CLI's permission mode,
+    or None. Options are read the way the CLIs parse them: `--opt value`,
+    `--opt=value`, `-o value`, `-ovalue`, and — where the CLI parses them
+    (`ask_clusters`) — short clusters `-xyz`. Plain words (a prompt) are
+    never matched, and a bare `--` ends the options."""
+    conflicts = set(cli.get("ask_conflicts", []))
+    values = cli.get("ask_values", {})
+    config = cli.get("ask_config", {})
+    config_opts = set(config.get("options", []))
+    config_keys = set(config.get("keys", []))
+    takes_value = set(values) | config_opts | set(cli.get("ask_value_opts", []))
+    clusters = bool(cli.get("ask_clusters"))
+
+    def judge(opt, value, shown):
+        if opt in conflicts:
+            return shown
+        if opt in values and value is not None and value not in values[opt]:
+            return shown
+        if opt in config_opts and value is not None and value.split("=", 1)[0].strip() in config_keys:
+            return shown
+        return None
+
+    i = 0
+    while i < len(rest):
+        tok = rest[i]
+        nxt = rest[i + 1] if i + 1 < len(rest) else None
+        if tok == "--":
+            return None
+        if tok.startswith("--"):
+            opt, eq, val = tok.partition("=")
+            value = val if eq else (nxt if opt in takes_value else None)
+            hit = judge(opt, value, tok if eq or value is None else "%s %s" % (tok, value))
+            if hit:
+                return hit
+            i += 2 if (not eq and opt in takes_value) else 1
+            continue
+        if tok.startswith("-") and len(tok) > 1:
+            if tok in conflicts:          # a listed multi-letter single-dash option
+                return tok
+            chars = tok[1:] if clusters else tok[1]
+            for pos, ch in enumerate(chars):
+                opt = "-" + ch
+                if opt in takes_value:
+                    attached = tok[2 + pos:] if clusters else tok[2:]
+                    value = attached or nxt
+                    hit = judge(opt, value, tok if attached else "%s %s" % (tok, value))
+                    if hit:
+                        return hit
+                    if not attached:
+                        i += 1
+                    break
+                if opt in conflicts:
+                    return tok
+            i += 1
+            continue
+        i += 1
+    return None
+
+
 def refuse_posture_override(cli, auto, rest):
     """Under the opt-out, ak owns the CLI's permission flags: a user argument
-    (after `--`, or after the first CLI argument) that would set the CLI's
+    (after `--`, or after the first CLI argument) that would loosen the CLI's
     permission or approval mode is a usage error, so nothing typed after the
-    head can undo the opt-out. Matches a token equal to a providers.toml
-    `ask_conflicts` entry or starting with `<entry>=`."""
+    head can undo the opt-out. Stricter values pass (providers.toml
+    `ask_values`, e.g. Claude's plan mode)."""
     if auto:
         return
-    conflicts = cli.get("ask_conflicts", [])
-    for tok in rest:
-        for entry in conflicts:
-            if tok == entry or tok.startswith(entry + "="):
-                raise AkError("'%s' would change %s's permission mode, and this launch asks "
-                              "(--ask or AGENTKIT_PERMISSIONS=ask): under the opt-out ak sets the "
-                              "permission flags itself. See: ak --help" % (tok, cli.get("executable", "the CLI")),
-                              EXIT_USAGE)
+    hit = _posture_refusal(cli, rest)
+    if hit:
+        raise AkError("'%s' would change %s's permission mode, and this launch asks "
+                      "(--ask or AGENTKIT_PERMISSIONS=ask): under the opt-out ak sets the "
+                      "permission flags itself. See: ak --help" % (hit, cli.get("executable", "the CLI")),
+                      EXIT_USAGE)
 
 
 class Prepared(object):

@@ -62,15 +62,28 @@ explicit ask flag where the CLI has one:
 
 **A user mode flag cannot undo the opt-out.** Under the opt-out, `ak` owns
 the CLI's permission flags: an argument after `--` (or after the first CLI
-argument) that would set the CLI's permission or approval mode — its
-autonomy flag, Claude's or Grok's `--permission-mode`, Codex's `-a` /
-`--ask-for-approval`, `--approve-for-me`, `-c approval_policy=…` or
-`sandbox_mode=…`, Cursor's `--force` / `--yolo` / `--auto-review`,
-Antigravity's `--mode`, in either `--flag value` or `--flag=value` form — is
-a usage error (exit 2) and launches nothing. Without the opt-out those
-arguments pass through to the CLI untouched. The lists live in
-`providers.toml` (`ask`, `ask_conflicts`, `run.ask`); the `permissions` test
-scope proves the flag and the refusal for every CLI.
+argument) that would **loosen** the CLI's permission or approval mode is a
+usage error (exit 2) and launches nothing — its autonomy flag, Codex's
+`-a` / `--ask-for-approval` / `--approve-for-me` / `--full-auto`, a Codex
+config override of `approval_policy` or `sandbox_mode` (`-c` / `--config`),
+Cursor's `--force` / `-f` / `--yolo` / `--auto-review`, and any mode value
+outside the allowed ones. Options are read the way the CLIs parse them:
+`--opt value`, `--opt=value`, `-o value`, `-ovalue`, and short clusters
+(`-fw`) for CLIs that accept them. Stricter or equal modes stay allowed:
+
+| CLI | Allowed under the opt-out |
+| --- | --- |
+| claude | `--permission-mode default`, `manual` or `plan` |
+| grok | `--permission-mode default` or `plan` |
+| codex | `--sandbox` / `-s` `read-only` or `workspace-write` |
+| antigravity | `--mode plan` |
+
+Plain words (a prompt) are never matched, and a bare `--` ends the options.
+Without the opt-out every argument passes through to the CLI untouched. The
+data lives in `providers.toml` (`ask`, `run.ask`, `ask_conflicts`,
+`ask_values`, `ask_config`, `ask_clusters`, `ask_value_opts`); the
+`permissions` test scope proves the flag, every refusal and every allowed
+case for each CLI.
 
 `ak pick --kinds … --json` under the opt-out reports `launch.permissions:
 "ask"` **and** puts `--ask` in `launch.argv`, so the suggested command asks

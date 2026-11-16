@@ -25,9 +25,13 @@ permission posture changes.
   (interactive; `codex exec` takes none); CLIs without an ask flag are
   unchanged.
 - **A user mode flag cannot undo the opt-out.** Under the opt-out, an
-  argument after `--` that would set the CLI's permission or approval mode
-  (`providers.toml` `ask_conflicts`, including the autonomy flag) is a usage
-  error (exit 2) and launches nothing.
+  argument after `--` that would loosen the CLI's permission or approval
+  mode is a usage error (exit 2) and launches nothing: the autonomy flag and
+  its relatives (`ask_conflicts`), a mode value outside the allowed stricter
+  ones (`ask_values`: Claude/Grok `plan`, Codex `read-only`, Antigravity
+  `plan` stay allowed), a Codex config override of `approval_policy` or
+  `sandbox_mode` (`ask_config`), in every spelling the CLI parses
+  (`--opt=value`, `-ovalue`, short clusters where accepted).
 - **`ak pick --json` delivers the mode it claims.** Under the opt-out,
   `launch.argv` now ends with `--ask`, so the suggested command asks even
   where `AGENTKIT_PERMISSIONS` is not inherited (`launch.permissions` was

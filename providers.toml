@@ -35,8 +35,16 @@ home_env = "CLAUDE_CONFIG_DIR"
 # it as CLAUDE_CODE_OAUTH_TOKEN; never a fallback to another account's token.
 profile_token_var = "CLAUDE_CODE_OAUTH_TOKEN"
 auto = ["--dangerously-skip-permissions"]
+# Under the opt-out (--ask / AGENTKIT_PERMISSIONS=ask) `{auto}` expands to
+# `ask`: the CLI's explicit ask mode, forced even when the account's own
+# settings default to an autonomous one. `default` is Claude's long-standing
+# value (newer releases also name it `manual` and keep `default` as an alias).
+# `ask_conflicts` are options a user argument may not pass under the
+# opt-out; `ask_values` allows an option only with the listed (no looser)
+# values. See docs/permissions.md.
 ask = ["--permission-mode", "default"]
-ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions", "--permission-mode"]
+ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"]
+ask_values = { "--permission-mode" = ["default", "manual", "plan"] }
 interactive = ["{provider}", "{session}", "{auto}"]
 # `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
 # list (values the CLI accepts) makes ak refuse anything else; without one
@@ -116,7 +124,16 @@ home_env = "CODEX_HOME"
 lease = "exclusive"   # ak lease: one writer per auth.json
 auto = ["--dangerously-bypass-approvals-and-sandbox"]
 ask = ["--ask-for-approval", "on-request"]
-ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo", "approval_policy", "sandbox_mode", "danger-full-access"]
+# `-a` is refused outright: ak already passes it, and codex rejects a second.
+# `ask_config` refuses a config override (-c / --config KEY=VALUE) of the
+# listed keys; `ask_clusters`: the CLI parses -xyz as -x -y -z, and
+# `ask_value_opts` names its other value-taking short options (their value
+# is never read as flags: -pazure is a profile, not -a).
+ask_conflicts = ["--dangerously-bypass-approvals-and-sandbox", "--approve-for-me", "--ask-for-approval", "-a", "--full-auto", "--yolo"]
+ask_values = { "--sandbox" = ["read-only", "workspace-write"], "-s" = ["read-only", "workspace-write"] }
+ask_config = { options = ["-c", "--config"], keys = ["approval_policy", "sandbox_mode"] }
+ask_clusters = true
+ask_value_opts = ["-m", "-p", "-C", "-i"]
 interactive = ["{provider}", "{session}", "{auto}"]
 # Codex spells the model flag -m (the long --model is not global here).
 model_flag = "-m"
@@ -201,6 +218,7 @@ isolation = "cursor-home"
 auto = ["--force"]
 ask = []
 ask_conflicts = ["--force", "-f", "--yolo", "--auto-review"]
+ask_clusters = true
 interactive = ["{session}", "{auto}"]
 docs = "https://cursor.com/docs/cli"
 
@@ -393,7 +411,8 @@ isolation = "env"
 home_env = "GROK_HOME"
 auto = ["--always-approve"]
 ask = ["--permission-mode", "default"]
-ask_conflicts = ["--always-approve", "--permission-mode"]
+ask_conflicts = ["--always-approve"]
+ask_values = { "--permission-mode" = ["default", "plan"] }
 interactive = ["{session}", "{auto}"]
 docs = "https://x.ai/cli"
 
@@ -452,7 +471,8 @@ isolation = "home"
 home_dir = ".gemini"
 auto = ["--dangerously-skip-permissions"]
 ask = []
-ask_conflicts = ["--dangerously-skip-permissions", "--mode"]
+ask_conflicts = ["--dangerously-skip-permissions"]
+ask_values = { "--mode" = ["plan"] }
 interactive = ["{session}", "{auto}"]
 docs = "https://antigravity.google/docs/cli"
 
