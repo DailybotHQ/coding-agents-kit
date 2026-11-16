@@ -13,6 +13,13 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-11-15
+
+A minor release. Interface stays **1**: `ak doctor --json`, `ak env` and
+`ak run` retain their contracts. Cross-kind account selection adds the
+separately versioned `pick-v2` envelope while `pick-v1` stays unchanged;
+interactive `--model` now maps to each CLI's model flag.
+
 ### Changed
 - **`--model` is now a head flag** (`ak <kind> [@p] --model NAME [--]`):
   ak consumes it and places the CLI's own flag (`model_flag` from
@@ -760,7 +767,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.1...v1.1.0
 [1.0.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.0.0...v1.0.1
