@@ -13,7 +13,26 @@ permission posture changes.
 
 ## [Unreleased]
 
+### Changed
+- **`--model` is now a head flag** (`ak <kind> [@p] --model NAME [--]`):
+  ak consumes it and places the CLI's own flag (`model_flag` from
+  providers.toml — claude `--model`, codex `-m`) before the user's own
+  arguments. Previously `--model` fell through to the CLI verbatim, so
+  scripts spelling `ak codex ... --model x` now see `-m x` in the final
+  argv. A bare `--model`, a dash-leading value, a second `--model`, or a
+  `--model` also present after `--` is a usage error (exit 2). An optional
+  providers.toml `models` list refuses values that CLI does not accept.
+
 ### Added
+- **`ak pick --kinds KIND,... [--model-for KIND=NAME] --json`** — the
+  cross-kind priority pick for daemons (pick-v2, `docs/schema/pick-v2.json`):
+  the first kind of the list with a qualifying account wins; the envelope
+  carries the exact `launch.argv` (head-level `--model`, so the mapping and
+  checks apply), `launch.permissions` (`auto`/`ask` — a caller wanting
+  ask-mode appends `["--ask"]`), the active lease on the chosen account and
+  the no-qualifier form (`qualifies: false`) so a `--json` caller always
+  gets a document. Exit codes match pick-v1 (0/1/3/2).
+
 
 - **`ak update` (`lib/update.py`, `docs/update.md`, `docs/schema/update-v1.json`):**
   bring a CLI to the vendor's newest release without waiting for a kit
@@ -34,6 +53,8 @@ permission posture changes.
   actually resolves, with an `ak update` hint only when the resolved copy is
   older than the pin; a newer vendor self-update is shown, never suggested
   down.
+
+
 
 ## [1.2.0] - 2026-10-27
 

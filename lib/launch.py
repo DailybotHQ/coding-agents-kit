@@ -1,4 +1,4 @@
-"""`ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [-c | -r [id] | -l] [--] [cli args…]`.
+"""`ak <kind> [@profile] [--ask | --auto] [--trust-cwd] [--model NAME] [-c | -r [id] | -l] [--] [cli args…]`.
 
 The kit reads only the head of the arguments; everything after the first
 token it does not own (or after `--`) reaches the CLI untouched:
@@ -52,6 +52,7 @@ class Head(object):
         self.auto = False
         self.ask = False
         self.trust_cwd = False
+        self.model = None       # --model NAME, mapped per CLI at launch
         self.session = None      # continue | resume | pick | list
         self.session_id = None
         self.passthrough = False
@@ -73,6 +74,19 @@ def parse_head(cli, args, env):
         if tok == "--trust-cwd":
             head.trust_cwd = True
             i += 1
+            continue
+        if tok == "--model":
+            nxt = args[i + 1] if i + 1 < n else ""
+            if not nxt or nxt.startswith("-"):
+                raise AkError("--model needs a value, e.g. --model sonnet. See: ak --help", EXIT_USAGE)
+            if head.model is not None:
+                raise AkError("--model is given twice; pass it once. See: ak --help", EXIT_USAGE)
+            allowed = cli.get("models")
+            if allowed is not None and nxt not in allowed:
+                raise AkError("--model '%s' is not one of %s" % (nxt, ",".join(allowed)), EXIT_USAGE)
+            head.model = nxt
+            seen_non_auto = True
+            i += 2
             continue
         if tok in ("--auto", "--ask"):
             if tok == "--auto":
@@ -348,6 +362,18 @@ def launch(model, kind_name, args, base_env):
         # Before the user's own arguments, like `ak codex -- --no-daemon`
         # without the `--`.
         argv = argv[:len(argv) - len(head.rest)] + daemon_off + head.rest
+    if head.model is not None:
+        # Provider-neutral --model: the CLI's own flag (providers.toml
+        # `model_flag`, default --model) placed before the user's own
+        # arguments, like the daemon flags above. `models` (providers.toml,
+        # optional list) refuses a value the CLI does not accept.
+        model_flag = kind.cli.get("model_flag", "--model")
+        allowed = kind.cli.get("models")
+        if allowed is not None and head.model not in allowed:
+            raise AkError("--model '%s' is not one of %s" % (head.model, ",".join(allowed)), EXIT_USAGE)
+        if model_flag in head.rest:
+            raise AkError("the model is given twice; pass --model once. See: ak --help", EXIT_USAGE)
+        argv = argv[:len(argv) - len(head.rest)] + [model_flag, head.model] + head.rest
     # A top-level config override: first, so it precedes any subcommand (resume).
     argv = marker + argv
     if not standalone:

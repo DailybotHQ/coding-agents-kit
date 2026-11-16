@@ -12,6 +12,7 @@ dispatch_case() {
 
 scope_dispatch() {
   local out status row args want
+  py_checks model_checks.py
   box_new dispatch
   box_posture ask  # argv grammar; the permissions scope owns the default
   printf '[{"sessionId":"sess-old","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-01T00:00:00Z"},{"sessionId":"sess-new","cwd":"%s","isSubagent":false,"updatedAt":"2026-10-05T00:00:00Z"},{"sessionId":"sess-sub","cwd":"%s","isSubagent":true,"updatedAt":"2026-10-07T00:00:00Z"},{"sessionId":"sess-other","cwd":"/elsewhere","isSubagent":false,"updatedAt":"2026-10-08T00:00:00Z"}]\n' \
@@ -26,6 +27,11 @@ scope_dispatch() {
     "claude --resume abc|--resume|abc"
     "claude -r|--resume"
     "claude -l|-l"
+    "claude --model sonnet|--model|sonnet"
+    "claude --model sonnet -- x y|--model|sonnet|x|y"
+    "claude --continue --model opus|--continue|--model|opus"
+    "codex --model gpt-5.1|-m|gpt-5.1"
+    "codex -c --model gpt-5.1|resume|--last|-m|gpt-5.1"
     "codex -c|resume|--last"
     "codex -l|resume|--last"
     "codex --last|resume|--last"
