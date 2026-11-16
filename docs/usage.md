@@ -140,7 +140,11 @@ quota. No account identity (e-mail, organisation, id) is read or shown.
 Rows may also carry an **`advisory`** block: the sums of this account's
 observed `ak run` token samples (the kit records what each run's CLI itself
 reported — a run that reported nothing is not counted, and nothing is ever
-imputed). Advisory sums never touch the vendor's quota windows, the
+imputed). `advisory` is `{runs, tokens, coverage}`: each field of `tokens`
+sums only the runs that reported that field, `coverage` says how many did,
+and a field no run reported is `null`, never `0` (an explicit zero is a
+report). Claude reports no total, so a Claude account's `total` stays `null`;
+totals are never built from the components. Advisory sums never touch the vendor's quota windows, the
 capacity verdict or pick eligibility.
 
 Rows appear for: the CLI's own home (`@default`) when the CLI is installed,

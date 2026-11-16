@@ -23,8 +23,11 @@ permission posture changes.
   `null` — never imputed, never summed into a total by `ak`; negative or
   non-integer values are garbage and stay `null`; text runs carry no
   `tokens` key. Observed samples are recorded per account (append-only,
-  one immutable file per run — safe under concurrent runs) and surface as
-  advisory sums in `ak usage --json` (`advisory`); they never change the
+  one immutable, uniquely named 0600 file per run — safe under concurrent
+  runs, pruned past 5000) and surface as advisory sums in `ak usage --json`
+  (`advisory: {runs, tokens, coverage}`: a field's sum covers only the runs
+  that reported it, `coverage` counts them, and a field no run reported is
+  `null` — never 0; an explicit zero is a report); they never change the
   vendor's quota windows, the capacity verdict or pick eligibility.
   Claude and Codex carry tables today; every other kind reports all-null
   fields.

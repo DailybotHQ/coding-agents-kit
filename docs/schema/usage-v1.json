@@ -163,11 +163,12 @@
             "description": "Optional (additive): the limit resets the account holds, when the source reports them (Codex: rate_limit_reset_credits.available_count). Absent when not reported."
           },
           "advisory": {
-            "description": "Advisory sums of this account's OBSERVED ak run token samples (state-recorded): runs seen and per-field sums. Present only when at least one run reported tokens - absence is not zero, it is unknown. Never imputed: fields the CLI did not report are not counted.",
+            "description": "Advisory sums of this account's OBSERVED ak run token samples (state-recorded): runs seen, per-field sums and per-field coverage. Present only when at least one run reported tokens - absence is not zero, it is unknown. Never imputed: a field's sum covers only the runs that reported it (coverage), and is null when no run did; totals come only from explicitly reported totals.",
             "type": "object",
             "required": [
               "runs",
-              "tokens"
+              "tokens",
+              "coverage"
             ],
             "additionalProperties": false,
             "properties": {
@@ -177,6 +178,55 @@
                 "description": "How many observed runs reported at least one token count."
               },
               "tokens": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "input",
+                  "output",
+                  "cache_read",
+                  "cache_write",
+                  "total"
+                ],
+                "properties": {
+                  "input": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "output": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "cache_read": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "cache_write": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  },
+                  "total": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ],
+                    "minimum": 0
+                  }
+                }
+              },
+              "coverage": {
+                "description": "How many of the observed runs reported each field.",
                 "type": "object",
                 "additionalProperties": false,
                 "required": [
