@@ -58,7 +58,7 @@ explicit ask flag where the CLI has one:
 | `claude`, `claude-glm` | `--permission-mode default` | the same |
 | `codex`, `codex-*` | `--ask-for-approval on-request --sandbox workspace-write` (a stricter `--sandbox` / `-s` you pass replaces the pinned one) | `--sandbox workspace-write` (`codex exec` takes no approval flag) |
 | `grok` | `--permission-mode default` | the same |
-| `cursor`, `opencode`, `pi`, `cline` (and their provider kinds), `antigravity` | nothing: the CLI has no ask flag, and leaving its autonomy flag out is its ask mode | nothing |
+| `cursor`, `opencode`, `pi`, `cline` (and their provider kinds), `antigravity` | nothing: the CLI has no ask flag, so ask is the CLI's own default — **assumed, not forced**: an account config that makes the default autonomous (OpenCode `permission: "allow"`, for example) is not overridden, though `ak pick` still reports `permissions: "ask"` | nothing |
 
 Codex's pinned `--sandbox workspace-write` also applies to an account whose
 own config is stricter (`sandbox_mode = "read-only"`): pass `-s read-only`
@@ -67,7 +67,10 @@ after `--` to keep it — a stricter sandbox replaces the pinned one.
 **A user mode flag cannot undo the opt-out.** Under the opt-out, `ak` owns
 the CLI's permission flags: an argument after `--` (or after the first CLI
 argument) that would **loosen** the CLI's permission or approval mode is a
-usage error (exit 2) and launches nothing — its autonomy flag, Codex's
+usage error (exit 2) and launches nothing — its autonomy flag, a
+pre-approval that leaves the mode alone (Claude's `--allowedTools` /
+`--allowed-tools`, `--settings`, `--permission-prompt-tool` and
+`--permission-prompts host`; Grok's `--allow` and its aliases), Codex's
 `-a` / `--ask-for-approval` / `--approve-for-me` / `--full-auto`, a Codex
 config override of `approval_policy`, `sandbox_mode`, `sandbox_workspace_write`
 or `sandbox_permissions` (`-c` / `--config`, also
@@ -80,10 +83,14 @@ clusters (`-fw`) for CLIs that accept them, and Antigravity's Go-style
 
 | CLI | Allowed under the opt-out |
 | --- | --- |
-| claude | `--permission-mode default`, `manual`, `plan` or `dontAsk` |
+| claude | `--permission-mode default`, `manual`, `plan` or `dontAsk`; `--permission-prompts none`; `--disallowedTools` |
 | grok | `--permission-mode default`, `plan` or `dontAsk` |
 | codex | `--sandbox` / `-s` `read-only` or `workspace-write` |
 | antigravity | `--mode plan` |
+
+`dontAsk` is stricter but silent: anything that would prompt is denied
+without asking, so a caller that expects to answer prompts sees denials
+instead.
 
 Plain words (a prompt) are never matched, and a bare `--` ends the options —
 except right after an option that may be waiting for its value, where the CLI

@@ -43,8 +43,12 @@ auto = ["--dangerously-skip-permissions"]
 # opt-out; `ask_values` allows an option only with the listed (no looser)
 # values. See docs/permissions.md.
 ask = ["--permission-mode", "default"]
-ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions"]
-ask_values = { "--permission-mode" = ["default", "manual", "plan", "dontAsk"] }
+# Pre-approval routes that loosen ask without touching the mode are refused
+# too: allow rules, a --settings file or JSON (permissions.allow,
+# defaultMode), and handing prompts to a tool or host that can say yes.
+ask_conflicts = ["--dangerously-skip-permissions", "--allow-dangerously-skip-permissions",
+                 "--allowedTools", "--allowed-tools", "--settings", "--permission-prompt-tool"]
+ask_values = { "--permission-mode" = ["default", "manual", "plan", "dontAsk"], "--permission-prompts" = ["none"] }
 interactive = ["{provider}", "{session}", "{auto}"]
 # `ak <kind> --model NAME`: the CLI's own model flag. An optional `models`
 # list (values the CLI accepts) makes ak refuse anything else; without one
@@ -438,7 +442,7 @@ isolation = "env"
 home_env = "GROK_HOME"
 auto = ["--always-approve"]
 ask = ["--permission-mode", "default"]
-ask_conflicts = ["--always-approve"]
+ask_conflicts = ["--always-approve", "--allow", "--allowedTools", "--allowed-tools"]
 ask_values = { "--permission-mode" = ["default", "plan", "dontAsk"] }
 interactive = ["{session}", "{auto}"]
 docs = "https://x.ai/cli"

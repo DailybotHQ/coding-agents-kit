@@ -168,6 +168,9 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "codex|-c=sandbox_mode=danger-full-access" "codex|-s=danger-full-access"
     "codex|-c|profiles.x.sandbox_mode=danger-full-access" "codex|-c|profiles.x.approval_policy=never"
     "claude|--model|--|--dangerously-skip-permissions"
+    "claude|--allowedTools|Bash(*)" "claude|--allowed-tools=Bash(*)" "claude|--settings|{}"
+    "claude|--permission-prompt-tool|mcp__x__approve" "claude|--permission-prompts|host"
+    "grok|--allow|Bash(*)" "grok|--allowedTools|Bash(*)" "grok|--allowed-tools=Bash(*)"
     "codex|-c|sandbox_workspace_write.network_access=true" "codex|-c|sandbox_permissions=[\"disk-full-read-access\"]"
   )
   local -a extra
@@ -193,7 +196,7 @@ assert {c: m.clis[c]["auto"] for c in m.clis} == want' "${ROOT}"
     "codex|-s|read-only" "codex|--sandbox=workspace-write" "codex|-c|model=o3" "codex|-cmodel_reasoning_effort=high"
     "codex|-pazure" "codex|danger-full-access" "codex|explain|--approve-for-me-docs" "codex|--|--yolo"
     "cursor|-w" "pi|-na" "pi|explain" "claude|-p|x"
-    "claude|--permission-mode|dontAsk" "codex|-s=read-only" "antigravity|-mode|plan" "claude|x|--|--dangerously-skip-permissions"
+    "claude|--permission-mode|dontAsk" "claude|--disallowedTools|Bash" "claude|--permission-prompts|none" "codex|-s=read-only" "antigravity|-mode|plan" "claude|x|--|--dangerously-skip-permissions"
   )
   for row in "${allowed[@]}"; do
     k="${row%%|*}"; IFS='|' read -r -a extra <<<"${row#*|}"

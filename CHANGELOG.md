@@ -49,7 +49,9 @@ permission posture changes.
 - **A user mode flag cannot undo the opt-out.** Under the opt-out, an
   argument after `--` that would loosen the CLI's permission or approval
   mode is a usage error (exit 2) and launches nothing: the autonomy flag and
-  its relatives (`ask_conflicts`), a mode value outside the allowed stricter
+  its relatives, and pre-approvals that leave the mode alone (Claude
+  `--allowedTools`, `--settings`, `--permission-prompt-tool`,
+  `--permission-prompts host`; Grok `--allow`) (`ask_conflicts`), a mode value outside the allowed stricter
   ones (`ask_values`: Claude/Grok `plan` and `dontAsk`, Codex `read-only`,
   Antigravity `plan` stay allowed), a Codex config override of
   `approval_policy`, `sandbox_mode`, `sandbox_workspace_write` or
