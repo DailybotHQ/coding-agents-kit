@@ -13,6 +13,19 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.5.2] - 2026-11-19
+
+A patch release with no runtime change: `ak` behaves exactly as in 1.5.1, and
+interface stays **1**. It ships the ecosystem sync so the kit's tag carries the
+current pins.
+
+### Changed
+
+- Repository tooling: the vendored DeepWorkPlan skill moves to pack **8.0.6**
+  (tag commit `8b348b9`, `SHA256SUMS` sha256 `1f807e4c…`, all 188 files
+  verified). Its devcontainer addon now pins devcontainer-kit v1.4.4, which
+  bakes in coding-agents-kit v1.5.1. herdr-peers stays at v2.2.1.
+
 ## [1.5.1] - 2026-11-18
 
 A patch release. Interface stays **1**; the doctor JSON shape is unchanged.
@@ -851,7 +864,8 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.1...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.2...HEAD
+[1.5.2]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.1...v1.5.2
 [1.5.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.0...v1.5.1
 [1.5.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.3.0...v1.4.0

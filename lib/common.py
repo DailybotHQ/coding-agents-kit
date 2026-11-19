@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 
-VERSION = "1.5.1"
+VERSION = "1.5.2"
 INTERFACE = 1
 
 # Exit codes (the `ak run` contract uses the same numbers everywhere).
