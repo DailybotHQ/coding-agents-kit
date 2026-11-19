@@ -32,8 +32,9 @@ doctor, `ak install` and the next update agree.
      digests) — skipped; move the pin with `scripts/update-pins.sh`.
 2. **Verify** exactly like `ak install`. A digest mismatch refuses before
    anything is installed and before the pin moves.
-3. **Install** through the channel itself: `npm install -g` of the verified
-   tarball, or the verified binary written over `~/.local/bin/<executable>`
+3. **Install** through the channel itself: `npm install -g
+   --include=optional` of the verified tarball (which then has to start, as
+   for `ak install`: one clean reinstall, then a failure), or the verified binary written over `~/.local/bin/<executable>`
    (a regular file there is first backed up to `<name>.agentkit-orig`).
 4. **Resolve** — the update only counts when PATH resolves the new release.
    A vendor-managed **symlink** is replaced only with `--take-over`, which

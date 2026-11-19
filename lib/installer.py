@@ -9,7 +9,12 @@ installed before its digest matches:
   tarball  one archive per platform, checked against its sha256, unpacked
            safely into a versioned directory, then linked into ~/.local/bin;
   npm      the registry tarball of <package>@<version>, checked against the
-           pinned `integrity` (sha512), then `npm install -g <that file>`.
+           pinned `integrity` (sha512), then `npm install -g
+           --include=optional <that file>`. The installed CLI must then
+           start (`<cli> --version`): npm can drop a package's platform
+           binary, an optional dependency, on an in-place install, so a CLI
+           that does not start is uninstalled and installed once more, and
+           still failing is a failed install, never a success.
 
 A platform with no pinned digest is refused. A CLI that cannot be pinned
 carries `unverified = "<reason>"` and installs only with
@@ -238,7 +243,46 @@ def _extract(tmp, staging, inst):
             archive.extractall(staging, members=members)
 
 
-def _install_npm(cli_name, inst, tmpdir, env, allow_unverified):
+def npm_prefix_bin(env):
+    """The directory npm installs global packages into (its prefix's bin),
+    or None when npm does not say."""
+    npm = common.which("npm", env)
+    if not npm:
+        return None
+    out = common._probe([npm, "config", "get", "prefix"], timeout=10).strip().splitlines()
+    prefix = out[0].strip() if out else ""
+    if not prefix or not os.path.isdir(prefix):
+        return None
+    if common.os_name() == "windows":
+        return prefix
+    return os.path.join(prefix, "bin")
+
+
+def npm_start_problem(cli, env):
+    """Why the CLI npm just installed does not start, or None when it starts
+    or there is nothing to check. The copy in npm's prefix is probed (the one
+    this install wrote), else the copy PATH resolves; with neither, the
+    install cannot be checked here and install_one names the PATH step."""
+    exe = None
+    # On Windows the prefix also holds npm's extensionless sh shim, which
+    # cannot be run directly: probe the copy PATH resolves (its .cmd) there.
+    prefix_bin = npm_prefix_bin(env) if common.os_name() != "windows" else None
+    if prefix_bin and cli.get("executable"):
+        cand = os.path.join(prefix_bin, cli["executable"])
+        if os.path.isfile(cand) and os.access(cand, os.X_OK):
+            exe = cand
+    exe = exe or common.resolve_executable(cli, env)
+    if not exe:
+        return None
+    status, out, err = common.probe_status([exe, "--version"], timeout=10)
+    if status is None:
+        return None  # a probe that times out proves nothing either way
+    if status != 0 or not out.strip():
+        return "`%s --version` exits %d%s" % (exe, status, (": " + err) if err else "")
+    return None
+
+
+def _install_npm(cli_name, inst, tmpdir, env, allow_unverified, cli=None):
     npm = common.which("npm", env)
     if not npm:
         print("%s: npm is not installed — install Node first: %s" % (cli_name, NODE_HINTS.get(common.os_name(),
@@ -251,13 +295,34 @@ def _install_npm(cli_name, inst, tmpdir, env, allow_unverified):
         return False
     if not _verify(cli_name, tgz, inst.get("integrity"), integrity_of, allow_unverified, inst):
         return False
-    argv = [npm, "install", "-g"] + list(inst.get("npm_args", [])) + [tgz]
+    # --include=optional: a CLI that ships its native binary as a platform
+    # optional dependency (Codex) does not start without it, whatever an
+    # inherited `omit` setting says.
+    argv = [npm, "install", "-g", "--include=optional"] + list(inst.get("npm_args", [])) + [tgz]
     # Progress goes to sys.stderr: the right home for an install's own
     # output in both plain and --json runs (the JSON envelope is stdout
     # only), and a stream with a real fileno the child can inherit — a
     # caller capturing sys.stdout in a StringIO would otherwise crash the
     # subprocess setup.
-    return subprocess.call(argv, env=env, stdout=sys.stderr) == 0
+    if subprocess.call(argv, env=env, stdout=sys.stderr) != 0:
+        return False
+    if cli is None:
+        return True
+    problem = npm_start_problem(cli, env)
+    if not problem:
+        return True
+    # npm can drop the platform binary on an in-place install; a clean
+    # uninstall and install is the known repair. Once, then the truth.
+    print("%s: the installed CLI does not start (%s); reinstalling %s cleanly"
+          % (cli_name, problem, inst["package"]))
+    subprocess.call([npm, "uninstall", "-g", inst["package"]], env=env, stdout=sys.stderr)
+    if subprocess.call(argv, env=env, stdout=sys.stderr) != 0:
+        return False
+    problem = npm_start_problem(cli, env)
+    if problem:
+        print("%s: still does not start after a clean reinstall (%s)" % (cli_name, problem))
+        return False
+    return True
 
 
 def install_one(model, cli_name, env, allow_unverified=False, plat=None):
@@ -274,7 +339,7 @@ def install_one(model, cli_name, env, allow_unverified=False, plat=None):
     tmpdir = tempfile.mkdtemp(prefix="agentkit-install-")
     try:
         if inst["channel"] == "npm":
-            ok = _install_npm(cli_name, inst, tmpdir, env, allow_unverified)
+            ok = _install_npm(cli_name, inst, tmpdir, env, allow_unverified, cli)
         else:
             ok = _install_binary(cli_name, cli, inst, plat, tmpdir, env, allow_unverified)
     except (AkError, tarfile.TarError, OSError) as exc:

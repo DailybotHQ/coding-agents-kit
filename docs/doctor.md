@@ -55,7 +55,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 | `herdr_hooks` | per Herdr-integrated CLI, per profile: whether Herdr's state hook files are present in that home |
 | `default_profiles` | since 0.5.2: per CLI whose `AGENTKIT_DEFAULT_PROFILE_<CLI>` is set, what a bare `ak <cli>` launches (`@name`, `@default` or `pick`); see [Profiles](profiles.md#a-default-profile-per-cli) |
 | `daemons` | since 0.5.3: per CLI that records a background daemon in its home (Codex), per account: `present`, `absent` (nothing recorded), `missing` (the home records a daemon that is not on this machine, so `ak codex` adds `--no-daemon`) or `off` (`AGENTKIT_CODEX_NO_DAEMON=1`); see [Profiles](profiles.md#codex-and-its-app-server-daemon) |
-| `env_file`, `problems` | where the env file is, its mode, and anything to fix. On Linux or in a container, a problem names each account whose file names the account but whose login token is not there (a macOS Keychain login does not travel), with the fix |
+| `env_file`, `problems` | where the env file is, its mode, and anything to fix. A CLI that resolves but does not start (`--version` exits non-zero, for example Codex after npm dropped its platform binary) is a problem quoting the CLI's error, with the repair (`npm uninstall -g <package>, then ak install <cli>` for npm CLIs); its `version_status` stays `unknown`. On Linux or in a container, a problem names each account whose file names the account but whose login token is not there (a macOS Keychain login does not travel), with the fix |
 
 Consumers must ignore keys they do not know: minor versions may add some.
 No credential file is opened, with one exception: Claude's `.claude.json`

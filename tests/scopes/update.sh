@@ -141,6 +141,8 @@ PY
   expect_eq "the vendor link is untouched" "$(readlink "${BOX}/bin/codex")" "${BOX}/vendor/codex-standalone/current/bin/codex"
   check "the registry document was fetched" grep -q 'registry.npmjs.org/@openai/codex/latest' "${FAKE_NET_LOG}"
   check "the tarball was downloaded and handed to npm" grep -q 'NPM install -g' "${FAKE_NET_LOG}"
+  check "ak update installs npm CLIs with their optional dependencies" grep -q 'NPM install -g --include=optional ' "${FAKE_NET_LOG}"
+  check "a CLI that starts after the update is not reinstalled" bash -c "! grep -q '^NPM uninstall' '${FAKE_NET_LOG}'"
 
   # --- codex: a tampered artifact refuses before anything moves -----------
   printf 'tampered tarball bytes\n' > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"

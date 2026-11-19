@@ -35,6 +35,15 @@ def _cli_version(exe):
     return out[0].strip() if out else None
 
 
+def _start_problem(exe):
+    """Why `<exe> --version` fails (exit status and its first stderr line),
+    or None when it exits 0 or the probe proves nothing (timeout)."""
+    status, _, err = common.probe_status([exe, "--version"], timeout=5)
+    if status is None or status == 0:
+        return None
+    return "`--version` exits %d%s" % (status, (": " + err) if err else "")
+
+
 _VERSION = re.compile(r"v?(\d+(?:\.\d+){1,3})(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?")
 _VERSION_LABELS = {
     "claude": ("Claude Code",), "codex": ("codex-cli",),
@@ -114,6 +123,15 @@ def collect(model, env):
             version_cache[cli] = _cli_version(exe_cache[cli])
             pinned = kind.cli.get("install", {}).get("version")
             status_cache[cli] = _version_status(cli, version_cache[cli], pinned, exe_cache[cli] is not None)
+            if exe_cache[cli] and version_cache[cli] is None:
+                broken = _start_problem(exe_cache[cli])
+                if broken:
+                    inst = kind.cli.get("install", {})
+                    how = ("npm uninstall -g %s, then ak install %s" % (inst["package"], cli)
+                           if inst.get("channel") == "npm" and inst.get("package")
+                           else "remove the broken copy, then ak install %s" % cli)
+                    problems.append("%s: %s is installed but does not start (%s). Fix: %s"
+                                    % (cli, exe_cache[cli], broken, how))
             if status_cache[cli] == "older":
                 problems.append("%s: resolved %s reports %s, older than kit pin %s. Fix: ak update %s; "
                                 "then check this path again if another install shadows the updated CLI"
