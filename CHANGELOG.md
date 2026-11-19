@@ -13,6 +13,12 @@ permission posture changes.
 
 ## [Unreleased]
 
+## [1.5.1] - 2026-11-18
+
+A patch release. Interface stays **1**; the doctor JSON shape is unchanged.
+npm-installed CLIs (Codex first) keep their per-platform native binary, and
+an install that leaves a CLI unable to start is no longer called a success.
+
 ### Fixed
 
 - `ak install` and `ak update` install npm CLIs with `--include=optional`,
@@ -25,8 +31,8 @@ permission posture changes.
   never reinstalled over.
 - `ak doctor` reports a CLI that resolves but does not start as a problem
   that quotes its error and names the repair (`npm uninstall -g <package>`,
-  then `ak install <cli>`, when the copy is in npm's prefix). The JSON shape is unchanged: its
-  `version_status` stays `unknown`.
+  then `ak install <cli>`, when the copy is in npm's prefix). The JSON
+  shape is unchanged: its `version_status` stays `unknown`.
 
 ## [1.5.0] - 2026-11-16
 
@@ -845,7 +851,9 @@ First public release. **Interface 1.**
 Redesigned from the author's earlier coding-agents-setup-kit (wrappers,
 installers, provider writers) and profile work; see `CREDITS.md`.
 
-[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.1...HEAD
+[1.5.1]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.5.0...v1.5.1
+[1.5.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.4.0...v1.5.0
 [1.4.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/DailybotHQ/coding-agents-kit/compare/v1.1.0...v1.2.0

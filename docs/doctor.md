@@ -25,7 +25,7 @@ The JSON form is the contract. Schema: [`schema/doctor-v1.json`](schema/doctor-v
 ```json
 {
   "interface": 1,
-  "version": "1.5.0",
+  "version": "1.5.1",
   "os": "macos",
   "kinds": {
     "claude":     { "cli": "claude", "provider": null,  "installed": true, "path": "/…/claude", "version": "2.1.295 (Claude Code)", "logged_in": true },
