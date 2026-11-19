@@ -83,12 +83,13 @@ def _probe(argv, timeout=5):
         return ""
 
 
-def probe_status(argv, timeout=5):
+def probe_status(argv, timeout=5, env=None):
     """(exit status, stdout, first stderr line) of a short probe; the status
-    is None when the program could not run or did not finish in time."""
+    is None when the program could not run or did not finish in time. `env`
+    replaces the environment (pass a key-free one for code just installed)."""
     try:
         out = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                             stdin=subprocess.DEVNULL, timeout=timeout)
+                             stdin=subprocess.DEVNULL, timeout=timeout, env=env)
     except (OSError, subprocess.SubprocessError):
         return None, "", ""
     err = [line.strip() for line in out.stderr.decode("utf-8", "replace").splitlines() if line.strip()]

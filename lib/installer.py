@@ -258,11 +258,32 @@ def npm_prefix_bin(env):
     return os.path.join(prefix, "bin")
 
 
+def _npm_root(prefix_bin):
+    """npm's global prefix for a prefix bin directory (the same directory on
+    Windows, its parent elsewhere)."""
+    if not prefix_bin:
+        return None
+    return prefix_bin if common.os_name() == "windows" else os.path.dirname(prefix_bin)
+
+
+def in_npm_prefix(exe, env):
+    """True when `exe` lives under npm's global prefix: a copy npm installed,
+    so `npm uninstall -g` and a reinstall act on that very copy."""
+    root = _npm_root(npm_prefix_bin(env))
+    if not root or not exe:
+        return False
+    root = os.path.realpath(root)
+    return os.path.realpath(exe).startswith(root + os.sep)
+
+
 def npm_start_problem(cli, env):
-    """Why the CLI npm just installed does not start, or None when it starts
-    or there is nothing to check. The copy in npm's prefix is probed (the one
-    this install wrote), else the copy PATH resolves; with neither, the
-    install cannot be checked here and install_one names the PATH step."""
+    """(problem, exe) for the CLI npm just installed: problem says why it does
+    not start (its `--version` exits non-zero), None when it starts or there
+    is nothing to check. The copy in npm's prefix is probed (the one this
+    install wrote), else the copy PATH resolves; with neither, the install
+    cannot be checked here and install_one names the PATH step. The probe
+    runs with `env`, the key-free installer environment: the code npm just
+    fetched never sees a key."""
     exe = None
     # On Windows the prefix also holds npm's extensionless sh shim, which
     # cannot be run directly: probe the copy PATH resolves (its .cmd) there.
@@ -273,13 +294,11 @@ def npm_start_problem(cli, env):
             exe = cand
     exe = exe or common.resolve_executable(cli, env)
     if not exe:
-        return None
-    status, out, err = common.probe_status([exe, "--version"], timeout=10)
-    if status is None:
-        return None  # a probe that times out proves nothing either way
-    if status != 0 or not out.strip():
-        return "`%s --version` exits %d%s" % (exe, status, (": " + err) if err else "")
-    return None
+        return None, None
+    status, _, err = common.probe_status([exe, "--version"], timeout=10, env=env)
+    if status is None or status == 0:
+        return None, exe  # a probe that times out proves nothing either way
+    return "`%s --version` exits %d%s" % (exe, status, (": " + err) if err else ""), exe
 
 
 def _install_npm(cli_name, inst, tmpdir, env, allow_unverified, cli=None):
@@ -308,9 +327,15 @@ def _install_npm(cli_name, inst, tmpdir, env, allow_unverified, cli=None):
         return False
     if cli is None:
         return True
-    problem = npm_start_problem(cli, env)
+    problem, exe = npm_start_problem(cli, env)
     if not problem:
         return True
+    if not in_npm_prefix(exe, env):
+        # Not the copy npm wrote: reinstalling npm's package would not touch
+        # it. Report it, repair nothing.
+        print("%s: %s does not start (%s), and it is not the copy npm installed: remove or fix it, "
+              "or put npm's copy first on PATH" % (cli_name, exe, problem))
+        return False
     # npm can drop the platform binary on an in-place install; a clean
     # uninstall and install is the known repair. Once, then the truth.
     print("%s: the installed CLI does not start (%s); reinstalling %s cleanly"
@@ -318,7 +343,7 @@ def _install_npm(cli_name, inst, tmpdir, env, allow_unverified, cli=None):
     subprocess.call([npm, "uninstall", "-g", inst["package"]], env=env, stdout=sys.stderr)
     if subprocess.call(argv, env=env, stdout=sys.stderr) != 0:
         return False
-    problem = npm_start_problem(cli, env)
+    problem, _ = npm_start_problem(cli, env)
     if problem:
         print("%s: still does not start after a clean reinstall (%s)" % (cli_name, problem))
         return False

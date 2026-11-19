@@ -18,12 +18,14 @@ permission posture changes.
 - `ak install` and `ak update` install npm CLIs with `--include=optional`,
   so Codex's per-platform native binary (`@openai/codex-linux-arm64`, …), an
   optional dependency, is always installed. The installed CLI must then
-  start (`<cli> --version`): when npm dropped the platform binary, ak
-  uninstalls and installs it once more, and a CLI that still does not start
-  is a failed install with the CLI's own error, never "installed".
+  start (`<cli> --version` exits 0, probed without key variables): when npm
+  dropped the platform binary, ak uninstalls and installs it once more, and a
+  CLI that still does not start is a failed install with the CLI's own
+  error, never "installed". A broken copy npm did not install is reported,
+  never reinstalled over.
 - `ak doctor` reports a CLI that resolves but does not start as a problem
   that quotes its error and names the repair (`npm uninstall -g <package>`,
-  then `ak install <cli>`). The JSON shape is unchanged: its
+  then `ak install <cli>`, when the copy is in npm's prefix). The JSON shape is unchanged: its
   `version_status` stays `unknown`.
 
 ## [1.5.0] - 2026-11-16
