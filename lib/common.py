@@ -5,7 +5,7 @@ import platform
 import subprocess
 import sys
 
-VERSION = "1.5.0"
+VERSION = "1.5.1"
 INTERFACE = 1
 
 # Exit codes (the `ak run` contract uses the same numbers everywhere).
@@ -81,6 +81,19 @@ def _probe(argv, timeout=5):
         return out.stdout.decode("utf-8", "replace")
     except (OSError, subprocess.SubprocessError):
         return ""
+
+
+def probe_status(argv, timeout=5, env=None):
+    """(exit status, stdout, first stderr line) of a short probe; the status
+    is None when the program could not run or did not finish in time. `env`
+    replaces the environment (pass a key-free one for code just installed)."""
+    try:
+        out = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             stdin=subprocess.DEVNULL, timeout=timeout, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return None, "", ""
+    err = [line.strip() for line in out.stderr.decode("utf-8", "replace").splitlines() if line.strip()]
+    return out.returncode, out.stdout.decode("utf-8", "replace"), (err[0][:200] if err else "")
 
 
 def is_cursor_binary(path):

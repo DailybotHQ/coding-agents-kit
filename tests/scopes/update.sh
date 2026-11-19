@@ -141,6 +141,8 @@ PY
   expect_eq "the vendor link is untouched" "$(readlink "${BOX}/bin/codex")" "${BOX}/vendor/codex-standalone/current/bin/codex"
   check "the registry document was fetched" grep -q 'registry.npmjs.org/@openai/codex/latest' "${FAKE_NET_LOG}"
   check "the tarball was downloaded and handed to npm" grep -q 'NPM install -g' "${FAKE_NET_LOG}"
+  check "ak update installs npm CLIs with their optional dependencies" grep -q 'NPM install -g --include=optional ' "${FAKE_NET_LOG}"
+  check "a CLI that starts after the update is not reinstalled" bash -c "! grep -q '^NPM uninstall' '${FAKE_NET_LOG}'"
 
   # --- codex: a tampered artifact refuses before anything moves -----------
   printf 'tampered tarball bytes\n' > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
@@ -150,6 +152,28 @@ PY
   expect_has "the failure says the pin is unchanged" "${out}" "the pin is unchanged"
   check "the pin still did not move" test "$(field_of "${dest}/providers.toml" codex version)" = "${pin0}"
   expect_eq "the vendor link survived the failed verify" "$(readlink "${BOX}/bin/codex")" "${BOX}/vendor/codex-standalone/current/bin/codex"
+
+  # --- codex: a verified release that does not start is a failed update ---
+  # (npm dropped its platform binary): one clean reinstall, then the truth,
+  # in one JSON document, and the pin stays.
+  local bintg
+  mkdir -p "${BOX}/build-broken/package/bin"
+  printf '#!/bin/sh\necho "Error: Missing optional dependency @openai/codex-linux-arm64." >&2\nexit 1\n' \
+    > "${BOX}/build-broken/package/bin/codex"
+  chmod +x "${BOX}/build-broken/package/bin/codex"
+  cp "${BOX}/build/package/package.json" "${BOX}/build-broken/package/"
+  tar -cf - -C "${BOX}/build-broken" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"
+  bintg="$(python3 -c "import hashlib,base64,sys; print('sha512-'+base64.b64encode(hashlib.sha512(open(sys.argv[1],'rb').read()).digest()).decode())" \
+    "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')")"
+  printf '{"version":"9.9.9","dist":{"integrity":"%s"}}\n' "${bintg}" > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
+  : > "${FAKE_NET_LOG}"
+  ak_up -- update codex --json; status=$?
+  expect_eq "a release that does not start fails the update (one JSON document)" \
+    "$(json_get "${BOX}/out" 'd["results"][0]["status"]')+$(json_get "${BOX}/out" 'd["results"][0]["pin_written"]')" "failed+false"
+  expect_eq "exactly one clean reinstall was tried" "$(grep -c '^NPM uninstall -g @openai/codex' "${FAKE_NET_LOG}")" 1
+  check "the pin did not move for a CLI that does not start" test "$(field_of "${dest}/providers.toml" codex version)" = "${pin0}"
+  expect_has "stderr names the CLI's own error" "$(cat "${BOX}/err")" "Missing optional dependency"
+  printf '{"version":"9.9.9","dist":{"integrity":"%s"}}\n' "${intg}" > "$(netfile 'https://registry.npmjs.org/@openai/codex/latest')"
 
   # --- codex: the take-over lands the verified release and moves the pin --
   tar -cf - -C "${BOX}/build" package | gzip -n > "$(netfile 'https://registry.npmjs.org/@openai/codex/-/codex-9.9.9.tgz')"

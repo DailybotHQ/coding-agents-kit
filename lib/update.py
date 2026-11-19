@@ -175,18 +175,8 @@ def _resolved_version(exe):
 
 
 def _npm_prefix_bin(env):
-    """The directory npm installs global packages into (its prefix's bin),
-    or None when npm does not say."""
-    npm = common.which("npm", env)
-    if not npm:
-        return None
-    out = common._probe([npm, "config", "get", "prefix"], timeout=10).strip().splitlines()
-    prefix = out[0].strip() if out else ""
-    if not prefix or not os.path.isdir(prefix):
-        return None
-    if common.os_name() == "windows":
-        return prefix
-    return os.path.join(prefix, "bin")
+    """The directory npm installs global packages into (installer.npm_prefix_bin)."""
+    return installer.npm_prefix_bin(env)
 
 
 _VERSION_OK = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?\Z")
@@ -460,7 +450,7 @@ def update_one(model, cli_name, opts, env):
     tmpdir = tempfile.mkdtemp(prefix="agentkit-update-")
     try:
         if inst.get("channel") == "npm":
-            ok = installer._install_npm(cli_name, cand, tmpdir, ienv, False)
+            ok = installer._install_npm(cli_name, cand, tmpdir, ienv, False, cli)
         else:
             ok = installer._install_binary(cli_name, cli, cand, installer.platform_key(), tmpdir, ienv, False)
     except (AkError, OSError) as exc:

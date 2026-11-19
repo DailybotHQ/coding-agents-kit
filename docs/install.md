@@ -8,14 +8,14 @@
 macOS, Linux, WSL (and Git Bash):
 
 ```bash
-git clone --branch v1.5.0 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v1.5.1 https://github.com/DailybotHQ/coding-agents-kit
 ./coding-agents-kit/install.sh
 ```
 
 Windows (PowerShell 5.1 or 7):
 
 ```powershell
-git clone --branch v1.5.0 https://github.com/DailybotHQ/coding-agents-kit
+git clone --branch v1.5.1 https://github.com/DailybotHQ/coding-agents-kit
 .\coding-agents-kit\install.ps1
 ```
 
@@ -109,10 +109,23 @@ does not match refuses the install and leaves nothing behind; a platform
 with no pinned digest (Windows, for the native binaries) is refused with
 the vendor's docs link; archives are unpacked only after every entry is
 checked to stay inside its directory. Vendor install scripts are never run.
-For npm, the verified tarball is what npm installs; its dependencies are
-resolved by npm from the registry, each checked against the registry's own
-integrity. After install, each CLI's own updater may take over; the pins are
-what a fresh machine gets.
+For npm, the verified tarball is what npm installs
+(`npm install -g --include=optional <file>`); its dependencies are resolved by
+npm from the registry, each checked against the registry's own integrity.
+`--include=optional` matters for Codex, whose native binary is a per-platform
+optional dependency (`@openai/codex-linux-arm64`, …): without it the CLI fails
+with "Missing optional dependency". The install then has to **start**: ak
+runs the installed copy's `--version` (with the same key-free environment
+npm gets), and a CLI that does not start, its `--version` exiting non-zero
+(npm can drop the platform binary on an in-place install), is uninstalled and
+installed once more; still failing, the install fails with the CLI's own
+error. A broken copy that npm did not install (another copy first on PATH) is
+reported and never reinstalled over. `--include=optional` needs npm 7 or
+later; npm 6 ignores it and installs optional dependencies by default. After
+install, each CLI's own updater may take over; the pins are what a fresh
+machine gets. A vendor's in-CLI update (Codex's "Update now" runs
+`npm install -g @openai/codex`) skips these checks: prefer `ak update`, and if
+an in-CLI update left the CLI broken, `ak doctor` names the repair.
 
 A CLI that cannot be pinned is stated in the data as
 `unverified = "<reason>"` and installs only with

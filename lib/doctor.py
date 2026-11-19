@@ -23,16 +23,26 @@ import sys
 import aliases
 import common
 import hooks
+import installer
 import kinds
 import profiles
 from common import AkError, EXIT_USAGE
 
 
-def _cli_version(exe):
+def _cli_probe(exe):
+    """(version line or None, start problem or None) from ONE `<exe> --version`.
+
+    The problem says why the CLI does not start: its `--version` exits
+    non-zero (the CLI's first stderr line quoted). A timeout proves nothing
+    and is no problem; the version is the first stdout line either way."""
     if not exe:
-        return None
-    out = common._probe([exe, "--version"], timeout=5).strip().splitlines()
-    return out[0].strip() if out else None
+        return None, None
+    status, out, err = common.probe_status([exe, "--version"], timeout=5)
+    lines = out.strip().splitlines()
+    version = lines[0].strip() if lines else None
+    if status is None or status == 0:
+        return version, None
+    return version, "`--version` exits %d%s" % (status, (": " + err) if err else "")
 
 
 _VERSION = re.compile(r"v?(\d+(?:\.\d+){1,3})(-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?")
@@ -111,9 +121,18 @@ def collect(model, env):
         cli = kind.cli_name
         if cli not in exe_cache:
             exe_cache[cli] = common.resolve_executable(kind.cli, env)
-            version_cache[cli] = _cli_version(exe_cache[cli])
+            version_cache[cli], broken = _cli_probe(exe_cache[cli])
             pinned = kind.cli.get("install", {}).get("version")
             status_cache[cli] = _version_status(cli, version_cache[cli], pinned, exe_cache[cli] is not None)
+            if broken:
+                inst = kind.cli.get("install", {})
+                if inst.get("channel") == "npm" and inst.get("package") \
+                        and installer.in_npm_prefix(exe_cache[cli], installer.installer_env(env)):
+                    how = "npm uninstall -g %s, then ak install %s" % (inst["package"], cli)
+                else:
+                    how = "remove or repair the broken copy at %s, then ak install %s" % (exe_cache[cli], cli)
+                problems.append("%s: %s is installed but does not start (%s). Fix: %s"
+                                % (cli, exe_cache[cli], broken, how))
             if status_cache[cli] == "older":
                 problems.append("%s: resolved %s reports %s, older than kit pin %s. Fix: ak update %s; "
                                 "then check this path again if another install shadows the updated CLI"

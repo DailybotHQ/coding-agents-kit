@@ -41,7 +41,7 @@ scope_doctor() {
   out="$("${AK_PY}" "${ROOT}/tests/py/schema_check.py" "${schema}" "${doc}")"
   expect_eq "doctor --json matches docs/schema/doctor-v1.json" "${out}" "valid"
   expect_eq "doctor reports interface 1" "$(json_get "${doc}" 'd["interface"]')" 1
-  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "1.5.0"
+  expect_eq "doctor reports the kit version" "$(json_get "${doc}" 'd["version"]')" "1.5.1"
   expect_eq "doctor reports this OS" "$(json_get "${doc}" 'd["os"] in ("macos", "linux")')" true
   expect_eq "doctor lists all 20 kinds" "$(json_get "${doc}" 'len(d["kinds"])')" 20
   expect_eq "doctor sees the installed CLIs" "$(json_get "${doc}" 'all(v["installed"] for v in d["kinds"].values())')" true
@@ -141,6 +141,27 @@ scope_doctor() {
     "$(json_get "${BOX}/out" 'any("ak update codex" in p for p in d["problems"])')" false
   out="$(ak -- doctor)"
   expect_has "text doctor shows the kit pin alongside its version status" "${out}" "kit pin: ${pinned}; version: newer"
+  # A CLI that is installed but does not start (npm dropped its platform
+  # binary) is a problem with the exact repair, not just an unknown version.
+  printf '#!/bin/sh\necho "Error: Missing optional dependency @openai/codex-linux-arm64." >&2\nexit 1\n' > "${BOX}/bin/codex"
+  chmod +x "${BOX}/bin/codex"
+  ak_split -- doctor --json
+  expect_eq "a CLI that does not start is one doctor problem" \
+    "$(json_get "${BOX}/out" 'sum("codex: " in p and "does not start" in p for p in d["problems"])')" 1
+  expect_has "the problem quotes the CLI's own error" "$(cat "${BOX}/out")" "Missing optional dependency"
+  expect_has "a copy npm did not install is not sent to npm uninstall" "$(cat "${BOX}/out")" "remove or repair the broken copy at ${BOX}/bin/codex"
+  expect_eq "its version status stays unknown (schema unchanged)" \
+    "$(json_get "${BOX}/out" 'd["kinds"]["codex"]["version_status"]')" unknown
+  # The same broken copy inside npm's global prefix: the npm repair.
+  printf '#!/bin/sh\n[ "$1" = config ] && echo "%s"\nexit 0\n' "${BOX}" > "${BOX}/bin/npm"
+  chmod +x "${BOX}/bin/npm"
+  ak_split -- doctor --json
+  expect_has "a copy in npm's prefix names the clean npm reinstall" "$(cat "${BOX}/out")" "npm uninstall -g @openai/codex, then ak install codex"
+  rm -f "${BOX}/bin/npm"
+  doctor_version_fake codex "requires Node 99.0.0"
+  ak_split -- doctor --json
+  expect_eq "a CLI that starts and prints an odd line is not called broken" \
+    "$(json_get "${BOX}/out" 'any("does not start" in p for p in d["problems"])')" false
   doctor_version_fake codex "requires Node 99.0.0"
   ak_split -- doctor --json
   expect_eq "an error mentioning a number is not a CLI version" \

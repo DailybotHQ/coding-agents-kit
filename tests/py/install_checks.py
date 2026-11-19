@@ -164,13 +164,111 @@ check("tarball: nothing escaped and no staging is left", not os.path.exists(os.p
 # npm: the pinned integrity is checked before npm runs; npm installs that file
 ok_, out, home, npm_log = run("codex")
 check("npm: a matching integrity runs npm install -g <the verified tarball>",
-      ok_ and "NPM install -g " in npm_log and npm_log.split("NPM install -g ", 1)[1].split()[0].endswith("codex-0.169.0.tgz"),
+      ok_ and "NPM install -g " in npm_log and npm_log.split("NPM install -g ", 1)[1].splitlines()[0].split()[-1].endswith("codex-0.169.0.tgz"),
       npm_log or out)
+check("npm: the install always includes optional dependencies (a CLI's platform binary)",
+      "NPM install -g --include=optional " in npm_log, npm_log)
 check("npm: npm never sees a key variable", "NPM-ENV" not in npm_log, npm_log)
 check("npm: no planted key value reaches the output", PLANTED not in out and PLANTED not in npm_log)
 ok_, out, home, npm_log = run("opencode")
 check("npm: an integrity mismatch is refused before npm runs", not ok_ and "checksum mismatch" in out and npm_log == "",
       out + npm_log)
+
+# npm: the installed CLI must start. A fake npm with a real prefix writes a
+# codex whose --version fails the way a dropped platform optional dependency
+# does; `uninstall` removes it and marks the next install as clean. Mode
+# "repair" installs a working copy after the uninstall; mode "broken" never
+# does.
+def npm_prefix_fake(mode):
+    bindir = os.path.join(SCRATCH, "bin-npm-%s" % mode)
+    prefix = os.path.join(SCRATCH, "prefix-npm-%s" % mode)
+    shutil.rmtree(bindir, ignore_errors=True)
+    shutil.rmtree(prefix, ignore_errors=True)
+    os.makedirs(bindir)
+    os.makedirs(os.path.join(prefix, "bin"))
+    # Each copy records the names of any key variables it can see.
+    spy = 'env | grep -E "_API_KEY|_TOKEN" | sed "s/=.*//; s/^/CODEX-ENV /" >> %s\\n' % LOG
+    good = '#!/bin/sh\\n' + spy + 'echo "codex-cli 0.169.0"\\n'
+    bad = ('#!/bin/sh\\n' + spy + 'echo "Error: Missing optional dependency @openai/codex-linux-arm64." >&2\\n'
+           'exit 1\\n')
+    with open(os.path.join(bindir, "npm"), "w") as fh:
+        fh.write("""#!/bin/sh
+echo "NPM $*" >> "%(log)s"
+case "$1" in
+  config) echo "%(prefix)s" ;;
+  uninstall) rm -f "%(prefix)s/bin/codex"; : > "%(prefix)s/.clean" ;;
+  install)
+    if [ "%(mode)s" = repair ] && [ -f "%(prefix)s/.clean" ]; then printf '%(good)s' > "%(prefix)s/bin/codex"
+    else printf '%(bad)s' > "%(prefix)s/bin/codex"; fi
+    chmod +x "%(prefix)s/bin/codex" ;;
+esac
+exit 0
+""" % {"log": LOG, "prefix": prefix, "mode": mode, "good": good, "bad": bad})
+    os.chmod(os.path.join(bindir, "npm"), 0o755)
+    return bindir
+
+
+def run_npm_fake(mode):
+    bindir = npm_prefix_fake(mode)
+    home = os.path.join(SCRATCH, "home-npm-%s" % mode)
+    shutil.rmtree(home, ignore_errors=True)
+    os.makedirs(home)
+    os.environ["HOME"] = home
+    if os.path.exists(LOG):
+        os.remove(LOG)
+    env = {"HOME": home, "PATH": bindir + ":" + BIN + ":/usr/bin:/bin", "OPENAI_API_KEY": PLANTED,
+           "GH_TOKEN": PLANTED}
+    # The key also sits in this process's own environment, the one a probe
+    # without an explicit env would inherit: only the key-free installer
+    # environment keeps it from the new CLI.
+    os.environ["OPENAI_API_KEY"] = PLANTED
+    out = io.StringIO()
+    try:
+        with contextlib.redirect_stdout(out):
+            result = installer.install_one(model, "codex", env)
+    finally:
+        os.environ.pop("OPENAI_API_KEY", None)
+    return result, out.getvalue(), open(LOG).read() if os.path.exists(LOG) else ""
+
+
+ok_, out, npm_log = run_npm_fake("repair")
+check("npm: a CLI that does not start after install is reinstalled cleanly, then counts",
+      ok_ and "does not start" in out and "reinstalling @openai/codex cleanly" in out
+      and "NPM uninstall -g @openai/codex" in npm_log and npm_log.count("NPM install -g --include=optional ") == 2,
+      out + npm_log)
+check("npm: the failure names the CLI's own error", "Missing optional dependency" in out, out)
+check("npm: the start probe runs the new CLI without any key variable",
+      "CODEX-ENV" not in npm_log and PLANTED not in out and PLANTED not in npm_log, npm_log)
+ok_, out, npm_log = run_npm_fake("broken")
+check("npm: still not starting after the clean reinstall is a failed install, never a success",
+      not ok_ and "still does not start after a clean reinstall" in out and "codex: installed" not in out
+      and npm_log.count("NPM uninstall -g") == 1, out + npm_log)
+
+# A broken copy that is NOT npm's (npm names no prefix; PATH resolves another
+# codex) is reported, and npm uninstall never runs against it.
+shadow_bin = os.path.join(SCRATCH, "bin-shadow")
+shutil.rmtree(shadow_bin, ignore_errors=True)
+os.makedirs(shadow_bin)
+with open(os.path.join(shadow_bin, "npm"), "w") as fh:
+    fh.write('#!/bin/sh\necho "NPM $*" >> "%s"\nexit 0\n' % LOG)
+with open(os.path.join(shadow_bin, "codex"), "w") as fh:
+    fh.write('#!/bin/sh\necho "broken vendor copy" >&2\nexit 1\n')
+for name in ("npm", "codex"):
+    os.chmod(os.path.join(shadow_bin, name), 0o755)
+if os.path.exists(LOG):
+    os.remove(LOG)
+shadow_env = {"HOME": os.path.join(SCRATCH, "home-shadow"), "PATH": shadow_bin + ":" + BIN + ":/usr/bin:/bin"}
+os.makedirs(shadow_env["HOME"], exist_ok=True)
+tmp_shadow = os.path.join(SCRATCH, "tmp-shadow")
+os.makedirs(tmp_shadow, exist_ok=True)
+out = io.StringIO()
+with contextlib.redirect_stdout(out):
+    ok_ = installer._install_npm("codex", model.clis["codex"]["install"], tmp_shadow, shadow_env, False,
+                                 model.clis["codex"])
+npm_log = open(LOG).read() if os.path.exists(LOG) else ""
+check("npm: a broken copy npm did not install is reported, never uninstalled",
+      not ok_ and "not the copy npm installed" in out.getvalue() and "NPM uninstall" not in npm_log,
+      out.getvalue() + npm_log)
 
 # an unverified exception needs --allow-unverified
 ok_, out, home, npm_log = run("cline")
